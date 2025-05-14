@@ -344,6 +344,257 @@ class OutlookClient {
     }
     
     /**
+     * Get upcoming calendar events using CalendarView (alternative approach)
+     * This method can sometimes capture events that are not returned by the regular events endpoint,
+     * particularly recurring events or events in different calendars
+     * @return List of calendar events
+     */
+    List<CalendarEvent> getUpcomingEventsUsingCalendarView() {
+        try {
+            // Ensure we have a valid token
+            if (!hasValidToken() && !authenticate()) {
+                throw new RuntimeException("Failed to authenticate with Outlook")
+            }
+            
+            String accessToken = configManager.accessToken
+            if (!isValidTokenFormat(accessToken)) {
+                println "Warning: The access token does not appear to be properly formatted."
+                if (!performDirectAuthentication()) {
+                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
+                }
+                accessToken = configManager.accessToken
+            }
+            
+            // Get events using calendar view API
+            String baseUrl = "${GRAPH_ENDPOINT}/me/calendarView"
+            
+            // Calculate start and end time parameters
+            ZonedDateTime startOfDay = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0)
+            ZonedDateTime endOfTomorrow = ZonedDateTime.now().plusDays(1).withHour(23).withMinute(59).withSecond(59)
+            
+            String startParam = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            String endParam = endOfTomorrow.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            
+            // Create URL for calendar view
+            StringBuilder urlBuilder = new StringBuilder(baseUrl)
+            urlBuilder.append("?startDateTime=").append(URLEncoder.encode(startParam, "UTF-8"))
+            urlBuilder.append("&endDateTime=").append(URLEncoder.encode(endParam, "UTF-8"))
+            urlBuilder.append("&\$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview")
+            urlBuilder.append("&\$orderby=").append(URLEncoder.encode("start/dateTime asc", "UTF-8"))
+            urlBuilder.append("&\$top=50")
+            
+            String url = urlBuilder.toString()
+            println "Requesting calendar events with calendar view URL: ${url}"
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(new URI(url))
+                .header("Authorization", "Bearer ${accessToken}")
+                .header("Accept", "application/json")
+                .GET()
+                .build()
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            
+            if (response.statusCode() == 200) {
+                List<CalendarEvent> events = parseEventResponse(response.body())
+                println "Calendar view returned ${events.size()} events"
+                return events
+            } else if (response.statusCode() == 401) {
+                println "Authentication error in calendar view request (401 Unauthorized): ${response.body()}"
+                return []
+            } else {
+                println "Failed to retrieve events using calendar view (HTTP ${response.statusCode()}): ${response.body()}"
+                return []
+            }
+        } catch (Exception e) {
+            println "Error retrieving calendar events using calendar view: ${e.message}"
+            e.printStackTrace()
+            return []
+        }
+    }
+    
+    /**
+     * Get all calendars available to the user
+     * @return List of calendar IDs and names
+     */
+    List<Map<String, String>> getAvailableCalendars() {
+        try {
+            // Ensure we have a valid token
+            if (!hasValidToken() && !authenticate()) {
+                throw new RuntimeException("Failed to authenticate with Outlook")
+            }
+            
+            String accessToken = configManager.accessToken
+            if (!isValidTokenFormat(accessToken)) {
+                println "Warning: The access token does not appear to be properly formatted."
+                if (!performDirectAuthentication()) {
+                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
+                }
+                accessToken = configManager.accessToken
+            }
+            
+            // Get all calendars
+            String url = "${GRAPH_ENDPOINT}/me/calendars?\$select=id,name,owner,canShare,canEdit"
+            
+            println "Requesting available calendars with URL: ${url}"
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(new URI(url))
+                .header("Authorization", "Bearer ${accessToken}")
+                .header("Accept", "application/json")
+                .GET()
+                .build()
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            
+            if (response.statusCode() == 200) {
+                Map parsed = new JsonSlurper().parseText(response.body()) as Map
+                List valueList = parsed['value'] as List
+                
+                List<Map<String, String>> calendars = []
+                
+                valueList.each { Object calendarData ->
+                    Map calendarMap = calendarData as Map
+                    Map<String, String> calendar = [:]
+                    calendar.id = calendarMap['id'] as String
+                    calendar.name = calendarMap['name'] as String
+                    
+                    // Add owner info if available
+                    if (calendarMap['owner']) {
+                        Map ownerMap = calendarMap['owner'] as Map
+                        if (ownerMap['user']) {
+                            Map userMap = ownerMap['user'] as Map
+                            calendar.owner = userMap['displayName'] as String
+                        }
+                    }
+                    
+                    calendars.add(calendar)
+                }
+                
+                println "Found ${calendars.size()} available calendars"
+                calendars.each { calendar ->
+                    println "  - ${calendar.name} ${calendar.owner ? "(Owner: ${calendar.owner})" : ""}"
+                }
+                
+                return calendars
+            } else {
+                println "Failed to retrieve calendars (HTTP ${response.statusCode()}): ${response.body()}"
+                return []
+            }
+        } catch (Exception e) {
+            println "Error retrieving calendars: ${e.message}"
+            e.printStackTrace()
+            return []
+        }
+    }
+    
+    /**
+     * Get upcoming events from a specific calendar
+     * @param calendarId The ID of the calendar to get events from
+     * @return List of calendar events
+     */
+    List<CalendarEvent> getUpcomingEventsFromCalendar(String calendarId) {
+        try {
+            if (calendarId == null || calendarId.isEmpty()) {
+                println "No calendar ID provided, using primary calendar"
+                return getUpcomingEvents()
+            }
+            
+            // Ensure we have a valid token
+            if (!hasValidToken() && !authenticate()) {
+                throw new RuntimeException("Failed to authenticate with Outlook")
+            }
+            
+            String accessToken = configManager.accessToken
+            if (!isValidTokenFormat(accessToken)) {
+                println "Warning: The access token does not appear to be properly formatted."
+                if (!performDirectAuthentication()) {
+                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
+                }
+                accessToken = configManager.accessToken
+            }
+            
+            // Get events from specific calendar
+            String baseUrl = "${GRAPH_ENDPOINT}/me/calendars/${calendarId}/events"
+            
+            // Calculate start and end time filters (from earlier today to 1 day ahead)
+            ZonedDateTime startOfDay = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0)
+            String startTime = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            
+            // Look ahead 1 day
+            String endTime = ZonedDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            
+            println "Getting events from calendar ID: ${calendarId}"
+            println "Start time: ${startTime} (beginning of today)"
+            println "End time: ${endTime} (1 day ahead)"
+            
+            // Create a properly encoded URL
+            URI uri = createCalendarEventsUri(baseUrl, startTime, endTime)
+            String url = uri.toString()
+            
+            println "Requesting calendar events with URL: ${url}"
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(uri)
+                .header("Authorization", "Bearer ${accessToken}")
+                .header("Accept", "application/json")
+                .GET()
+                .build()
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            
+            if (response.statusCode() == 200) {
+                List<CalendarEvent> events = parseEventResponse(response.body())
+                println "Found ${events.size()} events in calendar ID: ${calendarId}"
+                return events
+            } else {
+                println "Failed to retrieve events from calendar (HTTP ${response.statusCode()}): ${response.body()}"
+                return []
+            }
+        } catch (Exception e) {
+            println "Error retrieving events from calendar: ${e.message}"
+            e.printStackTrace()
+            return []
+        }
+    }
+    
+    /**
+     * Get upcoming events from all available calendars
+     * This can help ensure we don't miss any events that might be in different calendars
+     * @return List of calendar events from all calendars
+     */
+    List<CalendarEvent> getUpcomingEventsFromAllCalendars() {
+        try {
+            List<Map<String, String>> calendars = getAvailableCalendars()
+            if (calendars.isEmpty()) {
+                println "No calendars found, using primary calendar"
+                return getUpcomingEvents()
+            }
+            
+            List<CalendarEvent> allEvents = []
+            
+            // Get events from each calendar
+            calendars.each { calendar ->
+                println "Getting events from calendar: ${calendar.name}"
+                List<CalendarEvent> eventsFromCalendar = getUpcomingEventsFromCalendar(calendar.id)
+                // Tag events with calendar name
+                eventsFromCalendar.each { event ->
+                    event.calendarName = calendar.name
+                }
+                allEvents.addAll(eventsFromCalendar)
+            }
+            
+            println "Found ${allEvents.size()} total events across ${calendars.size()} calendars"
+            
+            return allEvents
+        } catch (Exception e) {
+            println "Error retrieving events from all calendars: ${e.message}"
+            e.printStackTrace()
+            return []
+        }
+    }
+    
+    /**
      * Validates that a token has the basic JWT format (three parts separated by dots)
      */
     private boolean isValidTokenFormat(String token) {

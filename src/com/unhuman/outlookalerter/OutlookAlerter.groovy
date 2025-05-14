@@ -225,15 +225,88 @@ class OutlookAlerter {
      */
     private void checkForUpcomingMeetings() {
         try {
+            // Try all available methods for retrieving events
             List<CalendarEvent> events = outlookClient.getUpcomingEvents()
+            List<CalendarEvent> calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
+            List<CalendarEvent> multiCalendarEvents = outlookClient.getUpcomingEventsFromAllCalendars()
             
-            if (events.isEmpty()) {
+            // Combine events, avoiding duplicates
+            Map<String, CalendarEvent> combinedEventsMap = new HashMap<>()
+            
+            // Add regular events
+            events.each { event ->
+                combinedEventsMap.put(event.id, event)
+            }
+            
+            // Add calendar view events (will overwrite duplicates)
+            calendarViewEvents.each { event ->
+                combinedEventsMap.put(event.id, event)
+            }
+            
+            // Add events from all calendars (will overwrite duplicates)
+            multiCalendarEvents.each { event ->
+                combinedEventsMap.put(event.id, event)
+            }
+            
+            // Convert back to list
+            List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
+            
+            println "\n=========== CALENDAR RETRIEVAL SUMMARY ==========="
+            println "Regular events endpoint: ${events.size()} events"
+            println "Calendar view endpoint: ${calendarViewEvents.size()} events"
+            println "Multi-calendar endpoint: ${multiCalendarEvents.size()} events"
+            println "Combined (unique events): ${combinedEvents.size()} events"
+            
+            // If calendars have different counts, show what might be missing
+            if (events.size() != calendarViewEvents.size() || 
+                events.size() != multiCalendarEvents.size() ||
+                calendarViewEvents.size() != multiCalendarEvents.size()) {
+                
+                println "\nDifference detected between calendar retrieval methods:"
+                
+                // Check for events in calendar view that aren't in regular events
+                Set<String> regularEventIds = events.collect { it.id } as Set
+                List<CalendarEvent> uniqueToCalendarView = calendarViewEvents.findAll { !regularEventIds.contains(it.id) }
+                
+                if (!uniqueToCalendarView.isEmpty()) {
+                    println "Events found only in calendar view (${uniqueToCalendarView.size()}):"
+                    uniqueToCalendarView.each { event ->
+                        println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
+                    }
+                }
+                
+                // Check for events in regular list that aren't in calendar view
+                Set<String> calendarViewEventIds = calendarViewEvents.collect { it.id } as Set
+                List<CalendarEvent> uniqueToRegular = events.findAll { !calendarViewEventIds.contains(it.id) }
+                
+                if (!uniqueToRegular.isEmpty()) {
+                    println "Events found only in regular events endpoint (${uniqueToRegular.size()}):"
+                    uniqueToRegular.each { event ->
+                        println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
+                    }
+                }
+                
+                // Check for events in multi-calendar list that aren't in regular events
+                Set<String> multiCalendarEventIds = multiCalendarEvents.collect { it.id } as Set
+                List<CalendarEvent> uniqueToMultiCalendar = multiCalendarEvents.findAll { !regularEventIds.contains(it.id) }
+                
+                if (!uniqueToMultiCalendar.isEmpty()) {
+                    println "Events found only in multi-calendar retrieval (${uniqueToMultiCalendar.size()}):"
+                    uniqueToMultiCalendar.each { event ->
+                        println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}" +
+                               " from calendar: ${event.calendarName ?: 'unknown'}"
+                    }
+                }
+            }
+            println "===================================================="
+            
+            if (combinedEvents.isEmpty()) {
                 println "No upcoming events found."
                 return
             }
             
             println "\n=============== CALENDAR UPDATE ==============="
-            println "Found ${events.size()} calendar events in response."
+            println "Found ${combinedEvents.size()} calendar events in response."
             
             if (DEBUG_MODE) {
                 // Show timezone information
@@ -250,7 +323,7 @@ class OutlookAlerter {
             }
             
             // Add debug information for each event
-            events.each { CalendarEvent event ->
+            combinedEvents.each { CalendarEvent event ->
                 println "Event: ${event.subject}"
                 println "  Start: ${event.startTime} (${event.startTime.getZone()})"
                 println "  Minutes to start: ${event.getMinutesToStart()}"
@@ -354,9 +427,9 @@ class OutlookAlerter {
             println "=============================================\n"
             
             // Check each event for alerts
-            for (CalendarEvent event : events) {
+            for (CalendarEvent event : combinedEvents) {
                 // Skip events that have already ended
-                if (ZonedDateTime.now().isAfter(event.endTime)) {
+                if (event.hasEnded()) {
                     if (DEBUG_MODE) {
                         println "Skipping alerting for ended event: ${event.subject}"
                     }
@@ -393,5 +466,96 @@ class OutlookAlerter {
             println "Error checking for upcoming meetings: ${e.message}"
             e.printStackTrace() // Add stack trace for better debugging
         }
+    }
+    
+    // Diagnostic counters for tracking event sources
+    private int standardMethodCount = 0
+    private int calendarViewMethodCount = 0
+    private int multiCalendarMethodCount = 0
+    private int uniqueEventCount = 0
+    
+    /**
+     * Run in diagnostic mode - retrieve all events from all sources
+     * @return Combined list of all events
+     */
+    public List<CalendarEvent> runDiagnostic() {
+        System.out.println("Running OutlookAlerter in diagnostic mode...")
+        
+        // Reset diagnostic counters
+        standardMethodCount = 0
+        calendarViewMethodCount = 0
+        multiCalendarMethodCount = 0
+        uniqueEventCount = 0
+        
+        // Get all events from all retrieval methods
+        List<CalendarEvent> standardEvents = []
+        List<CalendarEvent> calendarViewEvents = []
+        List<CalendarEvent> multiCalendarEvents = []
+        
+        try {
+            standardEvents = outlookClient.getUpcomingEvents()
+            standardMethodCount = standardEvents.size()
+            System.out.println("Standard method found ${standardMethodCount} events")
+        } catch (Exception e) {
+            System.out.println("Error retrieving events with standard method: ${e.message}")
+        }
+        
+        try {
+            calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
+            calendarViewMethodCount = calendarViewEvents.size()
+            System.out.println("Calendar View method found ${calendarViewMethodCount} events")
+        } catch (Exception e) {
+            System.out.println("Error retrieving events with calendar view method: ${e.message}")
+        }
+        
+        try {
+            multiCalendarEvents = outlookClient.getUpcomingEventsFromAllCalendars()
+            multiCalendarMethodCount = multiCalendarEvents.size()
+            System.out.println("Multi-Calendar method found ${multiCalendarMethodCount} events")
+        } catch (Exception e) {
+            System.out.println("Error retrieving events from all calendars: ${e.message}")
+        }
+        
+        // Combine all events, removing duplicates by ID
+        Map<String, CalendarEvent> combinedEventsMap = [:]
+        
+        // Add all events to the map, using ID as key to eliminate duplicates
+        standardEvents.each { event ->
+            combinedEventsMap[event.id] = event
+        }
+        
+        calendarViewEvents.each { event ->
+            combinedEventsMap[event.id] = event
+        }
+        
+        multiCalendarEvents.each { event ->
+            combinedEventsMap[event.id] = event
+        }
+        
+        // Convert map values to list
+        List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
+        uniqueEventCount = combinedEvents.size()
+        
+        System.out.println("Combined unique events: ${uniqueEventCount}")
+        
+        // Return all events without filtering
+        return combinedEvents
+    }
+    
+    // Getter methods for diagnostic counters
+    public int getStandardMethodCount() {
+        return standardMethodCount
+    }
+    
+    public int getCalendarViewMethodCount() {
+        return calendarViewMethodCount
+    }
+    
+    public int getMultiCalendarMethodCount() {
+        return multiCalendarMethodCount
+    }
+    
+    public int getUniqueEventCount() {
+        return uniqueEventCount
     }
 }

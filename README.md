@@ -51,6 +51,81 @@ This will show:
 - The timezone of each event from the calendar
 - Detailed time comparisons used for determining upcoming events
 
+## Diagnostic Tools
+
+OutlookAlerter includes several diagnostic tools to help troubleshoot issues with calendar events not appearing or with timezone handling:
+
+### Basic Diagnostic Tools
+
+1. **Debug Mode**: Run with detailed logging
+   ```
+   ./run-debug.sh
+   ```
+   
+2. **Timezone Test**: Test the application's timezone handling
+   ```
+   ./test-timezones.sh
+   ```
+
+3. **Timezone Override**: Run with an explicit timezone
+   ```
+   ./run-with-timezone.sh America/New_York
+   ```
+
+### Advanced Diagnostic Tools
+
+These tools can help diagnose missing calendar events:
+
+1. **Calendar Events Test**: Comprehensive calendar event testing
+   ```
+   ./test-calendar-events.sh
+   ```
+
+2. **Missing Meetings Diagnostic**: Find meetings that might be missing
+   ```
+   ./diagnose-missing-meetings.sh
+   ```
+
+3. **Multi-Calendar Diagnostic**: Diagnose issues with events in multiple calendars
+   ```
+   ./diagnose-multi-calendar.sh
+   ```
+
+4. **Enhanced Calendar Diagnostics**: Deep analysis of calendar retrieval methods
+   ```
+   ./enhanced-calendar-diagnostics.sh
+   ```
+
+5. **Time Comparison Test**: Verify event timing logic is working correctly
+   ```
+   ./test-time-comparisons.sh
+   ```
+
+6. **Comprehensive Diagnostics**: Run all diagnostics in one go
+   ```
+   ./run-all-diagnostics.sh
+   ```
+   
+7. **Debug with Diagnostics**: Run in debug mode with diagnostics
+   ```
+   ./run-debug.sh --diagnostics
+   ```
+
+### Understanding Diagnostic Results
+
+The diagnostic tools help identify why meetings might be missing by:
+
+1. Testing different calendar retrieval methods:
+   - Standard events endpoint
+   - Calendar view endpoint
+   - Multi-calendar retrieval
+
+2. Comparing events between these methods to find discrepancies
+
+3. Testing timezone handling to ensure events display at correct times
+
+4. Creating detailed reports with recommendations on which retrieval methods to use
+
 ## Usage
 
 ```
