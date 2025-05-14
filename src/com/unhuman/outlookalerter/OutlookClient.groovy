@@ -619,7 +619,7 @@ class OutlookClient {
             
             // Create URL with encoded components manually
             StringBuilder urlBuilder = new StringBuilder(baseUrl)
-            urlBuilder.append("?\$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview")
+            urlBuilder.append("?\$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,responseStatus")
             
             // Properly encode the filter parameter
             String filterParam = "start/dateTime ge '" + startTime + "' and start/dateTime le '" + endTime + "'"
@@ -701,7 +701,7 @@ class OutlookClient {
             
             // Ultimate fallback - just get recent calendar events with limited date filtering
             try {
-                return new URI(baseUrl + "?\$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview&\$top=50&\$orderby=start/dateTime asc")
+                return new URI(baseUrl + "?\$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,responseStatus&\$top=50&\$orderby=start/dateTime asc")
             } catch (URISyntaxException e2) {
                 throw new RuntimeException("Failed to create even a basic URI: " + e2.getMessage())
             }
@@ -785,6 +785,13 @@ class OutlookClient {
                 }
                 
                 event.bodyPreview = eventMap['bodyPreview'] as String
+                
+                // Extract responseStatus if available
+                if (eventMap['responseStatus']) {
+                    Map responseStatusMap = eventMap['responseStatus'] as Map
+                    event.responseStatus = responseStatusMap['response'] as String
+                    println "  Event response status: ${event.responseStatus}"
+                }
                 
                 events.add(event)
             }

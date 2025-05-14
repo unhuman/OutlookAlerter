@@ -7,6 +7,8 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 - Connects to Microsoft Graph API to retrieve your calendar events
 - Flashes the screen when meetings are about to start (within 2 minutes)
 - Supports authentication through Okta SSO or direct Microsoft authentication
+- Handles all calendar events, including tentative meetings
+- Shows meeting response status (accepted, tentative, etc.) in alerts
 - Cross-platform support for screen flashing (macOS, Windows, Linux)
 - Configurable polling interval and alert thresholds
 
@@ -153,6 +155,20 @@ For Okta SSO authentication:
 1. Set `signInUrl` to your organization's Okta SSO URL for Microsoft 365
 2. Set `loginHint` to your email address (optional)
 3. Set `preferredTimezone` to your desired timezone (optional)
+
+## Event Response Status Support
+
+OutlookAlerter now properly displays the response status of each calendar event (accepted, tentative, declined, etc.):
+
+- All events are displayed regardless of response status, including tentative meetings
+- Response status is shown in the console output for each event
+- Screen flash notifications include the response status
+- The application does not filter out any meetings that occur at the same time
+
+To test response status support, run the included test script:
+```
+./test-tentative-meetings.sh
+```
 
 ## Requirements
 

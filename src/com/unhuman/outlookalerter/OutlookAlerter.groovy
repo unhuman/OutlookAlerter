@@ -248,8 +248,11 @@ class OutlookAlerter {
                 combinedEventsMap.put(event.id, event)
             }
             
-            // Convert back to list
+            // Convert back to list and sort by start time for easier consumption
             List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
+            
+            // Sort events by minutes to start (ascending) so closest events are first
+            combinedEvents.sort { event -> event.getMinutesToStart() }
             
             println "\n=========== CALENDAR RETRIEVAL SUMMARY ==========="
             println "Regular events endpoint: ${events.size()} events"
@@ -337,7 +340,7 @@ class OutlookAlerter {
             }
             
             // Filter to include upcoming events and in-progress events
-            List<CalendarEvent> relevantEvents = events.findAll { event -> 
+            List<CalendarEvent> relevantEvents = combinedEvents.findAll { event -> 
                 int minutesToStart = event.getMinutesToStart()
                 boolean isUpcoming = minutesToStart >= 0  // Future event
                 boolean isInProgress = event.isInProgress() // Currently happening event
@@ -360,8 +363,8 @@ class OutlookAlerter {
                 return
             }
             
-            // Sort events by start time
-            relevantEvents.sort { event -> event.startTime }
+            // Sort events by minutes to start (ascending) so closest events are first
+            relevantEvents.sort { event -> event.getMinutesToStart() }
             
             // Separate in-progress events from upcoming events
             List<CalendarEvent> inProgressEvents = relevantEvents.findAll { event -> event.isInProgress() }
@@ -374,6 +377,7 @@ class OutlookAlerter {
                     println "  - ${event.subject}" +
                           (event.isOnlineMeeting ? " (Online)" : "") +
                           (event.organizer ? " - Organized by: ${event.organizer}" : "") +
+                          (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
                           " (started ${-event.getMinutesToStart()} minutes ago)" +
                           (DEBUG_MODE ? " [Time: ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}, " +
                                        "Zone: ${event.startTime.getZone()}, " +
@@ -383,21 +387,66 @@ class OutlookAlerter {
             
             // Show upcoming events next, if any
             if (!upcomingEvents.isEmpty()) {
-                // Find the next meeting time (earliest start time among upcoming events)
-                ZonedDateTime nextMeetingTime = upcomingEvents[0].startTime
+                // Get the minutes to start for the earliest upcoming event
+                int earliestMinutesToStart = upcomingEvents[0].getMinutesToStart()
                 
-                // Log all events at the next meeting time
+                // Determine which events should be in the "next meetings" section
+                // Include all meetings in the next 60 minutes, or just the next meeting(s) if none in 60 min
                 List<CalendarEvent> nextTimeEvents = upcomingEvents.findAll { event -> 
-                    event.startTime.isEqual(nextMeetingTime) 
+                    int minutesToStart = event.getMinutesToStart()
+                    // Include any meeting starting within the next 60 minutes
+                    // OR those within 5 minutes of the earliest upcoming meeting (to group meetings happening at similar times)
+                    boolean includeInNext = (minutesToStart <= 60) || (minutesToStart <= earliestMinutesToStart + 5);
+                    if (DEBUG_MODE && minutesToStart < 60) {
+                        println "DEBUG: Event '${event.subject}' with minutes to start: ${minutesToStart}, included in next meetings: ${includeInNext}"
+                    }
+                    return includeInNext;
+                }
+                
+                // Ensure all meetings are properly sorted by start time
+                nextTimeEvents.sort { event -> event.getMinutesToStart() }
+                
+                // Debug: Print all upcoming events to verify selection
+                if (DEBUG_MODE) {
+                    println "\nDEBUG: All upcoming events (${upcomingEvents.size()} total):"
+                    upcomingEvents.each { event ->
+                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
+                    }
+                    
+                    println "\nDEBUG: Next meetings selection (${nextTimeEvents.size()} total):"
+                    nextTimeEvents.each { event ->
+                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
+                    }
                 }
                 
                 // Always list the next events regardless of how many there are
-                println "\nNext meetings at ${nextMeetingTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))} " +
-                       "${DEBUG_MODE ? '(' + nextMeetingTime.getZone().toString() + ')' : ''}:"
+                // Include time information in the header
+                ZonedDateTime now = ZonedDateTime.now()
+                String displayTime = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                String displayZone = now.getZone().toString()
+                
+                // Debug information about events
+                if (DEBUG_MODE) {
+                    println "\nDEBUG: All upcoming events (${upcomingEvents.size()} total):"
+                    upcomingEvents.each { event ->
+                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
+                    }
+                    
+                    println "\nDEBUG: Next meetings selection (${nextTimeEvents.size()} total):"
+                    nextTimeEvents.each { event ->
+                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
+                    }
+                }
+                
+                // Always ensure next meetings are properly sorted by start time
+                nextTimeEvents.sort { a, b -> a.getMinutesToStart() <=> b.getMinutesToStart() }
+                
+                println "\nNext meetings at ${displayTime} (${displayZone}):"
                 nextTimeEvents.each { CalendarEvent event ->
                     println "  - ${event.subject}" + 
                           (event.isOnlineMeeting ? " (Online)" : "") +
                           (event.organizer ? " - Organized by: ${event.organizer}" : "") +
+                          (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
                           " (starts in ${event.getMinutesToStart()} minutes)" +
                           (DEBUG_MODE ? " [Time: ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}, " +
                                        "Zone: ${event.startTime.getZone()}, " +
@@ -406,13 +455,14 @@ class OutlookAlerter {
                 
                 // List subsequent events if there are any
                 List<CalendarEvent> laterEvents = upcomingEvents.findAll { event -> 
-                    !event.startTime.isEqual(nextMeetingTime) 
+                    !nextTimeEvents.contains(event)
                 }
                 
                 if (!laterEvents.isEmpty()) {
                     println "\nLater meetings:"
                     laterEvents.take(5).each { CalendarEvent event ->
                         println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}" +
+                              (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
                               " (starts in ${event.getMinutesToStart()} minutes)" +
                               (DEBUG_MODE ? " [Zone: ${event.startTime.getZone()}, " +
                                            "Offset: ${event.startTime.getOffset()}]" : "")
@@ -448,9 +498,11 @@ class OutlookAlerter {
                 
                 // Alert for events about to start
                 if (minutesToStart <= ALERT_THRESHOLD_MINUTES && minutesToStart >= -ALERT_THRESHOLD_MINUTES) {
-                    println "Alerting for event: ${event.subject} (${minutesToStart >= 0 ? 
-                        "starts in ${minutesToStart} min" : 
-                        "started ${-minutesToStart} min ago"})"
+                    println "Alerting for event: ${event.subject}" + 
+                           (event.responseStatus ? " (${event.responseStatus})" : "") + 
+                           " (${minutesToStart >= 0 ? 
+                              "starts in ${minutesToStart} min" : 
+                              "started ${-minutesToStart} min ago"})"
                     screenFlasher.flash(event)
                     
                     // Mark as alerted
@@ -534,6 +586,10 @@ class OutlookAlerter {
         
         // Convert map values to list
         List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
+        
+        // Sort events by minutes to start for consistent display
+        combinedEvents.sort { event -> event.getMinutesToStart() }
+        
         uniqueEventCount = combinedEvents.size()
         
         System.out.println("Combined unique events: ${uniqueEventCount}")

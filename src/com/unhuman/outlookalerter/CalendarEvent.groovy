@@ -19,6 +19,7 @@ class CalendarEvent {
     String onlineMeetingUrl
     String bodyPreview
     String calendarName  // Added to track which calendar this event comes from
+    String responseStatus // Added to track whether the event is tentative, accepted, etc.
     
     /**
      * Calculate minutes until this event starts
@@ -81,6 +82,7 @@ class CalendarEvent {
                 ", isInProgress=" + isInProgress() +
                 ", isOnlineMeeting=" + isOnlineMeeting +
                 ", calendarName='" + (calendarName ?: "primary") + '\'' +
+                ", responseStatus='" + responseStatus + '\'' +
                 '}'
     }
 }

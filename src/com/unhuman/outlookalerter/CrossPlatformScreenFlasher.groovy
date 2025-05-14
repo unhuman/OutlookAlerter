@@ -148,6 +148,18 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 
                 g2d.drawString(timeInfo, (width - timeWidth) / 2, height / 2 + fmTime.getHeight() * 1.5)
                 
+                // Show response status if available
+                if (event.responseStatus) {
+                    g2d.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 30))
+                    g2d.setColor(new Color(255, 255, 200))
+                    
+                    String statusMsg = "Status: " + event.responseStatus
+                    java.awt.FontMetrics fmStatus = g2d.getFontMetrics()
+                    int statusWidth = fmStatus.stringWidth(statusMsg)
+                    
+                    g2d.drawString(statusMsg, (width - statusWidth) / 2, height / 2 + fmTime.getHeight() * 3)
+                }
+                
                 // If it's an online meeting, show the join info
                 if (event.isOnlineMeeting && event.onlineMeetingUrl) {
                     g2d.setFont(new java.awt.Font("Arial", java.awt.Font.PLAIN, 24))
@@ -157,7 +169,8 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                     java.awt.FontMetrics fmJoin = g2d.getFontMetrics()
                     int joinWidth = fmJoin.stringWidth(joinMsg)
                     
-                    g2d.drawString(joinMsg, (width - joinWidth) / 2, height / 2 + fmTime.getHeight() * 3)
+                    int yOffset = event.responseStatus ? 5 : 3;
+                    g2d.drawString(joinMsg, (width - joinWidth) / 2, height / 2 + fmTime.getHeight() * yOffset)
                 }
                 
             } finally {
