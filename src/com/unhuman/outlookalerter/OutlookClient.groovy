@@ -317,12 +317,12 @@ class OutlookClient {
             String baseUrl = "${GRAPH_ENDPOINT}/me/calendar/events"
             
             // Calculate start and end time filters (from earlier today to 1 day ahead)
-            // Start from beginning of current day to catch any events that might be ongoing
-            ZonedDateTime startOfDay = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0)
+            // Start from now to the end of today
+            ZonedDateTime startOfDay = ZonedDateTime.now()
             String startTime = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
-            // Look ahead 1 day
-            String endTime = ZonedDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            // Look ahead to end of day
+            String endTime = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
             println "Start time (raw): ${startTime} (beginning of today)"
             println "End time (raw): ${endTime} (1 day ahead)"
@@ -432,11 +432,13 @@ class OutlookClient {
             String baseUrl = "${GRAPH_ENDPOINT}/me/calendarView"
 
             // Calculate start and end time parameters
-            ZonedDateTime startOfDay = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0)
-            ZonedDateTime endOfTomorrow = ZonedDateTime.now().plusDays(1).withHour(23).withMinute(59).withSecond(59)
+            ZonedDateTime startOfDay = ZonedDateTime.now()
+            ZonedDateTime endOfTomorrow = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0)
 
             String startParam = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             String endParam = endOfTomorrow.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+
+            System.out.println "Start time (raw): ${startParam} (beginning of today) + formatted to ISO ${URLEncoder.encode(startParam, "UTF-8")}"
  
             // Create URL for calendar view
             StringBuilder urlBuilder = new StringBuilder(baseUrl)
@@ -597,13 +599,12 @@ class OutlookClient {
             
             // Get events from specific calendar
             String baseUrl = "${GRAPH_ENDPOINT}/me/calendars/${calendarId}/events"
-            
-            // Calculate start and end time filters (from earlier today to 1 day ahead)
-            ZonedDateTime startOfDay = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0)
+
+            ZonedDateTime startOfDay = ZonedDateTime.now()
             String startTime = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
-            // Look ahead 1 day
-            String endTime = ZonedDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            // Look ahead to end of day
+            String endTime = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
             println "Getting events from calendar ID: ${calendarId}"
             println "Start time: ${startTime} (beginning of today)"
@@ -785,10 +786,10 @@ class OutlookClient {
     private URI createSimpleDateFilterUri(String baseUrl) {
         try {
             // Use a simpler date format without time components
-            // Start from beginning of today
-            String today = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_LOCAL_DATE)
-            // Look ahead 1 day
-            String tomorrow = ZonedDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE)
+            // Start from now
+            String today = ZonedDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            // Look to end of day
+            String tomorrow = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_LOCAL_DATE)
             
             StringBuilder urlBuilder = new StringBuilder(baseUrl)
             urlBuilder.append("?\$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview")

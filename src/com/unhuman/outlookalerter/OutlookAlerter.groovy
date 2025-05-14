@@ -254,89 +254,13 @@ class OutlookAlerter {
             // Sort events by minutes to start (ascending) so closest events are first
             combinedEvents.sort { event -> event.getMinutesToStart() }
             
-            println "\n=========== CALENDAR RETRIEVAL SUMMARY ==========="
-            println "Regular events endpoint: ${events.size()} events"
-            println "Calendar view endpoint: ${calendarViewEvents.size()} events"
-            println "Multi-calendar endpoint: ${multiCalendarEvents.size()} events"
-            println "Combined (unique events): ${combinedEvents.size()} events"
-            
-            // If calendars have different counts, show what might be missing
-            if (events.size() != calendarViewEvents.size() || 
-                events.size() != multiCalendarEvents.size() ||
-                calendarViewEvents.size() != multiCalendarEvents.size()) {
-                
-                println "\nDifference detected between calendar retrieval methods:"
-                
-                // Check for events in calendar view that aren't in regular events
-                Set<String> regularEventIds = events.collect { it.id } as Set
-                List<CalendarEvent> uniqueToCalendarView = calendarViewEvents.findAll { !regularEventIds.contains(it.id) }
-                
-                if (!uniqueToCalendarView.isEmpty()) {
-                    println "Events found only in calendar view (${uniqueToCalendarView.size()}):"
-                    uniqueToCalendarView.each { event ->
-                        println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
-                    }
-                }
-                
-                // Check for events in regular list that aren't in calendar view
-                Set<String> calendarViewEventIds = calendarViewEvents.collect { it.id } as Set
-                List<CalendarEvent> uniqueToRegular = events.findAll { !calendarViewEventIds.contains(it.id) }
-                
-                if (!uniqueToRegular.isEmpty()) {
-                    println "Events found only in regular events endpoint (${uniqueToRegular.size()}):"
-                    uniqueToRegular.each { event ->
-                        println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}"
-                    }
-                }
-                
-                // Check for events in multi-calendar list that aren't in regular events
-                Set<String> multiCalendarEventIds = multiCalendarEvents.collect { it.id } as Set
-                List<CalendarEvent> uniqueToMultiCalendar = multiCalendarEvents.findAll { !regularEventIds.contains(it.id) }
-                
-                if (!uniqueToMultiCalendar.isEmpty()) {
-                    println "Events found only in multi-calendar retrieval (${uniqueToMultiCalendar.size()}):"
-                    uniqueToMultiCalendar.each { event ->
-                        println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}" +
-                               " from calendar: ${event.calendarName ?: 'unknown'}"
-                    }
-                }
-            }
+            println "\n=========== CALENDAR UPDATE ==========="
+            println "Found ${combinedEvents.size()} calendar events."
             println "===================================================="
             
             if (combinedEvents.isEmpty()) {
                 println "No upcoming events found."
                 return
-            }
-            
-            println "\n=============== CALENDAR UPDATE ==============="
-            println "Found ${combinedEvents.size()} calendar events in response."
-            
-            if (DEBUG_MODE) {
-                // Show timezone information
-                println "Current system time: ${ZonedDateTime.now()} (${ZonedDateTime.now().getZone()})"
-                println "Current UTC time: ${ZonedDateTime.now(ZoneId.of("UTC"))} (UTC)"
-                if (configManager.preferredTimezone && !configManager.preferredTimezone.isEmpty()) {
-                    try {
-                        ZoneId preferredZone = ZoneId.of(configManager.preferredTimezone)
-                        println "Current time in preferred timezone: ${ZonedDateTime.now(preferredZone)} (${preferredZone})"
-                    } catch (Exception e) {
-                        println "Invalid preferred timezone configured: ${configManager.preferredTimezone}"
-                    }
-                }
-            }
-            
-            // Add debug information for each event
-            combinedEvents.each { CalendarEvent event ->
-                println "Event: ${event.subject}"
-                println "  Start: ${event.startTime} (${event.startTime.getZone()})"
-                println "  Minutes to start: ${event.getMinutesToStart()}"
-                println "  Is in progress: ${event.isInProgress()}"
-                if (DEBUG_MODE) {
-                    // More detailed timezone diagnostics
-                    ZonedDateTime now = ZonedDateTime.now(event.startTime.getZone())
-                    println "  Current time in event's timezone: ${now}"
-                    println "  Comparison: event ${event.startTime.isBefore(now) ? 'is before' : 'is after or equal to'} current time"
-                }
             }
             
             // Filter to include upcoming events and in-progress events
@@ -347,12 +271,6 @@ class OutlookAlerter {
                 
                 if (!isUpcoming && !isInProgress) {
                     println "Filtering out past event: ${event.subject} (started ${-minutesToStart} minutes ago, already ended)"
-                    if (DEBUG_MODE) {
-                        println "  Event start: ${event.startTime} (${event.startTime.getZone()})"
-                        println "  Event end: ${event.endTime} (${event.endTime.getZone()})"
-                        println "  Current time: ${ZonedDateTime.now(event.startTime.getZone())} (in event's timezone)"
-                        println "  System time: ${ZonedDateTime.now()} (${ZonedDateTime.now().getZone()})"
-                    }
                     return false
                 }
                 return true
@@ -378,10 +296,7 @@ class OutlookAlerter {
                           (event.isOnlineMeeting ? " (Online)" : "") +
                           (event.organizer ? " - Organized by: ${event.organizer}" : "") +
                           (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
-                          " (started ${-event.getMinutesToStart()} minutes ago)" +
-                          (DEBUG_MODE ? " [Time: ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}, " +
-                                       "Zone: ${event.startTime.getZone()}, " +
-                                       "Offset: ${event.startTime.getOffset()}]" : "")
+                          " (started ${-event.getMinutesToStart()} minutes ago)"
                 }
             }
             
@@ -396,47 +311,16 @@ class OutlookAlerter {
                     int minutesToStart = event.getMinutesToStart()
                     // Include any meeting starting within the next 60 minutes
                     // OR those within 5 minutes of the earliest upcoming meeting (to group meetings happening at similar times)
-                    boolean includeInNext = (minutesToStart <= 60) || (minutesToStart <= earliestMinutesToStart + 5);
-                    if (DEBUG_MODE && minutesToStart < 60) {
-                        println "DEBUG: Event '${event.subject}' with minutes to start: ${minutesToStart}, included in next meetings: ${includeInNext}"
-                    }
-                    return includeInNext;
+                    return (minutesToStart <= 60) || (minutesToStart <= earliestMinutesToStart + 5);
                 }
                 
                 // Ensure all meetings are properly sorted by start time
                 nextTimeEvents.sort { event -> event.getMinutesToStart() }
                 
-                // Debug: Print all upcoming events to verify selection
-                if (DEBUG_MODE) {
-                    println "\nDEBUG: All upcoming events (${upcomingEvents.size()} total):"
-                    upcomingEvents.each { event ->
-                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
-                    }
-                    
-                    println "\nDEBUG: Next meetings selection (${nextTimeEvents.size()} total):"
-                    nextTimeEvents.each { event ->
-                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
-                    }
-                }
-                
-                // Always list the next events regardless of how many there are
                 // Include time information in the header
                 ZonedDateTime now = ZonedDateTime.now()
                 String displayTime = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
                 String displayZone = now.getZone().toString()
-                
-                // Debug information about events
-                if (DEBUG_MODE) {
-                    println "\nDEBUG: All upcoming events (${upcomingEvents.size()} total):"
-                    upcomingEvents.each { event ->
-                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
-                    }
-                    
-                    println "\nDEBUG: Next meetings selection (${nextTimeEvents.size()} total):"
-                    nextTimeEvents.each { event ->
-                        println "  - ${event.subject} (starts in ${event.getMinutesToStart()} minutes)"
-                    }
-                }
                 
                 // Always ensure next meetings are properly sorted by start time
                 nextTimeEvents.sort { a, b -> a.getMinutesToStart() <=> b.getMinutesToStart() }
@@ -447,10 +331,7 @@ class OutlookAlerter {
                           (event.isOnlineMeeting ? " (Online)" : "") +
                           (event.organizer ? " - Organized by: ${event.organizer}" : "") +
                           (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
-                          " (starts in ${event.getMinutesToStart()} minutes)" +
-                          (DEBUG_MODE ? " [Time: ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))}, " +
-                                       "Zone: ${event.startTime.getZone()}, " +
-                                       "Offset: ${event.startTime.getOffset()}]" : "")
+                          " (starts in ${event.getMinutesToStart()} minutes)"
                 }
                 
                 // List subsequent events if there are any
@@ -463,9 +344,7 @@ class OutlookAlerter {
                     laterEvents.take(5).each { CalendarEvent event ->
                         println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}" +
                               (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
-                              " (starts in ${event.getMinutesToStart()} minutes)" +
-                              (DEBUG_MODE ? " [Zone: ${event.startTime.getZone()}, " +
-                                           "Offset: ${event.startTime.getOffset()}]" : "")
+                              " (starts in ${event.getMinutesToStart()} minutes)"
                     }
                     
                     if (laterEvents.size() > 5) {
@@ -518,100 +397,5 @@ class OutlookAlerter {
             println "Error checking for upcoming meetings: ${e.message}"
             e.printStackTrace() // Add stack trace for better debugging
         }
-    }
-    
-    // Diagnostic counters for tracking event sources
-    private int standardMethodCount = 0
-    private int calendarViewMethodCount = 0
-    private int multiCalendarMethodCount = 0
-    private int uniqueEventCount = 0
-    
-    /**
-     * Run in diagnostic mode - retrieve all events from all sources
-     * @return Combined list of all events
-     */
-    public List<CalendarEvent> runDiagnostic() {
-        System.out.println("Running OutlookAlerter in diagnostic mode...")
-        
-        // Reset diagnostic counters
-        standardMethodCount = 0
-        calendarViewMethodCount = 0
-        multiCalendarMethodCount = 0
-        uniqueEventCount = 0
-        
-        // Get all events from all retrieval methods
-        List<CalendarEvent> standardEvents = []
-        List<CalendarEvent> calendarViewEvents = []
-        List<CalendarEvent> multiCalendarEvents = []
-        
-        try {
-            standardEvents = outlookClient.getUpcomingEvents()
-            standardMethodCount = standardEvents.size()
-            System.out.println("Standard method found ${standardMethodCount} events")
-        } catch (Exception e) {
-            System.out.println("Error retrieving events with standard method: ${e.message}")
-        }
-        
-        try {
-            calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
-            calendarViewMethodCount = calendarViewEvents.size()
-            System.out.println("Calendar View method found ${calendarViewMethodCount} events")
-        } catch (Exception e) {
-            System.out.println("Error retrieving events with calendar view method: ${e.message}")
-        }
-        
-        try {
-            multiCalendarEvents = outlookClient.getUpcomingEventsFromAllCalendars()
-            multiCalendarMethodCount = multiCalendarEvents.size()
-            System.out.println("Multi-Calendar method found ${multiCalendarMethodCount} events")
-        } catch (Exception e) {
-            System.out.println("Error retrieving events from all calendars: ${e.message}")
-        }
-        
-        // Combine all events, removing duplicates by ID
-        Map<String, CalendarEvent> combinedEventsMap = [:]
-        
-        // Add all events to the map, using ID as key to eliminate duplicates
-        standardEvents.each { event ->
-            combinedEventsMap[event.id] = event
-        }
-        
-        calendarViewEvents.each { event ->
-            combinedEventsMap[event.id] = event
-        }
-        
-        multiCalendarEvents.each { event ->
-            combinedEventsMap[event.id] = event
-        }
-        
-        // Convert map values to list
-        List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
-        
-        // Sort events by minutes to start for consistent display
-        combinedEvents.sort { event -> event.getMinutesToStart() }
-        
-        uniqueEventCount = combinedEvents.size()
-        
-        System.out.println("Combined unique events: ${uniqueEventCount}")
-        
-        // Return all events without filtering
-        return combinedEvents
-    }
-    
-    // Getter methods for diagnostic counters
-    public int getStandardMethodCount() {
-        return standardMethodCount
-    }
-    
-    public int getCalendarViewMethodCount() {
-        return calendarViewMethodCount
-    }
-    
-    public int getMultiCalendarMethodCount() {
-        return multiCalendarMethodCount
-    }
-    
-    public int getUniqueEventCount() {
-        return uniqueEventCount
     }
 }
