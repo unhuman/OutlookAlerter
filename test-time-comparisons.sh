@@ -109,7 +109,7 @@ public class TimeComparisonDiagnostics {
         testEvent(
             now.plus(2, ChronoUnit.MINUTES), 
             now.plus(1, ChronoUnit.HOURS),
-            "About to start event (starts in 2 minutes)"
+            "About to start event (starts in 1 minute)"
         );
     }
     

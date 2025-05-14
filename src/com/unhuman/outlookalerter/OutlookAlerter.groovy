@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 class OutlookAlerter {
     // Time constants
     private static final int POLLING_INTERVAL_MINUTES = 1
-    private static final int ALERT_THRESHOLD_MINUTES = 2
+    private static final int ALERT_THRESHOLD_MINUTES = 1
     
     // Debugging
     private static boolean DEBUG_MODE = false
@@ -91,7 +91,7 @@ class OutlookAlerter {
         
         Description:
           This tool connects to your Outlook/Microsoft 365 calendar using OAuth authentication
-          and monitors for upcoming meetings. When a meeting is about to start (within 2 minutes),
+          and monitors for upcoming meetings. When a meeting is about to start (within 1 minute),
           it flashes the screen to alert you.
         """
     }
