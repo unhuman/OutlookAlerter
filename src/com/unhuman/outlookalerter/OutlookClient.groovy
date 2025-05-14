@@ -34,6 +34,9 @@ class OutlookClient {
     private static final String GRAPH_ENDPOINT = 'https://graph.microsoft.com/v1.0'
     private static final String SCOPE = 'offline_access https://graph.microsoft.com/Calendars.Read'
     
+    // Server validation settings
+    private static final long SERVER_VALIDATION_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+
     // HTTP client for API requests
     private final HttpClient httpClient
     
@@ -76,12 +79,36 @@ class OutlookClient {
     
     /**
      * Check if we have a valid (non-expired) access token
+     * @return true if the token is valid according to our records and/or Microsoft's server
      */
     private boolean hasValidToken() {
         String accessToken = configManager.accessToken
         long expiryTime = configManager.tokenExpiryTime
-        
-        return accessToken && expiryTime > System.currentTimeMillis()
+        long currentTime = System.currentTimeMillis();
+
+        // Quick check: Do we have a token at all?
+        if (accessToken == null || accessToken.isEmpty()) {
+            return false;
+        }
+
+        // Not expired, just use it
+        if (expiryTime > currentTime) {
+            return true;
+        }
+
+        // Perform server validation if needed
+        boolean isValid = validateTokenWithServer(accessToken);
+
+        if (!isValid) {
+            println "Token appears to be expired or invalid according to Microsoft's server, despite our records";
+            return false;
+        }
+
+        // Update expiry time since the token is still valid according to server
+        expiryTime = currentTime + SERVER_VALIDATION_INTERVAL_MS; // Add 15 mins to current time as a safe default
+
+        // If we got here, the token is valid (either by our records alone or confirmed with the server)
+        return true;
     }
     
     /**
@@ -148,6 +175,7 @@ class OutlookClient {
      * Perform direct authentication via browser SSO or manual token entry
      */
     private boolean performDirectAuthentication() {
+        new Exception("Stack").printStackTrace()
         println "Starting direct authentication flow..."
         
         try {
@@ -231,12 +259,38 @@ class OutlookClient {
     List<CalendarEvent> getUpcomingEvents() {
         try {
             // Ensure we have a valid token
-            if (!hasValidToken() && !authenticate()) {
-                throw new RuntimeException("Failed to authenticate with Outlook")
-            }
-            
-            // Validate token format before sending request
             String accessToken = configManager.accessToken
+
+            // First check the format without making server requests
+            boolean validFormat = isValidTokenFormat(accessToken);
+
+            // If we don't have a valid token or the token is expired according to our records
+            if (!validFormat || !hasValidToken()) {
+                // If the token format is valid but may be expired, validate with server before prompting
+                if (validFormat && accessToken) {
+                    boolean isValid = validateTokenWithServer(accessToken);
+
+                    if (isValid) {
+                        // Token is actually still valid according to server - update our expiry time
+                        // Add 1 hour to current time as a safe default
+                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
+                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
+                        println "Token was still valid according to server. Updated expiry time."
+                    } else {
+                        // Token truly invalid - try to refresh or re-authenticate
+                        if (!authenticate()) {
+                            throw new RuntimeException("Failed to authenticate with Outlook")
+                        }
+                        accessToken = configManager.accessToken;
+                    }
+                } else {
+                    // No valid token at all - authenticate from scratch
+                    if (!authenticate()) {
+                        throw new RuntimeException("Failed to authenticate with Outlook")
+                    }
+                    accessToken = configManager.accessToken;
+                }
+            }
             if (!isValidTokenFormat(accessToken)) {
                 println """
                 WARNING: The access token does not appear to be properly formatted.
@@ -344,37 +398,46 @@ class OutlookClient {
     }
     
     /**
-     * Get upcoming calendar events using CalendarView (alternative approach)
+     * Get upcoming events using CalendarView (alternative approach)
      * This method can sometimes capture events that are not returned by the regular events endpoint,
      * particularly recurring events or events in different calendars
      * @return List of calendar events
      */
     List<CalendarEvent> getUpcomingEventsUsingCalendarView() {
         try {
-            // Ensure we have a valid token
-            if (!hasValidToken() && !authenticate()) {
-                throw new RuntimeException("Failed to authenticate with Outlook")
-            }
-            
+            // Get current token
             String accessToken = configManager.accessToken
-            if (!isValidTokenFormat(accessToken)) {
-                println "Warning: The access token does not appear to be properly formatted."
-                if (!performDirectAuthentication()) {
+
+            // If token appears invalid, try to validate with server before prompting
+            if (!hasValidToken() || !isValidTokenFormat(accessToken)) {
+                // If the token format is valid but possibly expired, check with server
+                if (isValidTokenFormat(accessToken)) {
+                    boolean isValid = validateTokenWithServer(accessToken);
+
+                    if (isValid) {
+                        // Update expiry time since the token is actually still valid
+                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
+                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
+                        println "Token validated with server. Updated expiry time."
+                    } else if (!authenticate()) {
+                        throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
+                    }
+                } else if (!authenticate()) {
                     throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
                 }
-                accessToken = configManager.accessToken
+                accessToken = configManager.accessToken;
             }
-            
+
             // Get events using calendar view API
             String baseUrl = "${GRAPH_ENDPOINT}/me/calendarView"
-            
+
             // Calculate start and end time parameters
             ZonedDateTime startOfDay = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0)
             ZonedDateTime endOfTomorrow = ZonedDateTime.now().plusDays(1).withHour(23).withMinute(59).withSecond(59)
-            
+
             String startParam = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             String endParam = endOfTomorrow.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-            
+ 
             // Create URL for calendar view
             StringBuilder urlBuilder = new StringBuilder(baseUrl)
             urlBuilder.append("?startDateTime=").append(URLEncoder.encode(startParam, "UTF-8"))
@@ -419,34 +482,43 @@ class OutlookClient {
      */
     List<Map<String, String>> getAvailableCalendars() {
         try {
-            // Ensure we have a valid token
-            if (!hasValidToken() && !authenticate()) {
-                throw new RuntimeException("Failed to authenticate with Outlook")
-            }
-            
+            // Get current token
             String accessToken = configManager.accessToken
-            if (!isValidTokenFormat(accessToken)) {
-                println "Warning: The access token does not appear to be properly formatted."
-                if (!performDirectAuthentication()) {
+
+            // If token appears invalid, try to validate with server before prompting
+            if (!hasValidToken() || !isValidTokenFormat(accessToken)) {
+                // If the token format is valid but possibly expired, check with server
+                if (isValidTokenFormat(accessToken)) {
+                    boolean isValid = validateTokenWithServer(accessToken);
+
+                    if (isValid) {
+                        // Update expiry time since the token is actually still valid
+                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
+                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
+                        println "Token validated with server. Updated expiry time."
+                    } else if (!authenticate()) {
+                        throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
+                    }
+                } else if (!authenticate()) {
                     throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
                 }
-                accessToken = configManager.accessToken
+                accessToken = configManager.accessToken;
             }
-            
+
             // Get all calendars
             String url = "${GRAPH_ENDPOINT}/me/calendars?\$select=id,name,owner,canShare,canEdit"
-            
+
             println "Requesting available calendars with URL: ${url}"
-            
+
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(url))
                 .header("Authorization", "Bearer ${accessToken}")
                 .header("Accept", "application/json")
                 .GET()
                 .build()
-            
+
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-            
+
             if (response.statusCode() == 200) {
                 Map parsed = new JsonSlurper().parseText(response.body()) as Map
                 List valueList = parsed['value'] as List
@@ -500,18 +572,27 @@ class OutlookClient {
                 return getUpcomingEvents()
             }
             
-            // Ensure we have a valid token
-            if (!hasValidToken() && !authenticate()) {
-                throw new RuntimeException("Failed to authenticate with Outlook")
-            }
-            
+            // Get current token
             String accessToken = configManager.accessToken
-            if (!isValidTokenFormat(accessToken)) {
-                println "Warning: The access token does not appear to be properly formatted."
-                if (!performDirectAuthentication()) {
+
+            // If token appears invalid, try to validate with server before prompting
+            if (!hasValidToken() || !isValidTokenFormat(accessToken)) {
+                // If the token format is valid but possibly expired, check with server
+                if (isValidTokenFormat(accessToken)) {
+                    boolean isValid = validateTokenWithServer(accessToken);
+
+                    if (isValid) {
+                        // Update expiry time since the token is actually still valid
+                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
+                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
+                        println "Token validated with server. Updated expiry time."
+                    } else if (!authenticate()) {
+                        throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
+                    }
+                } else if (!authenticate()) {
                     throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
                 }
-                accessToken = configManager.accessToken
+                accessToken = configManager.accessToken;
             }
             
             // Get events from specific calendar
@@ -608,6 +689,35 @@ class OutlookClient {
         return parts.length == 3 && !parts[0].isEmpty() && !parts[1].isEmpty() && !parts[2].isEmpty()
     }
     
+    /**
+     * Validates token by making a lightweight request to Microsoft Graph API
+     * @return true if the token is valid according to Microsoft's server
+     */
+    private boolean validateTokenWithServer(String token) {
+        if (!isValidTokenFormat(token)) {
+            return false
+        }
+
+        try {
+            // Make a lightweight request to validate the token
+            // Using /me endpoint which is a minimal call
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("${GRAPH_ENDPOINT}/me"))
+                .header("Authorization", "Bearer ${token}")
+                .header("Accept", "application/json")
+                .GET()
+                .build()
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+
+            // If we get a 200 OK, the token is valid
+            return response.statusCode() == 200
+        } catch (Exception e) {
+            println "Error validating token with server: ${e.message}"
+            return false
+        }
+    }
+
     /**
      * Create a properly encoded URI for calendar events
      */
