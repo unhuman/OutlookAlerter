@@ -178,10 +178,9 @@ class OutlookClient {
     }
     
     /**
-     * Perform direct authentication via browser SSO or manual token entry
+     * Perform direct authentication via browser SSO or GUI token entry
      */
     private boolean performDirectAuthentication() {
-        new Exception("Stack").printStackTrace()
         println "Starting direct authentication flow..."
         
         try {
@@ -201,40 +200,37 @@ class OutlookClient {
                 return false
             }
             
-            // Start a simple local HTTP server for manual token entry
-            int serverPort = 8888
-            TokenEntryServer server = new TokenEntryServer(serverPort)
-            server.start()
+            println "Starting direct authentication flow with sign-in URL: ${signInUrl}"
             
-            // Show instructions to the user
-            println "\n==================================================="
-            println "Manual token acquisition process:"
-            println "1. A browser will open with the sign-in page. Complete the authentication process."
-            println "2. After successful authentication, you'll see a page with your access token."
-            println "3. Copy the entire token and paste it into the form at http://localhost:${serverPort}"
-            println "4. If no browser opens, visit this URL manually: ${signInUrl}"
-            println "5. And visit http://localhost:${serverPort} to enter your token"
-            println "==================================================="
+            // Use the simple token dialog that is more reliable on macOS
+            println "Creating token dialog..."
+            SimpleTokenDialog tokenDialog = new SimpleTokenDialog(signInUrl)
             
-            // Use our new helper to launch browsers more reliably
-            TokenEntryHelper.launchSignInPage(signInUrl)
-            
-            // Slight delay to allow the first browser to open
-            Thread.sleep(2000)
-            
-            // Also open the token entry page using the more reliable helper
-            TokenEntryHelper.launchTokenEntryForm("http://localhost:${serverPort}", serverPort)
+            // Show the dialog
+            println "Showing token dialog..."
+            tokenDialog.show()
             
             // Wait for token entry
-            println "Waiting for token entry..."
-            Map<String, String> tokens = server.waitForTokens(600) // 10 minutes timeout
-            server.stop()
+            println "Waiting for token entry from user (this will block until token is provided or timeout)..."
+            Map<String, String> tokens = tokenDialog.waitForTokens(600) // 10 minutes timeout
             
-            if (tokens == null || !tokens.accessToken) {
-                println "Authentication timed out or was canceled."
-                println "NOTE: If you didn't see the token entry form, please manually open http://localhost:${serverPort} in your browser."
+            if (tokens == null) {
+                println "Authentication timed out or was canceled by the user."
                 return false
             }
+            
+            if (!tokens.accessToken) {
+                println "No access token was provided."
+                return false
+            }
+            
+            println "Token received from user interface."
+            
+            // Redact token for logging (show only first 10 chars)
+            String redactedToken = tokens.accessToken?.size() > 10 ? 
+                tokens.accessToken.substring(0, 10) + "..." : 
+                "(invalid token format)"
+            println "Received token starting with: ${redactedToken}"
             
             // Save tokens
             String accessToken = tokens.accessToken
@@ -243,17 +239,11 @@ class OutlookClient {
                 (System.currentTimeMillis() + (3600 - 300) * 1000) // Default 1-hour expiry
             
             configManager.updateTokens(accessToken, refreshToken, expiryTime)
-            println "Authentication successful!"
+            println "Authentication successful! Token saved with expiry at: " + new Date(expiryTime)
             return true
         } catch (Exception e) {
             println "Error during authentication: ${e.message}"
             e.printStackTrace()
-            println """
-            NOTE: If you're having trouble with the token entry form, please try:
-            1. Manually opening http://localhost:8888 in your browser
-            2. Sign in to your Okta account at ${configManager.signInUrl ?: 'your configured Okta URL'}
-            3. Extract the access token as described in the token entry form
-            """
             return false
         }
     }

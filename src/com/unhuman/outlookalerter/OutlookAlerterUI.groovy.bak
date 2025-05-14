@@ -1,0 +1,748 @@
+package com.unhuman.outlookalerter
+
+import groovy.transform.CompileStatic
+
+import javax.swing.*
+import java.awt.*
+import java.awt.event.ActionEvent
+import java.awt.event.ActionListener
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
+import java.awt.image.BufferedImage
+import java.time.ZonedDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.List
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
+/**
+ * Main application window for OutlookAlerter
+ * Provides a user interface for monitoring upcoming meetings
+ */
+@CompileStatic
+class OutlookAlerterUI extends JFrame {
+    // Time constants
+    private static final int POLLING_INTERVAL_MINUTES = 1
+    
+    // Components
+    private final ConfigManager configManager
+    private final OutlookClient outlookClient
+    private final ScreenFlasher screenFlasher
+    
+    // UI Components
+    private JTextArea eventsTextArea
+    private JButton refreshButton
+    private JLabel statusLabel
+    private JLabel lastUpdateLabel
+    private TrayIcon trayIcon
+    private SystemTray systemTray
+    
+    // Scheduler for periodic tasks
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1)
+    
+    // Track which events we've already alerted for
+    private final Set<String> alertedEventIds = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true)
+    
+    /**
+     * Create a new OutlookAlerterUI
+     */
+    OutlookAlerterUI(String configPath) {
+        super("OutlookAlerter")
+        
+        // Initialize components
+        this.configManager = new ConfigManager(configPath)
+        this.configManager.loadConfiguration()
+        
+        this.outlookClient = new OutlookClient(configManager)
+        this.screenFlasher = ScreenFlasherFactory.createScreenFlasher()
+        
+        // Set up the UI
+        initializeUI()
+        
+        // Configure window behavior
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
+        addWindowListener(new WindowAdapter() {
+            @Override
+            void windowClosing(WindowEvent e) {
+                shutdown()
+            }
+        })
+        
+        // Set size and position
+        setSize(800, 600)
+        setLocationRelativeTo(null) // Center on screen
+        
+        // Set up system tray if supported
+        setupSystemTray()
+    }
+    
+    /**
+     * Set up system tray icon and menu if supported by the platform
+     */
+    private void setupSystemTray() {
+        try {
+            if (SystemTray.isSupported()) {
+                systemTray = SystemTray.getSystemTray()
+                
+                // Create a popup menu
+                PopupMenu popup = new PopupMenu()
+                
+                // Create menu items
+                MenuItem showItem = new MenuItem("Show OutlookAlerter")
+                showItem.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        setVisible(true)
+                        setExtendedState(JFrame.NORMAL)
+                        toFront()
+                        requestFocus()
+                    }
+                })
+                
+                MenuItem refreshItem = new MenuItem("Refresh Calendar")
+                refreshItem.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        refreshCalendarEvents()
+                    }
+                })
+                
+                MenuItem settingsItem = new MenuItem("Settings")
+                settingsItem.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        setVisible(true)
+                        setExtendedState(JFrame.NORMAL)
+                        toFront()
+                        requestFocus()
+                        showSettingsDialog()
+                    }
+                })
+                
+                MenuItem exitItem = new MenuItem("Exit")
+                exitItem.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        shutdown()
+                        System.exit(0)
+                    }
+                })
+            
+            // Add menu items to popup
+            popup.add(showItem)
+            popup.add(refreshItem)
+            popup.addSeparator()
+            popup.add(settingsItem)
+            popup.addSeparator()
+            popup.add(exitItem)
+            
+            // Create tray icon with the popup menu
+            try {
+                // Create a simple icon using Java2D
+                Image trayIconImage = createTrayIconImage()
+                
+                trayIcon = new TrayIcon(trayIconImage, "OutlookAlerter", popup)
+                trayIcon.setImageAutoSize(true)
+                
+                // Add double-click action to show window
+                trayIcon.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        setVisible(true)
+                        setExtendedState(JFrame.NORMAL)
+                    }
+                })
+                
+                // Add tray icon to the system tray
+                systemTray.add(trayIcon)
+                
+                // Add window listener to minimize to tray when closed
+                addWindowListener(new WindowAdapter() {
+                    @Override
+                    void windowIconified(WindowEvent e) {
+                        setVisible(false)
+                        trayIcon.displayMessage(
+                            "OutlookAlerter",
+                            "OutlookAlerter is still running. Click here to open.",
+                            TrayIcon.MessageType.INFO
+                        )
+                    }
+                    
+                    @Override
+                    void windowClosing(WindowEvent e) {
+                        // Don't exit application, just hide to system tray
+                        setVisible(false)
+                        trayIcon.displayMessage(
+                            "OutlookAlerter",
+                            "OutlookAlerter is still running in the background. Right-click the tray icon to exit.",
+                            TrayIcon.MessageType.INFO
+                        )
+                    }
+                })
+                
+                // Override default close operation to hide instead of exit
+                setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE)
+                
+                System.out.println("System tray integration enabled successfully")
+            } catch (Exception e) {
+                System.err.println("Error adding system tray icon: " + e.getMessage())
+                e.printStackTrace()
+                System.out.println("Will continue without system tray integration")
+            }
+        } else {
+            // System tray not supported, keep default behavior
+            System.out.println("System tray is not supported on this platform")
+        }
+    }
+    
+    /**
+     * Create a simple icon for the system tray
+     */
+    private java.awt.Image createTrayIconImage() {
+        // Create a simple icon
+        int size = 16
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(
+            size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        
+        java.awt.Graphics2D g = img.createGraphics()
+        g.setColor(java.awt.Color.WHITE)
+        g.fillRect(0, 0, size, size)
+        g.setColor(java.awt.Color.BLUE)
+        g.drawRect(0, 0, size-1, size-1)
+        g.dispose()
+        
+        return img
+    }
+    
+    /**
+     * Display a notification message in the system tray
+     */
+    private void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
+        if (trayIcon != null) {
+            try {
+                trayIcon.displayMessage(title, message, type)
+            } catch (Exception e) {
+                // Some platforms might not support notifications
+                System.err.println("Could not display tray notification: " + e.getMessage())
+                // Fall back to console output
+                System.out.println("[NOTIFICATION] " + title + ": " + message)
+            }
+        } else {
+            // No tray icon available, fall back to console output
+            System.out.println("[NOTIFICATION] " + title + ": " + message)
+        }
+    }
+    
+    /**
+     * Initialize the user interface components
+     */
+    private void initializeUI() {
+        // Main content panel
+        JPanel contentPanel = new JPanel(new BorderLayout(10, 10))
+        contentPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10))
+        
+        // Top control panel
+        JPanel controlPanel = new JPanel(new BorderLayout())
+        controlPanel.setBorder(BorderFactory.createTitledBorder("Controls"))
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT))
+        refreshButton = new JButton("Refresh Now")
+        refreshButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                refreshCalendarEvents()
+            }
+        })
+        buttonPanel.add(refreshButton)
+        
+        JButton settingsButton = new JButton("Settings")
+        settingsButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                showSettingsDialog()
+            }
+        })
+        buttonPanel.add(settingsButton)
+        
+        JButton exitButton = new JButton("Exit")
+        exitButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                int option = JOptionPane.showConfirmDialog(
+                    OutlookAlerterUI.this,
+                    "Do you want to exit OutlookAlerter?\nYou will no longer receive meeting alerts.",
+                    "Confirm Exit",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE
+                )
+                
+                if (option == JOptionPane.YES_OPTION) {
+                    shutdown()
+                    System.exit(0)
+                }
+            }
+        })
+        buttonPanel.add(exitButton)
+        
+        JPanel statusPanel = new JPanel(new GridLayout(2, 1))
+        statusLabel = new JLabel("Status: Ready")
+        lastUpdateLabel = new JLabel("Last update: Never")
+        statusPanel.add(statusLabel)
+        statusPanel.add(lastUpdateLabel)
+        
+        controlPanel.add(buttonPanel, BorderLayout.WEST)
+        controlPanel.add(statusPanel, BorderLayout.EAST)
+        
+        // Events display area
+        eventsTextArea = new JTextArea()
+        eventsTextArea.setEditable(false)
+        eventsTextArea.setFont(new Font("Monospaced", Font.PLAIN, 12))
+        JScrollPane scrollPane = new JScrollPane(eventsTextArea)
+        scrollPane.setBorder(BorderFactory.createTitledBorder("Upcoming Calendar Events"))
+        
+        // Add components to main panel
+        contentPanel.add(controlPanel, BorderLayout.NORTH)
+        contentPanel.add(scrollPane, BorderLayout.CENTER)
+        
+        // Set as content pane
+        setContentPane(contentPanel)
+    }
+    
+    /**
+     * Start the application
+     */
+    void start() {
+        // Make sure we're running on the EDT for UI initialization
+        SwingUtilities.invokeLater({
+            try {
+                // Set window properties to ensure visibility
+                setVisible(true)
+                setExtendedState(JFrame.NORMAL) // Make sure it's not minimized
+                toFront()
+                requestFocus()
+                
+                // Log visibility state for debugging
+                System.out.println("UI visible: " + isVisible())
+                System.out.println("UI showing: " + isShowing())
+                System.out.println("UI state: " + getExtendedState())
+                
+                // Show busy cursor while authenticating
+                setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR))
+                statusLabel.setText("Status: Preparing authentication...")
+                
+                // Run authentication in a background thread to avoid blocking UI
+                Thread authThread = new Thread({
+                    try {
+                        System.out.println("Starting authentication process on background thread")
+                        
+                        // Attempt authentication - this will show the token dialog if needed
+                        final boolean authenticated = outlookClient.authenticate()
+                        System.out.println("Authentication process completed, result: " + authenticated)
+                        
+                        // Switch back to EDT for UI updates
+                        SwingUtilities.invokeLater({
+                            try {
+                                // Restore cursor
+                                setCursor(Cursor.getDefaultCursor())
+                                
+                                if (authenticated) {
+                                    statusLabel.setText("Status: Authenticated successfully")
+                                    
+                                    // Refresh calendar immediately
+                                    refreshCalendarEvents()
+                                    
+                                    // Schedule periodic calendar checks
+                                    scheduler.scheduleAtFixedRate(
+                                        { refreshCalendarEvents() } as Runnable,
+                                        POLLING_INTERVAL_MINUTES,
+                                        POLLING_INTERVAL_MINUTES,
+                                        TimeUnit.MINUTES
+                                    )
+                                    
+                                    // Make sure main window is visible after authentication
+                                    if (!isVisible()) {
+                                        setVisible(true)
+                                        toFront()
+                                        requestFocus()
+                                    }
+                                } else {
+                                    statusLabel.setText("Status: Authentication Failed")
+                                    JOptionPane.showMessageDialog(
+                                        OutlookAlerterUI.this,
+                                        "Failed to authenticate with Outlook. Please restart the application and try again.",
+                                        "Authentication Error",
+                                        JOptionPane.ERROR_MESSAGE
+                                    )
+                                }
+                            } catch (Exception e) {
+                                System.err.println("Error updating UI after authentication: " + e.getMessage())
+                                e.printStackTrace()
+                            }
+                        } as Runnable)
+                    } catch (Exception e) {
+                        System.err.println("Error during authentication: " + e.getMessage())
+                        e.printStackTrace()
+                        
+                        SwingUtilities.invokeLater({
+                            // Restore cursor
+                            setCursor(Cursor.getDefaultCursor())
+                            
+                            statusLabel.setText("Status: Authentication Error")
+                            JOptionPane.showMessageDialog(
+                                OutlookAlerterUI.this,
+                                "Error during authentication: " + e.getMessage() + "\n\nPlease restart the application.",
+                                "Authentication Error",
+                                JOptionPane.ERROR_MESSAGE
+                            )
+                        } as Runnable)
+                    }
+                })
+                
+                // Set thread name for debugging
+                authThread.setName("OutlookAlerter-Auth-Thread")
+                // Start the authentication thread
+                authThread.start()
+                
+            } catch (Exception e) {
+                System.err.println("Error starting UI: " + e.getMessage())
+                e.printStackTrace()
+                JOptionPane.showMessageDialog(
+                    null,
+                    "Error starting application: " + e.getMessage(),
+                    "Application Error",
+                    JOptionPane.ERROR_MESSAGE
+                )
+            }
+        } as Runnable)
+    }
+                            "Authentication Error",
+                            JOptionPane.ERROR_MESSAGE
+                        )
+                        e.printStackTrace()
+                    } as Runnable)
+                }
+            }).start()
+        } as Runnable)
+    }
+    
+    /**
+     * Refresh calendar events from Outlook
+     */
+    private void refreshCalendarEvents() {
+        SwingUtilities.invokeLater({
+            statusLabel.setText("Status: Refreshing calendar events...")
+            refreshButton.setEnabled(false)
+        } as Runnable)
+        
+        // Run in background thread
+        new Thread({
+            try {
+                List<CalendarEvent> calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
+                
+                // Process events
+                Map<String, CalendarEvent> combinedEventsMap = new HashMap<>()
+                calendarViewEvents.each { event ->
+                    combinedEventsMap.put(event.id, event)
+                }
+                
+                // Convert back to list and sort by start time
+                List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
+                combinedEvents.sort { event -> event.getMinutesToStart() }
+                
+                // Update UI
+                updateEventsDisplay(combinedEvents)
+                
+                // Check for events that need alerts
+                checkForEventAlerts(combinedEvents)
+                
+                SwingUtilities.invokeLater({
+                    lastUpdateLabel.setText("Last update: " + ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                    statusLabel.setText("Status: Ready")
+                    refreshButton.setEnabled(true)
+                } as Runnable)
+            } catch (Exception e) {
+                SwingUtilities.invokeLater({
+                    statusLabel.setText("Status: Error refreshing events")
+                    refreshButton.setEnabled(true)
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Error refreshing calendar events: " + e.getMessage(),
+                        "Calendar Error",
+                        JOptionPane.ERROR_MESSAGE
+                    )
+                } as Runnable)
+                e.printStackTrace()
+            }
+        }).start()
+    }
+    
+    /**
+     * Update the events display with the latest calendar events
+     */
+    private void updateEventsDisplay(List<CalendarEvent> events) {
+        // Filter to include upcoming events and in-progress events
+        List<CalendarEvent> relevantEvents = events.findAll { event -> 
+            int minutesToStart = event.getMinutesToStart()
+            boolean isUpcoming = minutesToStart >= 0  // Future event
+            boolean isInProgress = event.isInProgress() // Currently happening event
+            
+            if (!isUpcoming && !isInProgress) {
+                return false
+            }
+            return true
+        }
+        
+        if (relevantEvents.isEmpty()) {
+            SwingUtilities.invokeLater({
+                eventsTextArea.setText("No current or upcoming events found.")
+            } as Runnable)
+            return
+        }
+        
+        // Sort events by minutes to start (ascending) so closest events are first
+        relevantEvents.sort { event -> event.getMinutesToStart() }
+        
+        // Separate in-progress events from upcoming events
+        List<CalendarEvent> inProgressEvents = relevantEvents.findAll { event -> event.isInProgress() }
+        List<CalendarEvent> upcomingEvents = relevantEvents.findAll { event -> !event.isInProgress() }
+        
+        // Build the display text
+        StringBuilder displayText = new StringBuilder()
+        
+        // Show in-progress events first
+        if (!inProgressEvents.isEmpty()) {
+            displayText.append("\n-- CURRENTLY IN PROGRESS --\n\n")
+            inProgressEvents.each { CalendarEvent event ->
+                displayText.append("  • ${event.subject}")
+                          .append(event.isOnlineMeeting ? " (Online)" : "")
+                          .append(event.organizer ? " - Organized by: ${event.organizer}" : "")
+                          .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
+                          .append(" (started ${-event.getMinutesToStart()} minutes ago)")
+                          .append("\n")
+            }
+        }
+        
+        // Show upcoming events
+        if (!upcomingEvents.isEmpty()) {
+            // Get the minutes to start for the earliest upcoming event
+            int earliestMinutesToStart = upcomingEvents[0].getMinutesToStart()
+            
+            // Determine which events should be in the "next meetings" section
+            List<CalendarEvent> nextTimeEvents = upcomingEvents.findAll { event -> 
+                int minutesToStart = event.getMinutesToStart()
+                return (minutesToStart <= 60) || (minutesToStart <= earliestMinutesToStart + 5)
+            }
+            
+            // Ensure all meetings are properly sorted by start time
+            nextTimeEvents.sort { event -> event.getMinutesToStart() }
+            
+            // Include time information in the header
+            ZonedDateTime now = ZonedDateTime.now()
+            String displayTime = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            String displayZone = now.getZone().toString()
+            
+            displayText.append("\n-- NEXT MEETINGS at ${displayTime} (${displayZone}) --\n\n")
+            nextTimeEvents.each { CalendarEvent event ->
+                displayText.append("  • ${event.subject}")
+                          .append(event.isOnlineMeeting ? " (Online)" : "")
+                          .append(event.organizer ? " - Organized by: ${event.organizer}" : "")
+                          .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
+                          .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                          .append("\n")
+            }
+            
+            // List subsequent events if there are any
+            List<CalendarEvent> laterEvents = upcomingEvents.findAll { event -> 
+                !nextTimeEvents.contains(event)
+            }
+            
+            if (!laterEvents.isEmpty()) {
+                displayText.append("\n-- LATER MEETINGS --\n\n")
+                laterEvents.take(5).each { CalendarEvent event ->
+                    displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}")
+                              .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
+                              .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                              .append("\n")
+                }
+                
+                if (laterEvents.size() > 5) {
+                    displayText.append("  • ...and ${laterEvents.size() - 5} more later events\n")
+                }
+            }
+        }
+        
+        // Update UI on the EDT
+        final String finalText = displayText.toString()
+        SwingUtilities.invokeLater({
+            eventsTextArea.setText(finalText)
+        } as Runnable)
+    }
+    
+    /**
+     * Check for events that need alerts
+     */
+    private void checkForEventAlerts(List<CalendarEvent> events) {
+        // Check each event for alerts
+        for (CalendarEvent event : events) {
+            // Skip events that have already ended
+            if (event.hasEnded()) {
+                continue
+            }
+            
+            int minutesToStart = event.getMinutesToStart()
+            
+            // Skip events we've already alerted for
+            if (alertedEventIds.contains(event.id)) {
+                continue
+            }                // Alert for events about to start
+                if (minutesToStart <= 1 && minutesToStart >= -1) {
+                    final String eventTitle = event.subject
+                    SwingUtilities.invokeLater({
+                        statusLabel.setText("Status: Alerting for ${eventTitle}")
+                    } as Runnable)
+                    
+                    // Flash the screen
+                    screenFlasher.flash(event)
+                    
+                    // Show system tray notification if available
+                    String notificationMessage = "Meeting: ${event.subject}" +
+                        (event.isOnlineMeeting ? " (Online)" : "") +
+                        (event.organizer ? "\nOrganized by: ${event.organizer}" : "") +
+                        (event.responseStatus ? "\nStatus: ${event.responseStatus}" : "") +
+                        "\nStarts " + (minutesToStart >= 0 ? 
+                            "in ${minutesToStart} minute(s)" : 
+                            "${-minutesToStart} minute(s) ago")
+                    
+                    showTrayNotification("Meeting Alert", notificationMessage, TrayIcon.MessageType.WARNING)
+                    
+                    // Mark as alerted
+                    alertedEventIds.add(event.id)
+                
+                // Clean up alerted events list periodically
+                if (alertedEventIds.size() > 100) {
+                    alertedEventIds.clear()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Show settings dialog
+     */
+    private void showSettingsDialog() {
+        JDialog settingsDialog = new JDialog(this, "Settings", true)
+        settingsDialog.setLayout(new BorderLayout())
+        
+        JPanel formPanel = new JPanel(new GridBagLayout())
+        GridBagConstraints gbc = new GridBagConstraints()
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        gbc.insets = new Insets(5, 5, 5, 5)
+        
+        // Timezone setting
+        gbc.gridx = 0
+        gbc.gridy = 0
+        formPanel.add(new JLabel("Timezone:"), gbc)
+        
+        String currentTimezone = configManager.preferredTimezone ?: ZonedDateTime.now().getZone().toString()
+        JTextField timezoneField = new JTextField(currentTimezone, 20)
+        gbc.gridx = 1
+        gbc.gridy = 0
+        formPanel.add(timezoneField, gbc)
+        
+        // Okta SSO URL
+        gbc.gridx = 0
+        gbc.gridy = 1
+        formPanel.add(new JLabel("Sign-in URL:"), gbc)
+        
+        JTextField signInUrlField = new JTextField(configManager.signInUrl ?: "", 20)
+        gbc.gridx = 1
+        gbc.gridy = 1
+        formPanel.add(signInUrlField, gbc)
+        
+        // Button panel
+        JPanel buttonPanel = new JPanel()
+        JButton saveButton = new JButton("Save")
+        saveButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                // Save settings
+                String timezone = timezoneField.getText().trim()
+                String signInUrl = signInUrlField.getText().trim()
+                
+                try {
+                    if (!timezone.isEmpty()) {
+                        java.time.ZoneId.of(timezone) // Validate timezone
+                        configManager.updatePreferredTimezone(timezone)
+                    }
+                    
+                    if (!signInUrl.isEmpty()) {
+                        configManager.updateSignInUrl(signInUrl)
+                    }
+                    
+                    settingsDialog.dispose()
+                    JOptionPane.showMessageDialog(OutlookAlerterUI.this, "Settings saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE)
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(settingsDialog, "Invalid settings: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE)
+                }
+            }
+        })
+        
+        JButton cancelButton = new JButton("Cancel")
+        cancelButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                settingsDialog.dispose()
+            }
+        })
+        
+        buttonPanel.add(saveButton)
+        buttonPanel.add(cancelButton)
+        
+        settingsDialog.add(formPanel, BorderLayout.CENTER)
+        settingsDialog.add(buttonPanel, BorderLayout.SOUTH)
+        
+        settingsDialog.pack()
+        settingsDialog.setLocationRelativeTo(this)
+        settingsDialog.setVisible(true)
+    }
+    
+    /**
+     * Set the preferred timezone
+     * @param timezone The timezone ID to use (e.g., "America/New_York")
+     */
+    void setTimezone(String timezone) {
+        if (timezone == null || timezone.isEmpty()) {
+            return
+        }
+        
+        try {
+            // Validate the timezone ID
+            ZoneId zoneId = ZoneId.of(timezone)
+            configManager.updatePreferredTimezone(timezone)
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Invalid timezone: " + timezone + "\nError: " + e.getMessage(),
+                "Timezone Error",
+                JOptionPane.ERROR_MESSAGE
+            )
+        }
+    }
+    
+    /**
+     * Shutdown the application
+     */
+    void shutdown() {
+        scheduler.shutdown()
+        try {
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow()
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow()
+            Thread.currentThread().interrupt()
+        }
+    }
+}

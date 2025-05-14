@@ -222,4 +222,12 @@ class ConfigManager {
         this.preferredTimezone = timezone
         saveConfiguration()
     }
+    
+    /**
+     * Updates the sign-in URL setting
+     */
+    void updateSignInUrl(String url) {
+        this.signInUrl = url
+        saveConfiguration()
+    }
 }

@@ -11,6 +11,34 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 - Shows meeting response status (accepted, tentative, etc.) in alerts
 - Cross-platform support for screen flashing (macOS, Windows, Linux)
 - Configurable polling interval and alert thresholds
+- Graphical user interface with system tray integration
+- Automatic pop-up for token refreshes
+
+## User Interface
+
+OutlookAlerter now includes a user-friendly graphical interface for enhanced usability:
+
+### Main Features
+- **Calendar Display**: View your upcoming meetings in a clear, organized list
+- **Real-time Updates**: Calendar refreshes automatically every minute
+- **System Tray Integration**: Run in the background with system tray notifications
+- **Settings Dialog**: Configure timezone and authentication settings directly in the UI
+- **Token Entry Dialog**: User-friendly form for entering authentication tokens
+
+### Running the Application
+
+- **GUI Mode** (default): `./run.sh`
+- **Console Mode** (legacy): `./run.sh --console`
+
+The GUI version will automatically minimize to the system tray when closed, allowing it to continue monitoring your calendar in the background.
+
+### Authentication
+
+The new UI-based authentication process:
+1. Automatically opens your browser to the sign-in page
+2. Displays a user-friendly dialog for entering the authentication token
+3. Validates token format before submission
+4. Automatically pops up when token updates are required
 
 ## Timezone Handling
 
