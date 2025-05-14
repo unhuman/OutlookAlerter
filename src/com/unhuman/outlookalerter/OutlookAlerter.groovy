@@ -226,17 +226,17 @@ class OutlookAlerter {
     private void checkForUpcomingMeetings() {
         try {
             // Try all available methods for retrieving events
-            List<CalendarEvent> events = outlookClient.getUpcomingEvents()
+            // List<CalendarEvent> events = outlookClient.getUpcomingEvents()
             List<CalendarEvent> calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
-            List<CalendarEvent> multiCalendarEvents = outlookClient.getUpcomingEventsFromAllCalendars()
+            // List<CalendarEvent> multiCalendarEvents = outlookClient.getUpcomingEventsFromAllCalendars()
             
             // Combine events, avoiding duplicates
             Map<String, CalendarEvent> combinedEventsMap = new HashMap<>()
             
             // Add regular events
-            events.each { event ->
-                combinedEventsMap.put(event.id, event)
-            }
+            // events.each { event ->
+            //     combinedEventsMap.put(event.id, event)
+            // }
             
             // Add calendar view events (will overwrite duplicates)
             calendarViewEvents.each { event ->
@@ -244,9 +244,9 @@ class OutlookAlerter {
             }
             
             // Add events from all calendars (will overwrite duplicates)
-            multiCalendarEvents.each { event ->
-                combinedEventsMap.put(event.id, event)
-            }
+            // multiCalendarEvents.each { event ->
+            //     combinedEventsMap.put(event.id, event)
+            // }
             
             // Convert back to list and sort by start time for easier consumption
             List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())

@@ -8,6 +8,7 @@ import java.net.http.HttpResponse
 import java.time.ZonedDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.function.Supplier
 
 // Additional imports for TokenEntryServer
 import com.sun.net.httpserver.HttpExchange
@@ -161,8 +162,13 @@ class OutlookClient {
                 
                 configManager.updateTokens(accessToken, refreshToken, expiryTime)
                 return true
+            } else if (response.statusCode() == 401 || response.statusCode() == 400) {
+                // If the refresh token is rejected or invalid, we need to re-authenticate
+                println "Refresh token was rejected (${response.statusCode()}). Need to re-authenticate."
+                // Fall through to perform direct authentication
+                return performDirectAuthentication()
             } else {
-                println "Failed to refresh token: ${response.statusCode()} ${response.body()}"
+                println "Failed to refresh token: ${response.statusCode()}"
                 return false
             }
         } catch (Exception e) {
@@ -253,6 +259,125 @@ class OutlookClient {
     }
     
     /**
+     * Handle a 401 Unauthorized or 403 Forbidden response by trying to re-authenticate
+     * This ensures expired tokens are automatically refreshed without user intervention when possible,
+     * and prompts for new tokens when refresh fails
+     * @param statusCode The HTTP status code (401 or 403) that triggered this handler
+     * @return A new valid access token, or null if re-authentication failed
+     */
+    private String handleUnauthorizedResponse(int statusCode = 401) {
+        String errorType = (statusCode == 401) ? "401 Unauthorized" : "403 Forbidden"
+        println "Access token was rejected (${errorType}). Attempting to re-authenticate..."
+
+        // Clear the existing token's expiry time to force validation
+        configManager.updateTokens(configManager.accessToken, configManager.refreshToken, 0);
+
+        // Try to refresh the token first if we have one
+        if (configManager.refreshToken && refreshToken()) {
+            println "Successfully refreshed the token."
+            return configManager.accessToken
+        }
+
+        // If refresh failed or no refresh token, try direct authentication
+        if (performDirectAuthentication()) {
+            println "Successfully re-authenticated."
+            return configManager.accessToken
+        }
+
+        // If we got here, all authentication attempts failed
+        return null
+    }
+    
+    /**
+     * Execute a request and handle 401 errors by re-authenticating and retrying once
+     * @param request The HTTP request to execute
+     * @param uri The URI for retry (needed if we need to rebuild the request)
+     * @return Response from the server, either from first attempt or retry
+     */
+    /**
+     * Execute a request and handle 401 Unauthorized or 403 Forbidden errors by re-authenticating and retrying once
+     * @param request The HTTP request to execute
+     * @param uri The URI for retry (needed if we need to rebuild the request)
+     * @return Response from the server, either from first attempt or retry
+     */
+    private HttpResponse<String> executeRequestWithRetry(HttpRequest request, URI uri) throws IOException, InterruptedException {
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+
+        // If we got a 401 Unauthorized or 403 Forbidden, try to re-authenticate and retry
+        if (response.statusCode() == 401 || response.statusCode() == 403) {
+            String errorType = (response.statusCode() == 401) ? "401 Unauthorized" : "403 Forbidden";
+            println "Received ${errorType} response. Attempting to re-authenticate..."
+
+            // Pass the specific status code to the handler
+            String newToken = handleUnauthorizedResponse(response.statusCode())
+
+            if (newToken != null) {
+                // Build a new request with the new token
+                HttpRequest retryRequest = HttpRequest.newBuilder()
+                    .uri(uri)
+                    .header("Authorization", "Bearer ${newToken}")
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build()
+
+                // Execute the retry request
+                println "Retrying request with new token..."
+                HttpResponse<String> retryResponse = httpClient.send(retryRequest, HttpResponse.BodyHandlers.ofString())
+
+                if (retryResponse.statusCode() == 200) {
+                    println "Request retry successful"
+                    return retryResponse
+                } else {
+                    println "Request retry failed with status ${retryResponse.statusCode()}"
+                    // Return the retry response even if it failed - the caller will handle the status code
+                    return retryResponse
+                }
+            } else {
+                println "Failed to obtain a new token for retry"
+            }
+        }
+
+        return response
+    }
+    
+    /**
+     * Execute a request and automatically retry with a refreshed token if it returns 401 Unauthorized or 403 Forbidden
+     * @param requestSupplier A supplier function that creates and executes the HTTP request
+     * @return The response from the request, either the original response or the retried response
+     */
+    private HttpResponse executeRequestWithRetry(Supplier<HttpResponse> requestSupplier) {
+        // Execute the original request
+        HttpResponse response = requestSupplier.get()
+
+        // If we get a 401 Unauthorized or 403 Forbidden, try to refresh the token and retry once
+        if (response.statusCode() == 401 || response.statusCode() == 403) {
+            String errorType = (response.statusCode() == 401) ? "401 Unauthorized" : "403 Forbidden"
+            println "Received ${errorType}. Attempting to refresh token and retry the request..."
+
+            // Try to get a new token, passing the specific status code
+            String newToken = handleUnauthorizedResponse(response.statusCode())
+            if (newToken == null) {
+                println "Failed to get a new token. Cannot retry the request."
+                return response
+            }
+
+            // Retry the request with the new token
+            HttpResponse retryResponse = requestSupplier.get()
+            if (retryResponse.statusCode() == 200) {
+                println "Request retry successful"
+                return retryResponse
+            } else {
+                println "Request retry failed with status ${retryResponse.statusCode()}"
+                // Return the retry response even if it failed - the caller will handle the status code
+                return retryResponse
+            }
+        }
+
+        // For any other status code, just return the original response
+        return response
+    }
+
+    /**
      * Get upcoming calendar events
      * @return List of calendar events
      */
@@ -324,8 +449,8 @@ class OutlookClient {
             // Look ahead to end of day
             String endTime = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
-            println "Start time (raw): ${startTime} (beginning of today)"
-            println "End time (raw): ${endTime} (1 day ahead)"
+            // println "Start time (raw): ${startTime} (now)"
+            // println "End time (raw): ${endTime} (end of day)"
             
             // Create a properly encoded URL using URI builder pattern
             URI uri = createCalendarEventsUri(baseUrl, startTime, endTime)
@@ -340,30 +465,10 @@ class OutlookClient {
                 .GET()
                 .build()
             
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            HttpResponse<String> response = executeRequestWithRetry(request, uri)
             
             if (response.statusCode() == 200) {
                 return parseEventResponse(response.body())
-            } else if (response.statusCode() == 401) {
-                println """
-                ============================================
-                AUTHENTICATION ERROR (401 Unauthorized)
-                ============================================
-                Your access token was rejected by Microsoft Graph API.
-                Error details: ${response.body()}
-                
-                This usually means:
-                1. Your token is invalid or expired
-                2. The token format is incorrect
-                3. The token was not properly acquired from your Okta SSO
-                
-                Please try the following:
-                1. Restart the application to force re-authentication
-                2. Make sure you're copying the complete token from Okta
-                3. Check that your Okta SSO URL is correctly configured
-                ============================================
-                """
-                return []
             } else {
                 println "Failed to retrieve events (HTTP ${response.statusCode()}): ${response.body()}"
                 return []
@@ -396,7 +501,7 @@ class OutlookClient {
             return []
         }
     }
-    
+
     /**
      * Get upcoming events using CalendarView (alternative approach)
      * This method can sometimes capture events that are not returned by the regular events endpoint,
@@ -438,7 +543,7 @@ class OutlookClient {
             String startParam = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             String endParam = endOfTomorrow.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-            System.out.println "Start time (raw): ${startParam} (beginning of today) + formatted to ISO ${URLEncoder.encode(startParam, "UTF-8")}"
+            // System.out.println "Start time (raw): ${startParam} (now) + formatted to ISO ${URLEncoder.encode(startParam, "UTF-8")}"
  
             // Create URL for calendar view
             StringBuilder urlBuilder = new StringBuilder(baseUrl)
@@ -458,17 +563,13 @@ class OutlookClient {
                 .GET()
                 .build()
             
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            HttpResponse<String> response = executeRequestWithRetry(request, new URI(url))
             
             if (response.statusCode() == 200) {
                 List<CalendarEvent> events = parseEventResponse(response.body())
-                println "Calendar view returned ${events.size()} events"
                 return events
-            } else if (response.statusCode() == 401) {
-                println "Authentication error in calendar view request (401 Unauthorized): ${response.body()}"
-                return []
             } else {
-                println "Failed to retrieve events using calendar view (HTTP ${response.statusCode()}): ${response.body()}"
+                println "Failed to retrieve events using calendar view (HTTP ${response.statusCode()})"
                 return []
             }
         } catch (Exception e) {
@@ -519,7 +620,7 @@ class OutlookClient {
                 .GET()
                 .build()
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            HttpResponse<String> response = executeRequestWithRetry(request, new URI(url))
 
             if (response.statusCode() == 200) {
                 Map parsed = new JsonSlurper().parseText(response.body()) as Map
@@ -545,14 +646,9 @@ class OutlookClient {
                     calendars.add(calendar)
                 }
                 
-                println "Found ${calendars.size()} available calendars"
-                calendars.each { calendar ->
-                    println "  - ${calendar.name} ${calendar.owner ? "(Owner: ${calendar.owner})" : ""}"
-                }
-                
                 return calendars
             } else {
-                println "Failed to retrieve calendars (HTTP ${response.statusCode()}): ${response.body()}"
+                println "Failed to retrieve calendars (HTTP ${response.statusCode()})"
                 return []
             }
         } catch (Exception e) {
@@ -607,8 +703,8 @@ class OutlookClient {
             String endTime = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
             println "Getting events from calendar ID: ${calendarId}"
-            println "Start time: ${startTime} (beginning of today)"
-            println "End time: ${endTime} (1 day ahead)"
+            println "Start time: ${startTime} (now)"
+            println "End time: ${endTime} (end of day)"
             
             // Create a properly encoded URL
             URI uri = createCalendarEventsUri(baseUrl, startTime, endTime)
@@ -623,14 +719,13 @@ class OutlookClient {
                 .GET()
                 .build()
             
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            HttpResponse<String> response = executeRequestWithRetry(request, uri)
             
             if (response.statusCode() == 200) {
                 List<CalendarEvent> events = parseEventResponse(response.body())
-                println "Found ${events.size()} events in calendar ID: ${calendarId}"
                 return events
             } else {
-                println "Failed to retrieve events from calendar (HTTP ${response.statusCode()}): ${response.body()}"
+                println "Failed to retrieve events from calendar (HTTP ${response.statusCode()})"
                 return []
             }
         } catch (Exception e) {
@@ -855,19 +950,19 @@ class OutlookClient {
                     String endTimeStr = endMap['dateTime'] as String
                     String endTimeZone = endMap['timeZone'] as String
                     
-                    println "\nEvent datetime info for '${event.subject}':"
-                    println "  Raw start: ${startTimeStr}, timezone: ${startTimeZone}"
-                    println "  Raw end: ${endTimeStr}, timezone: ${endTimeZone}"
+                    // println "\nEvent datetime info for '${event.subject}':"
+                    // println "  Raw start: ${startTimeStr}, timezone: ${startTimeZone}"
+                    // println "  Raw end: ${endTimeStr}, timezone: ${endTimeZone}"
                     
                     // Handle various timezone formats
                     event.startTime = parseDateTime(startTimeStr, startTimeZone)
                     event.endTime = parseDateTime(endTimeStr, endTimeZone)
                     
-                    // Log parsed times
-                    println "  Parsed start: ${event.startTime}"
-                    println "  Parsed end: ${event.endTime}"
-                    println "  Current time: ${ZonedDateTime.now()}"
-                    println "  Minutes to start: ${event.getMinutesToStart()}"
+                    // // Log parsed times
+                    // println "  Parsed start: ${event.startTime}"
+                    // println "  Parsed end: ${event.endTime}"
+                    // println "  Current time: ${ZonedDateTime.now()}"
+                    // println "  Minutes to start: ${event.getMinutesToStart()}"
                     
                     // Fall back to local timezone if parsing fails
                     if (event.startTime == null) {
@@ -901,7 +996,7 @@ class OutlookClient {
                 if (eventMap['responseStatus']) {
                     Map responseStatusMap = eventMap['responseStatus'] as Map
                     event.responseStatus = responseStatusMap['response'] as String
-                    println "  Event response status: ${event.responseStatus}"
+                    // println "  Event response status: ${event.responseStatus}"
                 }
                 
                 events.add(event)
@@ -925,7 +1020,7 @@ class OutlookClient {
         
         try {
             // Debug info to help diagnose timezone issues
-            println "Parsing datetime: ${dateTimeStr} with timezone: ${timeZone}"
+            // println "Parsing datetime: ${dateTimeStr} with timezone: ${timeZone}"
             
             // First attempt: Parse as a LocalDateTime and then apply the timezone
             // This is the most reliable method for Graph API data
@@ -969,7 +1064,7 @@ class OutlookClient {
                 
                 ZonedDateTime eventTimeInLocalZone = eventTimeInOriginalZone.withZoneSameInstant(targetZoneId)
                 
-                println "Parsed to: ${eventTimeInLocalZone} (original zone: ${zoneId}, converted to: ${targetZoneId})"
+                // println "Parsed to: ${eventTimeInLocalZone} (original zone: ${zoneId}, converted to: ${targetZoneId})"
                 
                 return eventTimeInLocalZone
             } catch (Exception e) {
