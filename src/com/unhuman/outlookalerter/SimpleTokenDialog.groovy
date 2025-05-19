@@ -6,6 +6,8 @@ import javax.swing.*
 import java.awt.*
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -15,7 +17,16 @@ import java.util.concurrent.TimeUnit
  */
 @CompileStatic
 class SimpleTokenDialog {
-    private JFrame frame
+    // Singleton instance
+    private static SimpleTokenDialog instance
+    private static boolean isShowing = false
+    
+    // Lock object for thread safety
+    private static final Object LOCK = new Object()
+    
+    // Instance variables
+    private JDialog frame
+    private JFrame parentFrame
     private JTextField tokenField
     private JTextField refreshTokenField
     private CountDownLatch latch = new CountDownLatch(1)
@@ -23,9 +34,21 @@ class SimpleTokenDialog {
     private final String signInUrl
     
     /**
-     * Constructor with sign-in URL
+     * Get or create singleton instance
      */
-    SimpleTokenDialog(String signInUrl) {
+    static SimpleTokenDialog getInstance(String signInUrl) {
+        synchronized(LOCK) {
+            if (instance == null) {
+                instance = new SimpleTokenDialog(signInUrl)
+            }
+            return instance
+        }
+    }
+    
+    /**
+     * Private constructor to enforce singleton pattern
+     */
+    private SimpleTokenDialog(String signInUrl) {
         this.signInUrl = signInUrl
     }
     
@@ -33,56 +56,59 @@ class SimpleTokenDialog {
      * Display the token entry dialog and wait for input
      */
     void show() {
-        try {
-            System.out.println("SimpleTokenDialog: Preparing to show token entry dialog")
-            
-            // Must run UI creation on EDT
-            SwingUtilities.invokeAndWait(() -> {
-                try {
-                    createUI()
-                    System.out.println("SimpleTokenDialog: UI created successfully")
-                } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error creating UI: " + e.getMessage())
-                    e.printStackTrace()
-                }
-            })
-            
-            // Ensure dialog is visible after creation
-            SwingUtilities.invokeLater(() -> {
-                if (frame != null) {
-                    if (!frame.isVisible()) {
-                        System.out.println("SimpleTokenDialog: Frame was not visible, making it visible now")
-                        frame.setVisible(true)
-                    }
-                    
-                    // Force to front and request focus
+        synchronized(LOCK) {
+            // If dialog is already showing, just bring it to front
+            if (isShowing && frame != null && frame.isDisplayable()) {
+                SwingUtilities.invokeLater(() -> {
                     frame.toFront()
                     frame.requestFocus()
-                    
-                    System.out.println("SimpleTokenDialog: Frame state - visible: " + frame.isVisible() + 
-                                      ", showing: " + frame.isShowing())
-                }
-            })
-            
-            // Open browser in background thread if URL is available
-            if (signInUrl) {
-                new Thread(() -> {
-                    try {
-                        // Brief delay to allow UI to stabilize first
-                        Thread.sleep(1000)
-                        
-                        System.out.println("SimpleTokenDialog: Opening browser with sign-in URL: " + signInUrl)
-                        Desktop.getDesktop().browse(new java.net.URI(signInUrl))
-                        System.out.println("SimpleTokenDialog: Browser opened successfully")
-                    } catch (Exception e) {
-                        System.err.println("SimpleTokenDialog: Error opening browser: " + e.getMessage())
-                        e.printStackTrace()
-                    }
-                }, "BrowserOpener-Thread").start()
+                })
+                return
             }
-        } catch (Exception e) {
-            System.err.println("Error showing token dialog: " + e.getMessage())
-            e.printStackTrace()
+            
+            // Ensure any existing dialog is cleaned up
+            cleanup()
+            
+            // Reset state
+            tokens = null
+            latch = new CountDownLatch(1)
+            isShowing = true
+            
+            try {
+                System.out.println("SimpleTokenDialog: Preparing to show token entry dialog")
+                
+                // Create UI on EDT and show immediately
+                SwingUtilities.invokeAndWait(() -> {
+                    try {
+                        createUI()
+                        System.out.println("SimpleTokenDialog: UI created successfully")
+                        
+                        // Show dialog immediately after creation
+                        if (frame != null) {
+                            frame.pack()
+                            frame.setLocationRelativeTo(parentFrame)
+                            frame.setVisible(true)
+                            frame.toFront()
+                            frame.requestFocus()
+                            
+                            // Clear any previous text
+                            if (tokenField != null) tokenField.setText("")
+                            if (refreshTokenField != null) refreshTokenField.setText("")
+                            
+                            System.out.println("SimpleTokenDialog: Frame state - visible: " + frame.isVisible() + 
+                                             ", showing: " + frame.isShowing())
+                        }
+                    } catch (Exception e) {
+                        System.err.println("SimpleTokenDialog: Error creating UI: " + e.getMessage())
+                        e.printStackTrace()
+                        cleanup()
+                    }
+                })
+            } catch (Exception e) {
+                System.err.println("Error showing token dialog: " + e.getMessage())
+                e.printStackTrace()
+                cleanup() // Ensure cleanup even on error
+            }
         }
     }
     
@@ -91,153 +117,284 @@ class SimpleTokenDialog {
      */
     private void createUI() {
         try {
-            System.out.println("SimpleTokenDialog: Creating UI components")
-            
-            // Create JFrame instead of JDialog
-            frame = new JFrame("Microsoft OAuth Token Entry")
-            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
-            
-            // Set utility mode for better macOS handling
-            frame.setType(javax.swing.JFrame.Type.UTILITY);
-            
-            // Make it undecorated on macOS to solve some display issues
-            if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-                frame.setUndecorated(false); // Try decorated first for macOS
-                System.out.println("SimpleTokenDialog: Using macOS-specific frame settings");
+            // Get active window to use as parent
+            Window activeWindow = FocusManager.getCurrentManager().getActiveWindow()
+            if (activeWindow == null) {
+                // Fall back to focused window
+                activeWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow()
             }
-            
-            // Main panel with simple layout
-            JPanel panel = new JPanel(new BorderLayout(10, 10))
-            panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20))
-            
-            // Instructions at top - simplified to avoid HTML rendering issues
-            JLabel instructionsLabel = new JLabel(
-                "<html><div style='width: 400px'>" +
-                "<h2>Microsoft Token Authentication</h2>" +
-                "<p>After signing in through your browser, copy the access token from the browser.</p>" +
-                "<p>The token typically starts with 'eyJ' and can be found in:</p>" +
-                "<p>Developer Tools (F12) → Application/Storage tab → Local Storage</p>" +
-                "</div></html>"
-            )
-            panel.add(instructionsLabel, BorderLayout.NORTH)
-        
-            // Form in center with more spacing
-            JPanel formPanel = new JPanel(new GridLayout(4, 1, 10, 15))
-            
-            // Add some padding around the form
-            formPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(15, 15, 15, 15),
-                BorderFactory.createCompoundBorder(
-                    BorderFactory.createEtchedBorder(),
-                    BorderFactory.createEmptyBorder(10, 10, 10, 10)
-                )
-            ));
-            
-            JLabel tokenLabel = new JLabel("Access Token:");
-            tokenLabel.setFont(tokenLabel.getFont().deriveFont(Font.BOLD));
-            formPanel.add(tokenLabel)
-            
-            tokenField = new JTextField(30)
-            // Make sure the text field is enabled and editable
-            tokenField.setEnabled(true);
-            tokenField.setEditable(true);
-            formPanel.add(tokenField)
-            
-            JLabel refreshLabel = new JLabel("Refresh Token (optional):");
-            refreshLabel.setFont(refreshLabel.getFont().deriveFont(Font.BOLD));
-            formPanel.add(refreshLabel)
-            
-            refreshTokenField = new JTextField(30)
-            refreshTokenField.setEnabled(true);
-            refreshTokenField.setEditable(true);
-            formPanel.add(refreshTokenField)
-            
-            panel.add(formPanel, BorderLayout.CENTER)
-            
-            // Buttons at bottom
-            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10))
-            buttonPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
-                BorderFactory.createEmptyBorder(15, 10, 10, 10)
-            ));
-            
-            JButton openBrowserButton = new JButton("Open Browser")
-            openBrowserButton.addActionListener(new ActionListener() {
-                @Override
-                void actionPerformed(ActionEvent e) {
-                    try {
-                        System.out.println("Opening browser from button click...")
-                        Desktop.getDesktop().browse(new java.net.URI(signInUrl))
-                    } catch (Exception ex) {
-                        System.err.println("Error opening browser: " + ex.getMessage())
-                        JOptionPane.showMessageDialog(
-                            frame,
-                            "Error opening browser: " + ex.getMessage(),
-                            "Error",
-                            JOptionPane.ERROR_MESSAGE
-                        )
+            if (activeWindow == null) {
+                // Last resort - get all frames
+                Frame[] frames = Frame.getFrames()
+                for (Frame frame : frames) {
+                    if (frame.isVisible()) {
+                        activeWindow = frame
+                        break
                     }
                 }
+            }
+            parentFrame = activeWindow instanceof JFrame ? (JFrame)activeWindow : null
+            
+            frame = new JDialog(parentFrame, "Microsoft OAuth Token Entry", true)
+            frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE)
+            frame.addWindowListener(new WindowAdapter() {
+                @Override
+                void windowClosing(WindowEvent e) {
+                    cleanup()
+                }
             })
+        
+            try {
+                System.out.println("SimpleTokenDialog: Creating UI components")
+                
+                // Main panel with simple layout
+                JPanel panel = new JPanel(new BorderLayout(10, 10))
+                panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20))
+                
+                // Instructions at top - simplified to avoid HTML rendering issues
+                JLabel instructionsLabel = new JLabel(
+                    "<html><div style='width: 400px'>" +
+                    "<h2>Microsoft Token Authentication</h2>" +
+                    "<p><b>Recommended Method:</b> Use Microsoft Graph Explorer to get your token:</p>" +
+                    "<ol>" +
+                    "<li>Click the 'Open Graph Explorer' button below</li>" +
+                    "<li>Sign in with your Microsoft account</li>" +
+                    "<li>Click your profile picture → 'Access token' tab</li>" +
+                    "<li>Copy the displayed token</li>" +
+                    "</ol>" +
+                    "<p><b>Alternative Method:</b> If Graph Explorer doesn't work, you can use the legacy method:</p>" +
+                    "<ol>" +
+                    "<li>Click 'Open Sign-in Page' and complete the sign-in</li>" +
+                    "<li>Open Developer Tools (F12) → Application/Storage tab</li>" +
+                    "<li>Find the access token in Local Storage (typically starts with 'eyJ')</li>" +
+                    "</ol>" +
+                    "</div></html>"
+                )
+                panel.add(instructionsLabel, BorderLayout.NORTH)
             
-            // Create a more obvious submit button
-            JButton submitButton = new JButton("Submit Token")
-            submitButton.setFont(submitButton.getFont().deriveFont(Font.BOLD));
+                // Form in center with more spacing
+                JPanel formPanel = new JPanel(new GridLayout(4, 1, 10, 15))
+                
+                // Add some padding around the form
+                formPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createEmptyBorder(15, 15, 15, 15),
+                    BorderFactory.createCompoundBorder(
+                        BorderFactory.createEtchedBorder(),
+                        BorderFactory.createEmptyBorder(10, 10, 10, 10)
+                    )
+                ));
+                
+                JLabel tokenLabel = new JLabel("Access Token:")
+                tokenLabel.setFont(tokenLabel.getFont().deriveFont(Font.BOLD))
+                formPanel.add(tokenLabel)
+                
+                // Add token field with enter key support
+                tokenField = new JTextField(30)
+                tokenField.setEnabled(true)
+                tokenField.setEditable(true)
+                tokenField.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        // When enter is pressed, either move focus to refresh token field if empty, or submit
+                        if (refreshTokenField.getText().trim().isEmpty()) {
+                            refreshTokenField.requestFocusInWindow()
+                        } else {
+                            submitToken()
+                        }
+                    }
+                })
+                formPanel.add(tokenField)
+                
+                JLabel refreshLabel = new JLabel("Refresh Token (optional):")
+                refreshLabel.setFont(refreshLabel.getFont().deriveFont(Font.BOLD))
+                formPanel.add(refreshLabel)
+                
+                refreshTokenField = new JTextField(30)
+                refreshTokenField.setEnabled(true)
+                refreshTokenField.setEditable(true)
+                refreshTokenField.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        submitToken() // Submit when enter is pressed in refresh token field
+                    }
+                })
+                formPanel.add(refreshTokenField)
+                
+                panel.add(formPanel, BorderLayout.CENTER)
+                
+                // Buttons at bottom
+                JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10))
+                buttonPanel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
+                    BorderFactory.createEmptyBorder(15, 10, 10, 10)
+                ))
+                
+                JButton graphExplorerButton = new JButton("Open Graph Explorer")
+                graphExplorerButton.setFont(graphExplorerButton.getFont().deriveFont(Font.BOLD))
+                graphExplorerButton.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        try {
+                            System.out.println("Opening Graph Explorer...")
+                            Desktop.getDesktop().browse(new java.net.URI("https://developer.microsoft.com/en-us/graph/graph-explorer"))
+                        } catch (Exception ex) {
+                            System.err.println("Error opening Graph Explorer: " + ex.getMessage())
+                            JOptionPane.showMessageDialog(
+                                frame,
+                                "Error opening Graph Explorer: " + ex.getMessage(),
+                                "Error",
+                                JOptionPane.ERROR_MESSAGE
+                            )
+                        }
+                    }
+                })
+                
+                JButton openBrowserButton = new JButton("Open Sign-in Page")
+                openBrowserButton.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        try {
+                            System.out.println("Opening browser for sign-in...")
+                            Desktop.getDesktop().browse(new java.net.URI(signInUrl))
+                        } catch (Exception ex) {
+                            System.err.println("Error opening browser: " + ex.getMessage())
+                            JOptionPane.showMessageDialog(
+                                frame,
+                                "Error opening browser: " + ex.getMessage(),
+                                "Error",
+                                JOptionPane.ERROR_MESSAGE
+                            )
+                        }
+                    }
+                })
+                
+                JButton submitButton = new JButton("Submit")
+                submitButton.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        // Get token and trim whitespace
+                        String accessToken = tokenField.getText().trim()
+                        String refreshToken = refreshTokenField.getText().trim()
+                        
+                        // Strip off "Bearer " prefix if present (case insensitive)
+                        if (accessToken.toLowerCase().startsWith("bearer ")) {
+                            accessToken = accessToken.substring(7).trim()
+                        }
+                        
+                        if (accessToken.isEmpty()) {
+                            JOptionPane.showMessageDialog(frame,
+                                "Please enter an access token.",
+                                "Required Field Missing",
+                                JOptionPane.WARNING_MESSAGE)
+                            return
+                        }
+                        
+                        // Store tokens
+                        tokens = [
+                            accessToken: accessToken,
+                            refreshToken: refreshToken,
+                            expiryTime: String.valueOf(System.currentTimeMillis() + (3600 - 300) * 1000) // Default 1-hour expiry
+                        ]
+                        
+                        // Signal completion and close
+                        latch.countDown()
+                        frame.setVisible(false)
+                        frame.dispose()
+                    }
+                })
+                buttonPanel.add(graphExplorerButton)  // Add Graph Explorer button first
+                buttonPanel.add(openBrowserButton)  // Then sign-in page button
+                buttonPanel.add(submitButton)       // Then submit
+                
+                JButton cancelButton = new JButton("Cancel")
+                cancelButton.addActionListener(new ActionListener() {
+                    @Override
+                    void actionPerformed(ActionEvent e) {
+                        tokens = null
+                        latch.countDown()
+                        frame.setVisible(false)
+                        frame.dispose()
+                    }
+                })
+                buttonPanel.add(cancelButton)      // Cancel button last
+                
+                panel.add(buttonPanel, BorderLayout.SOUTH)
+                
+                // Set content and show
+                frame.setContentPane(panel)
+                frame.pack()
+                frame.setSize(550, 450)
+                frame.setLocationRelativeTo(null)
+                
+                // Configure dialog behavior
+                frame.setAlwaysOnTop(true)
+                frame.setResizable(false)
+                
+                // Don't set visible here - we'll do it in the show() method
+                
+                System.out.println("SimpleTokenDialog: UI components created successfully")
+            } catch (Exception e) {
+                System.err.println("SimpleTokenDialog: Error creating UI: " + e.getMessage())
+                e.printStackTrace()
+                
+                // Try a fallback UI with minimal components if something went wrong
+                try {
+                    createFallbackUI()
+                } catch (Exception ex) {
+                    System.err.println("SimpleTokenDialog: Even fallback UI failed: " + ex.getMessage())
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("SimpleTokenDialog: Error in parent window detection: " + e.getMessage())
+        }
+    }
+    
+    private void cleanup() {
+        synchronized(LOCK) {
+            isShowing = false
             
-            // Use a platform-specific approach for button styling
-            if (!System.getProperty("os.name").toLowerCase().contains("mac")) {
-                // Custom styling for Windows and Linux
-                submitButton.setBackground(new Color(0, 120, 215));
-                submitButton.setForeground(Color.WHITE);
-            } else {
-                // For macOS, use the system's look & feel but make the button more prominent
-                submitButton.putClientProperty("JButton.buttonType", "default");
-                submitButton.setOpaque(true);
+            if (frame != null) {
+                // Remove all listeners
+                frame.getWindowListeners().each { frame.removeWindowListener(it) }
+                if (tokenField != null) {
+                    tokenField.getActionListeners().each { tokenField.removeActionListener(it) }
+                }
+                if (refreshTokenField != null) {
+                    refreshTokenField.getActionListeners().each { refreshTokenField.removeActionListener(it) }
+                }
+                
+                // Dispose frame on EDT
+                SwingUtilities.invokeLater(() -> {
+                    if (frame.isDisplayable()) {
+                        frame.setVisible(false)
+                        frame.dispose()
+                    }
+                    frame = null
+                    tokenField = null
+                    refreshTokenField = null
+                    if (parentFrame != null && parentFrame.isUndecorated()) {
+                        parentFrame.dispose()
+                        parentFrame = null
+                    }
+                })
             }
             
-            submitButton.addActionListener(new ActionListener() {
-                @Override
-                void actionPerformed(ActionEvent e) {
-                    System.out.println("Submit button clicked")
-                    submitToken()
-                }
-            })
-            
-            JButton cancelButton = new JButton("Cancel")
-            cancelButton.addActionListener(new ActionListener() {
-                @Override
-                void actionPerformed(ActionEvent e) {
-                    System.out.println("Cancel button clicked")
-                    cancelDialog()
-                }
-            })
-            
-            buttonPanel.add(openBrowserButton)
-            buttonPanel.add(submitButton)
-            buttonPanel.add(cancelButton)
-            
-            panel.add(buttonPanel, BorderLayout.SOUTH)
-            
-            // Set content and show
-            frame.setContentPane(panel)
-            frame.pack()
-            frame.setSize(550, 450)
-            frame.setLocationRelativeTo(null)
-            
-            // Don't set visible here - we'll do it in the show() method
-            
-            System.out.println("SimpleTokenDialog: UI components created successfully")
-        } catch (Exception e) {
-            System.err.println("SimpleTokenDialog: Error creating UI: " + e.getMessage())
-            e.printStackTrace()
-            
-            // Try a fallback UI with minimal components if something went wrong
-            try {
-                createFallbackUI();
-            } catch (Exception ex) {
-                System.err.println("SimpleTokenDialog: Even fallback UI failed: " + ex.getMessage())
+            // Complete latch if it hasn't been already
+            if (latch != null) {
+                latch.countDown()
             }
         }
+    }
+    
+    void dispose() {
+        synchronized(LOCK) {
+            cleanup()
+            instance = null
+        }
+    }
+    
+    boolean isVisible() {
+        return isShowing && frame != null && frame.isVisible()
     }
     
     /**
@@ -246,31 +403,38 @@ class SimpleTokenDialog {
     private void createFallbackUI() {
         System.out.println("SimpleTokenDialog: Creating fallback UI")
         
-        frame = new JFrame("Token Entry (Fallback)");
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        // Create a temporary parent frame for modality
+        parentFrame = new JFrame()
+        parentFrame.setUndecorated(true)
+        parentFrame.setVisible(true)
+        parentFrame.setLocationRelativeTo(null)
+        
+        // Create modal dialog
+        frame = new JDialog(parentFrame, "Microsoft OAuth Token Entry (Fallback)", true)
+        frame.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE)
         
         // Use the simplest possible layout
-        frame.setLayout(new BorderLayout());
+        JPanel panel = new JPanel(new GridLayout(3, 1, 10, 10))
+        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20))
         
-        JPanel panel = new JPanel(new GridLayout(3, 1));
+        JLabel label = new JLabel("Enter access token:")
+        tokenField = new JTextField(20)
         
-        JLabel label = new JLabel("Enter access token:");
-        tokenField = new JTextField(20);
+        JButton submitButton = new JButton("Submit")
+        submitButton.addActionListener(e -> submitToken())
         
-        JButton submitButton = new JButton("Submit");
-        submitButton.addActionListener(e -> submitToken());
+        panel.add(label)
+        panel.add(tokenField)
+        panel.add(submitButton)
         
-        panel.add(label);
-        panel.add(tokenField);
-        panel.add(submitButton);
+        frame.add(panel)
+        frame.pack()
+        frame.setSize(400, 200)
+        frame.setLocationRelativeTo(null)
+        frame.setAlwaysOnTop(true)
         
-        frame.add(panel, BorderLayout.CENTER);
-        frame.setSize(400, 200);
-        frame.setLocationRelativeTo(null);
-        
-        System.out.println("SimpleTokenDialog: Fallback UI created");
+        System.out.println("SimpleTokenDialog: Fallback UI created")
     }
-
     
     /**
      * Submit the entered token
@@ -280,32 +444,49 @@ class SimpleTokenDialog {
             System.out.println("SimpleTokenDialog: Processing token submission")
             
             // Get token values - with fallbacks if UI components fail
-            String token = "";
-            String refreshToken = "";
+            String token = ""
+            String refreshToken = ""
             
             try {
-                token = tokenField != null ? tokenField.getText().trim() : "";
+                token = tokenField != null ? tokenField.getText().trim() : ""
                 // If refresh token field is null, it might be the fallback UI
-                refreshToken = refreshTokenField != null ? refreshTokenField.getText().trim() : "";
+                refreshToken = refreshTokenField != null ? refreshTokenField.getText().trim() : ""
             } catch (Exception e) {
-                System.err.println("SimpleTokenDialog: Error getting token text: " + e.getMessage());
+                System.err.println("SimpleTokenDialog: Error getting token text: " + e.getMessage())
+            }
+            
+            // Strip off "Bearer " prefix if present (case insensitive)
+            if (token.toLowerCase().startsWith("bearer ")) {
+                token = token.substring(7).trim()
             }
             
             if (token.isEmpty()) {
-                System.out.println("SimpleTokenDialog: Empty token submitted, showing error message");
+                System.out.println("SimpleTokenDialog: Empty token submitted, showing error message")
                 try {
                     JOptionPane.showMessageDialog(
                         frame,
                         "Please enter an access token",
                         "Missing Token",
                         JOptionPane.ERROR_MESSAGE
-                    );
+                    )
                 } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error showing error message: " + e.getMessage());
+                    System.err.println("SimpleTokenDialog: Error showing error message: " + e.getMessage())
                 }
-                return;
+                return
             }
             
+            // Validate token format - must contain two periods (JWT format)
+            String[] parts = token.split("\\.")
+            if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty() || parts[2].isEmpty()) {
+                JOptionPane.showMessageDialog(
+                    frame,
+                    "The token does not appear to be valid. It should contain three parts separated by periods (.).",
+                    "Invalid Token Format",
+                    JOptionPane.ERROR_MESSAGE
+                )
+                return
+            }
+
             // Store token data
             tokens = [
                 accessToken: token,
@@ -318,24 +499,18 @@ class SimpleTokenDialog {
             
             // Signal completion
             latch.countDown()
+            frame.dispose()
+            if (parentFrame != null) {
+                parentFrame.dispose()
+            }
             
-            // Dispose frame on UI thread
-            SwingUtilities.invokeLater(() -> {
-                try {
-                    if (frame != null && frame.isDisplayable()) {
-                        frame.dispose()
-                    }
-                } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error disposing frame: " + e.getMessage())
-                }
-            });
         } catch (Exception e) {
             System.err.println("SimpleTokenDialog: Unexpected error in submitToken: " + e.getMessage())
             e.printStackTrace()
             
             // Still signal completion to avoid hanging
-            tokens = null;
-            latch.countDown();
+            tokens = null
+            latch.countDown()
         }
     }
     
@@ -350,23 +525,29 @@ class SimpleTokenDialog {
             // Signal completion
             latch.countDown()
             
-            // Dispose frame on UI thread
+            // Dispose dialog and parent frame on UI thread
             SwingUtilities.invokeLater(() -> {
                 try {
                     if (frame != null && frame.isDisplayable()) {
                         frame.dispose()
                     }
+                    if (parentFrame != null && parentFrame.isDisplayable()) {
+                        parentFrame.dispose()
+                    }
+                    synchronized(LOCK) {
+                        isShowing = false
+                    }
                 } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error disposing frame: " + e.getMessage())
+                    System.err.println("SimpleTokenDialog: Error disposing dialog: " + e.getMessage())
                 }
-            });
+            })
         } catch (Exception e) {
             System.err.println("SimpleTokenDialog: Error in cancelDialog: " + e.getMessage())
             e.printStackTrace()
             
             // Still signal completion to avoid hanging
-            tokens = null;
-            latch.countDown();
+            tokens = null
+            latch.countDown()
         }
     }
     
@@ -390,10 +571,16 @@ class SimpleTokenDialog {
                             if (frame != null && frame.isDisplayable()) {
                                 frame.dispose()
                             }
+                            if (parentFrame != null && parentFrame.isDisplayable()) {
+                                parentFrame.dispose()
+                            }
+                            synchronized(LOCK) {
+                                isShowing = false
+                            }
                         } catch (Exception e) {
-                            System.err.println("SimpleTokenDialog: Error disposing frame after timeout: " + e.getMessage())
+                            System.err.println("SimpleTokenDialog: Error disposing dialog after timeout: " + e.getMessage())
                         }
-                    });
+                    })
                 } catch (Exception e) {
                     System.err.println("SimpleTokenDialog: Error in invokeAndWait after timeout: " + e.getMessage())
                 }
@@ -412,6 +599,31 @@ class SimpleTokenDialog {
             System.err.println("SimpleTokenDialog: Unexpected error in waitForTokens: " + e.getMessage())
             e.printStackTrace()
             return null
+        }
+    }
+    
+    /**
+     * Get tokens entered by user. Waits until tokens are submitted or dialog is closed.
+     * @return Map containing accessToken and refreshToken, or null if canceled
+     */
+    Map<String, String> getTokens() {
+        try {
+            // Wait for token entry or dialog close, up to 5 minutes
+            boolean completed = latch.await(5, TimeUnit.MINUTES)
+            if (!completed) {
+                System.out.println("SimpleTokenDialog: Token entry timed out")
+                cleanup()
+                return null
+            }
+            
+            // Return copy of tokens to avoid external modification
+            return tokens != null ? new HashMap<>(tokens) : null
+        } catch (InterruptedException e) {
+            System.err.println("SimpleTokenDialog: Token wait interrupted: " + e.getMessage())
+            Thread.currentThread().interrupt()
+            return null
+        } finally {
+            cleanup()
         }
     }
 }

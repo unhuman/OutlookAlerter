@@ -9,6 +9,7 @@ import java.time.ZonedDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.function.Supplier
+import javax.swing.JOptionPane
 
 // Additional imports for TokenEntryServer
 import com.sun.net.httpserver.HttpExchange
@@ -34,7 +35,6 @@ class OutlookClient {
     // Graph API endpoints
     private static final String GRAPH_ENDPOINT = 'https://graph.microsoft.com/v1.0'
     private static final String SCOPE = 'offline_access https://graph.microsoft.com/Calendars.Read'
-    
     // Server validation settings
     private static final long SERVER_VALIDATION_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -43,6 +43,10 @@ class OutlookClient {
     
     // Configuration manager
     private final ConfigManager configManager
+    
+    // Lock object to prevent multiple concurrent authentication attempts
+    private final Object authLock = new Object()
+    private volatile boolean isAuthenticating = false
     
     /**
      * Creates a new Outlook client with the given configuration
@@ -106,10 +110,31 @@ class OutlookClient {
         }
 
         // Update expiry time since the token is still valid according to server
-        expiryTime = currentTime + SERVER_VALIDATION_INTERVAL_MS; // Add 15 mins to current time as a safe default
-
+        long newExpiryTime = currentTime + SERVER_VALIDATION_INTERVAL_MS; // Add 15 mins to current time as a safe default
+        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
+        println "Token validated with server. Updated expiry time in configuration to: " + new Date(newExpiryTime);
+        
         // If we got here, the token is valid (either by our records alone or confirmed with the server)
         return true;
+    }
+    
+    /**
+     * Check if we already have a valid token without refreshing or re-authenticating
+     * This method is specifically designed for UI feedback purposes
+     * @return true if the token is valid according to our records, false if re-authentication or refresh is needed
+     */
+    boolean isTokenAlreadyValid() {
+        String accessToken = configManager.accessToken
+        long expiryTime = configManager.tokenExpiryTime
+        long currentTime = System.currentTimeMillis();
+
+        // Quick check: Do we have a token at all?
+        if (accessToken == null || accessToken.isEmpty()) {
+            return false;
+        }
+
+        // Not expired according to our records
+        return expiryTime > currentTime;
     }
     
     /**
@@ -161,6 +186,8 @@ class OutlookClient {
                 long expiryTime = System.currentTimeMillis() + (expiresIn - 300) * 1000
                 
                 configManager.updateTokens(accessToken, refreshToken, expiryTime)
+                lastTokenValidationResult = TOKEN_REFRESHED
+                println "Token refreshed successfully!"
                 return true
             } else if (response.statusCode() == 401 || response.statusCode() == 400) {
                 // If the refresh token is rejected or invalid, we need to re-authenticate
@@ -180,46 +207,18 @@ class OutlookClient {
     /**
      * Perform direct authentication via browser SSO or GUI token entry
      */
-    private boolean performDirectAuthentication() {
-        println "Starting direct authentication flow..."
+    protected boolean performDirectAuthentication() {
+        synchronized(authLock) {
+            if (isAuthenticating) {
+                println "Authentication already in progress"
+                return false
+            }
+            isAuthenticating = true
+        }
         
         try {
-            // The sign-in URL (either Okta SSO URL or direct Microsoft login)
-            String signInUrl = configManager.signInUrl
-            
-            if (!signInUrl) {
-                println """
-                ERROR: No sign-in URL configured. You need to set up either:
-                
-                1. For Okta SSO: Configure the 'signInUrl' property with your organization's Okta SSO URL
-                   Example: https://your-company.okta.com/home/office365/0oa1b2c3d4/aln5b6c7d8
-                
-                2. For direct Microsoft authentication: Register your own application in Azure Portal
-                   and configure the clientId, clientSecret, and redirectUri properties
-                """
-                return false
-            }
-            
-            println "Starting direct authentication flow with sign-in URL: ${signInUrl}"
-            
-            // Use the simple token dialog that is more reliable on macOS
-            println "Creating token dialog..."
-            SimpleTokenDialog tokenDialog = new SimpleTokenDialog(signInUrl)
-            
-            // Show the dialog
-            println "Showing token dialog..."
-            tokenDialog.show()
-            
-            // Wait for token entry
-            println "Waiting for token entry from user (this will block until token is provided or timeout)..."
-            Map<String, String> tokens = tokenDialog.waitForTokens(600) // 10 minutes timeout
-            
-            if (tokens == null) {
-                println "Authentication timed out or was canceled by the user."
-                return false
-            }
-            
-            if (!tokens.accessToken) {
+            def tokens = getTokensFromUser()
+            if (tokens == null || !tokens.accessToken) {
                 println "No access token was provided."
                 return false
             }
@@ -232,19 +231,55 @@ class OutlookClient {
                 "(invalid token format)"
             println "Received token starting with: ${redactedToken}"
             
-            // Save tokens
-            String accessToken = tokens.accessToken
-            String refreshToken = tokens.refreshToken
-            long expiryTime = tokens.expiryTime ? Long.parseLong(tokens.expiryTime) : 
-                (System.currentTimeMillis() + (3600 - 300) * 1000) // Default 1-hour expiry
+            String accessToken = null
+            String refreshToken = null
+            long expiryTime = 0
+            
+            while (true) {
+                // Validate the received token with Microsoft's server before accepting it
+                accessToken = tokens.accessToken
+                
+                println "Validating token with Microsoft's server..."
+                boolean isValid = validateTokenWithServer(accessToken)
+                
+                if (!isValid) {
+                    println "Token validation failed. The token appears to be invalid. Requesting a new token..."
+                    JOptionPane.showMessageDialog(
+                        null,
+                        "The provided token was rejected by Microsoft's server. Please get a new token and try again.",
+                        "Invalid Token",
+                        JOptionPane.ERROR_MESSAGE
+                    )
+                    // Get new tokens from user by showing the dialog again
+                    tokens = getTokensFromUser()
+                    if (tokens == null) {
+                        return false
+                    }
+                    // Continue the while loop to validate the new token
+                    continue
+                }
+                
+                // Token is valid, save all tokens
+                refreshToken = tokens.refreshToken
+                expiryTime = tokens.expiryTime ? Long.parseLong(tokens.expiryTime.toString()) : 
+                    (System.currentTimeMillis() + (3600 - 300) * 1000) // Default 1-hour expiry
+                
+                // Break the loop since we have a valid token
+                break
+            }
             
             configManager.updateTokens(accessToken, refreshToken, expiryTime)
-            println "Authentication successful! Token saved with expiry at: " + new Date(expiryTime)
+            println "Authentication successful! Token validated and saved with expiry at: " + new Date(expiryTime).format("yyyy-MM-dd HH:mm:ss z")
             return true
+            
         } catch (Exception e) {
             println "Error during authentication: ${e.message}"
             e.printStackTrace()
             return false
+        } finally {
+            synchronized(authLock) {
+                isAuthenticating = false
+            }
         }
     }
     
@@ -498,30 +533,64 @@ class OutlookClient {
      * particularly recurring events or events in different calendars
      * @return List of calendar events
      */
+    /**
+     * Token validation result enum as string constants
+     */
+    static final String TOKEN_VALID_NO_ACTION = "TOKEN_VALID_NO_ACTION"
+    static final String TOKEN_VALID_AFTER_SERVER_VALIDATION = "TOKEN_VALID_AFTER_SERVER_VALIDATION" 
+    static final String TOKEN_REFRESHED = "TOKEN_REFRESHED"
+    static final String TOKEN_NEW_AUTHENTICATION = "TOKEN_NEW_AUTHENTICATION"
+    
+    // Track the last token validation result for UI feedback
+    private String lastTokenValidationResult = TOKEN_VALID_NO_ACTION
+    
+    /**
+     * Get the result of the last token validation operation
+     * @return One of the TOKEN_* constants
+     */
+    String getLastTokenValidationResult() {
+        return lastTokenValidationResult
+    }
+    
     List<CalendarEvent> getUpcomingEventsUsingCalendarView() {
         try {
+            // Reset the validation result
+            lastTokenValidationResult = TOKEN_VALID_NO_ACTION
+            
             // Get current token
             String accessToken = configManager.accessToken
 
-            // If token appears invalid, try to validate with server before prompting
-            if (!hasValidToken() || !isValidTokenFormat(accessToken)) {
-                // If the token format is valid but possibly expired, check with server
-                if (isValidTokenFormat(accessToken)) {
-                    boolean isValid = validateTokenWithServer(accessToken);
-
-                    if (isValid) {
-                        // Update expiry time since the token is actually still valid
-                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
-                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
-                        println "Token validated with server. Updated expiry time."
-                    } else if (!authenticate()) {
-                        throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
-                    }
-                } else if (!authenticate()) {
-                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
+            // First check if token format is valid
+            if (!isValidTokenFormat(accessToken)) {
+                println "Token format is invalid. Need to authenticate again.";
+                if (!authenticate()) {
+                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token");
                 }
+                lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
+            } 
+            // Then check if we have a valid token (by local time or server validation)
+            else if (!hasValidToken()) {
+                // hasValidToken will have already tried server validation and updated config if valid
+                // If we get here, the token is truly invalid and we need to authenticate
+                println "Token validation failed. Need to authenticate again.";
+                if (!authenticate()) {
+                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token");
+                }
+                lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
+            } 
+            // If token was validated with server in hasValidToken() method, set the right status
+            else if (configManager.tokenExpiryTime > System.currentTimeMillis() - SERVER_VALIDATION_INTERVAL_MS) {
+                // Token was likely just validated with the server in hasValidToken()
+                lastTokenValidationResult = TOKEN_VALID_AFTER_SERVER_VALIDATION;
+                println "Token was validated with server. Using validated token.";
                 accessToken = configManager.accessToken;
+            } else {
+                println "Using existing valid token - no need to validate or refresh."
+                lastTokenValidationResult = TOKEN_VALID_NO_ACTION;
             }
+            
+            // Make sure we use the latest token
+            accessToken = configManager.accessToken;
 
             // Get events using calendar view API
             String baseUrl = "${GRAPH_ENDPOINT}/me/calendarView"
@@ -1464,6 +1533,51 @@ class OutlookClient {
                     os.close();
                 }
             }
+        }
+    }
+
+    private Map<String, String> getTokensFromUser() {
+        try {
+            // The sign-in URL (either Okta SSO URL or direct Microsoft login)
+            String signInUrl = configManager.signInUrl
+            
+            if (!signInUrl) {
+                println """
+                ERROR: No sign-in URL configured. You need to set up either:
+                
+                1. For Okta SSO: Configure the 'signInUrl' property with your organization's Okta SSO URL
+                   Example: https://your-company.okta.com/home/office365/0oa1b2c3d4/aln5b6c7d8
+                
+                2. For direct Microsoft authentication: Register your own application in Azure Portal
+                   and configure the clientId, clientSecret, and redirectUri properties
+                """
+                return null
+            }
+            
+            println "Starting direct authentication flow with sign-in URL: ${signInUrl}"
+            
+            println "Creating token dialog..."
+            SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
+            dialog.show()
+            Map<String, String> tokens = dialog.getTokens()
+            
+            if (tokens == null) {
+                println "Authentication timed out or was canceled by the user."
+                return null
+            }
+            
+            if (!tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
+                println "No access token was provided."
+                return null
+            }
+            
+            println "Token received from user interface."
+            return tokens
+            
+        } catch (Exception e) {
+            println "Error during token entry: ${e.message}"
+            e.printStackTrace()
+            return null
         }
     }
 }

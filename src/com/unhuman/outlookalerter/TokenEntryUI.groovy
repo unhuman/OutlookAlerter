@@ -124,9 +124,6 @@ class TokenEntryUI {
             
             System.out.println("Token entry dialog is now visible. Dialog state: " + 
                                (dialog.isVisible() ? "Visible" : "Not visible"));
-            
-            // Open the sign-in page in browser
-            openSignInPage();
         } catch (Exception e) {
             System.err.println("Error creating token dialog: " + e.getMessage());
             e.printStackTrace();
@@ -238,6 +235,19 @@ class TokenEntryUI {
             BorderFactory.createEmptyBorder(6, 6, 6, 6)
         ))
         
+        // Add enter key support
+        accessTokenField.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                // When enter is pressed, either move focus to refresh token field if empty, or submit
+                if (refreshTokenField.getText().trim().isEmpty()) {
+                    refreshTokenField.requestFocusInWindow()
+                } else {
+                    submitToken()
+                }
+            }
+        })
+        
         // Add document listener to validate token format as user types
         accessTokenField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             void validateToken() {
@@ -280,11 +290,19 @@ class TokenEntryUI {
         
         refreshTokenField = new JTextField(40)
         refreshTokenField.setFont(new Font("Monospaced", Font.PLAIN, 12))
-        // Make field more visible with a border
         refreshTokenField.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(180, 180, 180)),
             BorderFactory.createEmptyBorder(6, 6, 6, 6)
         ))
+        
+        // Add enter key support
+        refreshTokenField.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                submitToken() // Submit when enter is pressed in refresh token field
+            }
+        })
+        
         gbc.gridx = 1
         gbc.gridy = 2
         panel.add(refreshTokenField, gbc)
@@ -340,6 +358,11 @@ class TokenEntryUI {
             String accessToken = accessTokenField.getText().trim()
             String refreshToken = refreshTokenField.getText().trim()
             
+            // Strip off "Bearer " prefix if present (case insensitive)
+            if (accessToken.toLowerCase().startsWith("bearer ")) {
+                accessToken = accessToken.substring(7).trim()
+            }
+            
             System.out.println("Token submit action triggered. Access token length: " + 
                               (accessToken != null ? accessToken.length() : 0))
             
@@ -354,14 +377,8 @@ class TokenEntryUI {
                 return
             }
             
-            // Show a confirmation message
+            // Visual feedback that we're working
             dialog.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR))
-            JOptionPane.showMessageDialog(
-                dialog,
-                "Token accepted. The application will now proceed with authentication.",
-                "Token Accepted",
-                JOptionPane.INFORMATION_MESSAGE
-            )
             
             // Store the tokens
             tokens = [
@@ -369,6 +386,13 @@ class TokenEntryUI {
                 refreshToken: refreshToken.isEmpty() ? null : refreshToken,
                 expiryTime: Long.toString(System.currentTimeMillis() + (3600 - 300) * 1000) // Default 1-hour expiry, minus 5 min safety
             ]
+            
+            JOptionPane.showMessageDialog(
+                dialog,
+                "Token format validated. The application will now proceed with server validation.",
+                "Token Accepted",
+                JOptionPane.INFORMATION_MESSAGE
+            )
             
             // Signal completion and close dialog
             System.out.println("Token submitted successfully")
@@ -389,6 +413,7 @@ class TokenEntryUI {
                 "Error",
                 JOptionPane.ERROR_MESSAGE
             )
+            tokens = null
         } finally {
             if (dialog != null) {
                 dialog.setCursor(Cursor.getDefaultCursor())

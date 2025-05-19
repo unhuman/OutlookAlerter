@@ -15,7 +15,7 @@ if [ ! -d "lib" ]; then
 fi
 
 # List of required JAR files in the lib directory
-REQUIRED_JARS=("groovy.jar" "groovy-json.jar")
+REQUIRED_JARS=("groovy.jar" "groovy-json.jar" "groovy-dateutil.jar")
 MISSING_JARS=false
 
 for JAR in "${REQUIRED_JARS[@]}"; do

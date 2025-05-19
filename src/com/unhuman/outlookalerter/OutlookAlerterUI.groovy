@@ -437,6 +437,24 @@ class OutlookAlerterUI extends JFrame {
         // Run in background thread
         new Thread({
             try {
+                // First check if the token is already valid to provide better user feedback
+                boolean tokenWasAlreadyValid = outlookClient.isTokenAlreadyValid()
+                boolean tokenValidationNeeded = false
+                
+                if (tokenWasAlreadyValid) {
+                    // Provide immediate feedback if token is already valid
+                    SwingUtilities.invokeLater({
+                        statusLabel.setText("Status: Token already valid, refreshing events...")
+                    } as Runnable)
+                } else {
+                    // Provide immediate feedback that we need to validate the token
+                    SwingUtilities.invokeLater({
+                        statusLabel.setText("Status: Checking token validity...")
+                    } as Runnable)
+                    tokenValidationNeeded = true
+                }
+                
+                // Get events
                 List<CalendarEvent> calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
                 
                 // Process events
@@ -457,7 +475,44 @@ class OutlookAlerterUI extends JFrame {
                 
                 SwingUtilities.invokeLater({
                     lastUpdateLabel.setText("Last update: " + ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                    statusLabel.setText("Status: Ready")
+                    
+                    // Provide clear feedback about what happened with token validation
+                    String tokenValidationResult = outlookClient.getLastTokenValidationResult()
+                    
+                    if (tokenWasAlreadyValid) {
+                        statusLabel.setText("Status: Ready (token was already valid)")
+                    } else {
+                        switch (tokenValidationResult) {
+                            case OutlookClient.TOKEN_VALID_AFTER_SERVER_VALIDATION:
+                                statusLabel.setText("Status: Ready (token validated with server)")
+                                JOptionPane.showMessageDialog(
+                                    this,
+                                    "Authentication token was verified with the server successfully.\nNo new token entry was needed.",
+                                    "Token Validation",
+                                    JOptionPane.INFORMATION_MESSAGE
+                                )
+                                break
+                                
+                            case OutlookClient.TOKEN_REFRESHED:
+                                statusLabel.setText("Status: Ready (token was refreshed)")
+                                JOptionPane.showMessageDialog(
+                                    this,
+                                    "Authentication token was automatically refreshed.\nNo manual token entry was needed.",
+                                    "Token Refreshed",
+                                    JOptionPane.INFORMATION_MESSAGE
+                                )
+                                break
+                                
+                            case OutlookClient.TOKEN_NEW_AUTHENTICATION:
+                                statusLabel.setText("Status: Ready (token was updated)")
+                                break
+                                
+                            default:
+                                statusLabel.setText("Status: Ready")
+                                break
+                        }
+                    }
+                    
                     refreshButton.setEnabled(true)
                 } as Runnable)
             } catch (Exception e) {
