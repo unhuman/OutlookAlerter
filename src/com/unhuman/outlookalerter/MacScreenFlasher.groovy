@@ -11,6 +11,10 @@ import java.awt.GraphicsDevice
 import java.awt.GraphicsEnvironment
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
+import java.awt.SystemTray
+import java.awt.TrayIcon
+import java.awt.image.BufferedImage
+import java.awt.Graphics2D
 
 /**
  * Mac-specific implementation of ScreenFlasher
@@ -43,30 +47,50 @@ class MacScreenFlasher implements ScreenFlasher {
      */
     private boolean tryMacSpecificFlash(CalendarEvent event) {
         try {
-            // Try to use Mac-specific notification API via reflection to avoid compile-time dependencies
-            Class<?> nsUserNotificationClass = Class.forName("com.apple.eawt.NSUserNotification")
-            Class<?> nsUserNotificationCenterClass = Class.forName("com.apple.eawt.NSUserNotificationCenter")
+            // In Java 17, we'll use just the notification system since that works reliably on macOS
+            // We don't strictly need the taskbar bounce as macOS handle notifications well
+            boolean notificationShown = false
             
-            // Create notification
-            Object notification = nsUserNotificationClass.newInstance()
+            // Display notification using system tray if available
             
-            // Set title and content
-            nsUserNotificationClass.getMethod("setTitle", String.class)
-                    .invoke(notification, "Meeting Reminder")
+            // Display notification using system tray if available
+            if (SystemTray.isSupported()) {
+                TrayIcon trayIcon = null
+                try {
+                    SystemTray tray = SystemTray.getSystemTray()
+                    
+                    // Create a simple icon
+                    BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB)
+                    Graphics2D g = img.createGraphics()
+                    g.setColor(Color.RED)
+                    g.fillRect(0, 0, 16, 16)
+                    g.dispose()
+                    
+                    trayIcon = new TrayIcon(img)
+                    trayIcon.setImageAutoSize(true)
+                    tray.add(trayIcon)
+                    
+                    // Show notification
+                    trayIcon.displayMessage(
+                        "Meeting Reminder",
+                        "${event.subject} starts in ${event.getMinutesToStart()} minute(s)",
+                        TrayIcon.MessageType.WARNING
+                    )
+                    
+                    // Clean up tray icon after a delay
+                    Timer cleanupTimer = new Timer(10000, { e ->
+                        SystemTray.getSystemTray().remove(trayIcon)
+                    })
+                    cleanupTimer.setRepeats(false)
+                    cleanupTimer.start()
+                    notificationShown = true
+                } catch (Exception e) {
+                    println "System tray notification failed: ${e.message}"
+                }
+            }
             
-            nsUserNotificationClass.getMethod("setInformativeText", String.class)
-                    .invoke(notification, "${event.subject} starts in ${event.getMinutesToStart()} minute(s)")
-            
-            // Set sound
-            nsUserNotificationClass.getMethod("setSoundName", String.class)
-                    .invoke(notification, "NSUserNotificationDefaultSoundName")
-            
-            // Deliver notification
-            Object center = nsUserNotificationCenterClass.getMethod("defaultUserNotificationCenter").invoke(null)
-            nsUserNotificationCenterClass.getMethod("deliverNotification", nsUserNotificationClass)
-                    .invoke(center, notification)
-            
-            return true
+            // Only return true if we showed a notification
+            return notificationShown
         } catch (Exception e) {
             println "Mac notification API not available, falling back to cross-platform approach: ${e.message}"
             return false

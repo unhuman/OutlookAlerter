@@ -39,10 +39,11 @@ class OutlookAlerterUI extends JFrame {
     private JLabel lastUpdateLabel
     private TrayIcon trayIcon
     private SystemTray systemTray
-    
+
     // Schedulers for periodic tasks
-    private final ScheduledExecutorService alertScheduler = Executors.newScheduledThreadPool(1)
-    private final ScheduledExecutorService calendarScheduler = Executors.newScheduledThreadPool(1)
+    private final ScheduledExecutorService alertScheduler
+    private final ScheduledExecutorService calendarScheduler
+    private volatile boolean schedulersRunning = false
     
     // Track which events we've already alerted for
     private final Set<String> alertedEventIds = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true)
@@ -63,15 +64,41 @@ class OutlookAlerterUI extends JFrame {
         this.outlookClient = new OutlookClient(configManager)
         this.screenFlasher = ScreenFlasherFactory.createScreenFlasher()
         
+        // Initialize schedulers
+        this.alertScheduler = Executors.newScheduledThreadPool(1)
+        this.calendarScheduler = Executors.newScheduledThreadPool(1)
+        
         // Set up the UI
         initializeUI()
         
-        // Configure window behavior
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE)
+        // Configure window behavior for system tray support
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE)  // We'll handle window closing ourselves
         addWindowListener(new WindowAdapter() {
             @Override
             void windowClosing(WindowEvent e) {
-                shutdown()
+                // If system tray is supported, just minimize to tray
+                if (systemTray != null && trayIcon != null) {
+                    setVisible(false)
+                    trayIcon.displayMessage(
+                        "OutlookAlerter",
+                        "OutlookAlerter is still running in the background. Right-click the tray icon to exit.",
+                        TrayIcon.MessageType.INFO
+                    )
+                } else {
+                    // If no system tray, prompt to exit
+                    int option = JOptionPane.showConfirmDialog(
+                        OutlookAlerterUI.this,
+                        "Do you want to exit OutlookAlerter?\nYou will no longer receive meeting alerts.",
+                        "Confirm Exit",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE
+                    )
+                    
+                    if (option == JOptionPane.YES_OPTION) {
+                        shutdown()
+                        System.exit(0)
+                    }
+                }
             }
         })
         
@@ -99,10 +126,7 @@ class OutlookAlerterUI extends JFrame {
                 showItem.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
-                        setVisible(true)
-                        setExtendedState(JFrame.NORMAL)
-                        toFront()
-                        requestFocus()
+                        activateWindow()
                     }
                 })
                 
@@ -118,10 +142,7 @@ class OutlookAlerterUI extends JFrame {
                 settingsItem.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
-                        setVisible(true)
-                        setExtendedState(JFrame.NORMAL)
-                        toFront()
-                        requestFocus()
+                        activateWindow()
                         showSettingsDialog()
                     }
                 })
@@ -130,8 +151,18 @@ class OutlookAlerterUI extends JFrame {
                 exitItem.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
-                        shutdown()
-                        System.exit(0)
+                        int option = JOptionPane.showConfirmDialog(
+                            OutlookAlerterUI.this,
+                            "Do you want to exit OutlookAlerter?\nYou will no longer receive meeting alerts.",
+                            "Confirm Exit",
+                            JOptionPane.YES_NO_OPTION,
+                            JOptionPane.QUESTION_MESSAGE
+                        )
+                        
+                        if (option == JOptionPane.YES_OPTION) {
+                            shutdown()
+                            System.exit(0)
+                        }
                     }
                 })
                 
@@ -155,8 +186,7 @@ class OutlookAlerterUI extends JFrame {
                     trayIcon.addActionListener(new ActionListener() {
                         @Override
                         void actionPerformed(ActionEvent e) {
-                            setVisible(true)
-                            setExtendedState(JFrame.NORMAL)
+                            activateWindow()
                         }
                     })
                     
@@ -187,9 +217,7 @@ class OutlookAlerterUI extends JFrame {
                         }
                     })
                     
-                    // Override default close operation to hide instead of exit
-                    setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE)
-                    
+                    // Note: Default close operation is already set in constructor
                     System.out.println("System tray integration enabled successfully")
                 } catch (Exception e) {
                     System.err.println("Error adding system tray icon: " + e.getMessage())
@@ -272,6 +300,7 @@ class OutlookAlerterUI extends JFrame {
         settingsButton.addActionListener(new ActionListener() {
             @Override
             void actionPerformed(ActionEvent e) {
+                activateWindow()
                 showSettingsDialog()
             }
         })
@@ -322,27 +351,17 @@ class OutlookAlerterUI extends JFrame {
     }
     
     /**
-     * Start the application
+     * Start the UI and begin authentication process
      */
     void start() {
-        // Make sure we're running on the EDT for UI initialization
-        final JFrame thisFrame = this
         SwingUtilities.invokeLater({
             try {
-                // Set window properties to ensure visibility
-                setVisible(true)
-                setExtendedState(JFrame.NORMAL) // Make sure it's not minimized
-                toFront()
-                requestFocus()
+                // Set up window and components but don't show it
+                initializeUI()
+                setVisible(false)  // Start hidden
                 
-                // Log visibility state for debugging
-                System.out.println("UI visible: " + isVisible())
-                System.out.println("UI showing: " + isShowing())
-                System.out.println("UI state: " + getExtendedState())
-                
-                // Show busy cursor while authenticating
-                setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR))
-                statusLabel.setText("Status: Preparing authentication...")
+                // Show initial status
+                statusLabel.setText("Status: Starting up...")
                 
                 // Run authentication in a background thread to avoid blocking UI
                 Thread authThread = new Thread({
@@ -362,56 +381,43 @@ class OutlookAlerterUI extends JFrame {
                                 if (authenticated) {
                                     statusLabel.setText("Status: Authenticated successfully")
                                     
+                                    // Stop any existing schedulers
+                                    stopSchedulers()
+                                    
                                     // Refresh calendar immediately
                                     refreshCalendarEvents()
                                     
-                                    // Schedule periodic calendar data refresh (hourly)
-                                    calendarScheduler.scheduleAtFixedRate(
-                                        { refreshCalendarEvents() } as Runnable,
-                                        CALENDAR_REFRESH_INTERVAL_MINUTES,
-                                        CALENDAR_REFRESH_INTERVAL_MINUTES,
-                                        TimeUnit.MINUTES
-                                    )
+                                    // Start periodic tasks
+                                    startSchedulers()
                                     
-                                    // Schedule frequent alert checks using cached events
-                                    alertScheduler.scheduleAtFixedRate(
-                                        { checkAlertsFromCache() } as Runnable,
-                                        POLLING_INTERVAL_MINUTES,
-                                        POLLING_INTERVAL_MINUTES,
-                                        TimeUnit.MINUTES
-                                    )
-                                    
-                                    // Make sure main window is visible after authentication
-                                    if (!isVisible()) {
-                                        setVisible(true)
-                                        toFront()
-                                        requestFocus()
-                                    }
+                                    // Keep running in background after successful authentication
+                                    setVisible(false)
                                 } else {
                                     statusLabel.setText("Status: Authentication Failed")
                                     JOptionPane.showMessageDialog(
-                                        thisFrame,
+                                        this,
                                         "Failed to authenticate with Outlook. Please restart the application and try again.",
                                         "Authentication Error",
                                         JOptionPane.ERROR_MESSAGE
                                     )
                                 }
                             } catch (Exception e) {
-                                System.err.println("Error updating UI after authentication: " + e.getMessage())
+                                System.err.println("Error in EDT after authentication: " + e.getMessage())
                                 e.printStackTrace()
+                                JOptionPane.showMessageDialog(
+                                    this,
+                                    "Error during authentication: " + e.getMessage() + "\n\nPlease restart the application.",
+                                    "Authentication Error",
+                                    JOptionPane.ERROR_MESSAGE
+                                )
                             }
                         } as Runnable)
                     } catch (Exception e) {
-                        System.err.println("Error during authentication: " + e.getMessage())
+                        System.err.println("Error in authentication thread: " + e.getMessage())
                         e.printStackTrace()
-                        
                         SwingUtilities.invokeLater({
-                            // Restore cursor
-                            setCursor(Cursor.getDefaultCursor())
-                            
-                            statusLabel.setText("Status: Authentication Error")
                             JOptionPane.showMessageDialog(
-                                thisFrame,
+                                this,
                                 "Error during authentication: " + e.getMessage() + "\n\nPlease restart the application.",
                                 "Authentication Error",
                                 JOptionPane.ERROR_MESSAGE
@@ -493,9 +499,15 @@ class OutlookAlerterUI extends JFrame {
                 // Update UI
                 updateEventsDisplay(combinedEvents)
                 
-                // Check for events that need alerts
+                // Check for alerts
                 checkForEventAlerts(combinedEvents)
                 
+                // Restart schedulers only if they're not running
+                if (!schedulersRunning) {
+                    startSchedulers()
+                }
+                
+                // Update UI with success
                 SwingUtilities.invokeLater({
                     lastUpdateLabel.setText("Last update: " + ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
                     
@@ -718,31 +730,47 @@ class OutlookAlerterUI extends JFrame {
             }
         }
     }
-    
+
 
     /**
      * Check for alerts using the cached calendar events
      * This runs more frequently but doesn't make API calls
      */
     private void checkAlertsFromCache() {
-        System.out.println("\n=== Checking Alerts (using cached events) ===")
-        
-        // Make sure cached events exist
-        if (lastFetchedEvents == null || lastFetchedEvents.isEmpty()) {
-            return
+        // Since this runs on a background thread, wrap everything in try-catch
+        try {
+            System.out.println("\n=== Checking Alerts (using cached events) ===")
+            
+            // Make sure cached events exist
+            if (lastFetchedEvents == null || lastFetchedEvents.isEmpty()) {
+                System.out.println("No cached events to check")
+                return
+            }
+            
+            // Calculate updated times for events but reuse other data
+            final List<CalendarEvent> updatedEvents = lastFetchedEvents.collect { event ->
+                // MinutesToStart will be recalculated when accessed since it uses current time
+                return event
+            }
+            
+            // Update UI and check alerts on the EDT since we're accessing Swing components
+            SwingUtilities.invokeLater({
+                try {
+                    // Update the UI with recalculated times
+                    updateEventsDisplay(updatedEvents)
+                    
+                    // Check for alerts
+                    checkForEventAlerts(updatedEvents)
+                } catch (Exception e) {
+                    System.err.println("Error in EDT processing cached alerts: " + e.getMessage())
+                    e.printStackTrace()
+                }
+            } as Runnable)
+            
+        } catch (Exception e) {
+            System.err.println("Error checking alerts from cache: " + e.getMessage())
+            e.printStackTrace()
         }
-        
-        // Calculate updated times for events but reuse other data
-        List<CalendarEvent> updatedEvents = lastFetchedEvents.collect { event ->
-            // MinutesToStart will be recalculated when accessed since it uses current time
-            return event
-        }
-        
-        // Update the UI with recalculated times (but don't update lastUpdateLabel)
-        updateEventsDisplay(updatedEvents)
-        
-        // Check for alerts
-        checkForEventAlerts(updatedEvents)
     }
     
     /**
@@ -850,19 +878,152 @@ class OutlookAlerterUI extends JFrame {
     }
     
     /**
+     * Stop and restart all schedulers
+     */
+    private void restartSchedulers() {
+        stopSchedulers()
+        startSchedulers()
+    }
+
+    /**
+     * Start periodic schedulers for calendar refresh and alerts
+     */
+    private void startSchedulers() {
+        if (schedulersRunning) {
+            System.out.println("Schedulers already running")
+            return
+        }
+
+        System.out.println("Starting schedulers...")
+
+        // Schedule periodic calendar data refresh (hourly)
+        calendarScheduler.scheduleAtFixedRate(
+            { refreshCalendarEvents() } as Runnable,
+            CALENDAR_REFRESH_INTERVAL_MINUTES,
+            CALENDAR_REFRESH_INTERVAL_MINUTES,
+            TimeUnit.MINUTES
+        )
+
+        // Schedule frequent alert checks using cached events
+        alertScheduler.scheduleAtFixedRate(
+            { checkAlertsFromCache() } as Runnable,
+            POLLING_INTERVAL_MINUTES,
+            POLLING_INTERVAL_MINUTES,
+            TimeUnit.MINUTES
+        )
+
+        schedulersRunning = true
+        System.out.println("Schedulers started")
+    }
+
+    /**
+     * Stop all schedulers
+     */
+    private void stopSchedulers() {
+        System.out.println("Stopping schedulers...")
+
+        if (!schedulersRunning) {
+            System.out.println("Schedulers not running")
+            return
+        }
+
+        calendarScheduler.shutdown()
+        alertScheduler.shutdown()
+
+        try {
+            // Wait for schedulers to finish their current tasks
+            if (!calendarScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                calendarScheduler.shutdownNow()
+            }
+            if (!alertScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                alertScheduler.shutdownNow()
+            }
+        } catch (InterruptedException e) {
+            calendarScheduler.shutdownNow()
+            alertScheduler.shutdownNow()
+            Thread.currentThread().interrupt()
+        }
+
+        schedulersRunning = false
+        System.out.println("Schedulers stopped")
+    }
+
+    /**
      * Shutdown the application
      */
     void shutdown() {
-        // Shutdown schedulers
-        alertScheduler.shutdown()
-        calendarScheduler.shutdown()
+        stopSchedulers()
+    }
+
+    /**
+     * Activate the application window
+     */
+    private void activateWindow() {
+        // First ensure window state is normal
+        setExtendedState(JFrame.NORMAL)
         
-        try {
-            // Wait for any pending tasks to complete
-            alertScheduler.awaitTermination(5, TimeUnit.SECONDS)
-            calendarScheduler.awaitTermination(5, TimeUnit.SECONDS)
-        } catch (InterruptedException e) {
-            println "Error during scheduler shutdown: ${e.message}"
-        }
+        // Make window always on top
+        setAlwaysOnTop(true)
+        
+        // Make window visible
+        setVisible(true)
+        
+        // Bring to front
+        toFront()
+        
+        // Request focus - important for keyboard input
+        requestFocus()
+        requestFocusInWindow()
+        
+        // Additional steps to ensure window stays frontmost on macOS
+        SwingUtilities.invokeLater({
+            try {
+                // Platform-specific window activation for macOS
+                if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+                    try {
+                        // Use the modern java.awt.Taskbar API for notifications
+                        Class<?> taskbarClass = Class.forName("java.awt.Taskbar")
+                        Object taskbar = taskbarClass.getMethod("getTaskbar").invoke(null)
+                        taskbarClass.getMethod("requestUserAttention", boolean.class).invoke(taskbar, true)
+                    } catch (Exception e) {
+                        System.err.println("Could not request macOS user attention: " + e.getMessage())
+                    }
+                }
+                
+                // Multiple focus requests with delays to ensure window stays on top
+                Timer focusTimer = new Timer(50, { e ->
+                    toFront()
+                    requestFocusInWindow()
+                })
+                focusTimer.setRepeats(false)
+                focusTimer.start()
+                
+                // Additional focus request after a longer delay
+                Timer finalFocusTimer = new Timer(200, { e ->
+                    toFront()
+                    requestFocusInWindow()
+                    setAlwaysOnTop(false)  // Only remove always-on-top after final focus
+                })
+                finalFocusTimer.setRepeats(false)
+                finalFocusTimer.start()
+                
+                // Platform-specific window activation for macOS
+                if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+                    try {
+                        // Use reflection to safely access macOS-specific functionality
+                        Class<?> taskbarClass = Class.forName("java.awt.Taskbar")
+                        Object taskbar = taskbarClass.getMethod("getTaskbar").invoke(null)
+                        // Request attention with the correct method
+                        taskbarClass.getMethod("requestUserAttention", boolean.class).invoke(taskbar, true)
+                    } catch (Exception e) {
+                        // Fallback - just log the error but continue
+                        System.err.println("Could not request macOS user attention: " + e.getMessage())
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Error during window activation: " + e.getMessage())
+                e.printStackTrace()
+            }
+        } as Runnable)
     }
 }
