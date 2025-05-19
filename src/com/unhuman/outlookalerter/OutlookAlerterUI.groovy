@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit
 class OutlookAlerterUI extends JFrame {
     // Time constants
     private static final int POLLING_INTERVAL_MINUTES = 1
+    private static final int CALENDAR_REFRESH_INTERVAL_MINUTES = 60  // Hourly calendar refresh
     
     // Components
     private final ConfigManager configManager
@@ -39,12 +40,16 @@ class OutlookAlerterUI extends JFrame {
     private TrayIcon trayIcon
     private SystemTray systemTray
     
-    // Scheduler for periodic tasks
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1)
+    // Schedulers for periodic tasks
+    private final ScheduledExecutorService alertScheduler = Executors.newScheduledThreadPool(1)
+    private final ScheduledExecutorService calendarScheduler = Executors.newScheduledThreadPool(1)
     
     // Track which events we've already alerted for
     private final Set<String> alertedEventIds = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true)
     
+    // Store last fetched events to avoid frequent API calls
+    private List<CalendarEvent> lastFetchedEvents = []
+
     /**
      * Create a new OutlookAlerterUI
      */
@@ -360,9 +365,17 @@ class OutlookAlerterUI extends JFrame {
                                     // Refresh calendar immediately
                                     refreshCalendarEvents()
                                     
-                                    // Schedule periodic calendar checks
-                                    scheduler.scheduleAtFixedRate(
+                                    // Schedule periodic calendar data refresh (hourly)
+                                    calendarScheduler.scheduleAtFixedRate(
                                         { refreshCalendarEvents() } as Runnable,
+                                        CALENDAR_REFRESH_INTERVAL_MINUTES,
+                                        CALENDAR_REFRESH_INTERVAL_MINUTES,
+                                        TimeUnit.MINUTES
+                                    )
+                                    
+                                    // Schedule frequent alert checks using cached events
+                                    alertScheduler.scheduleAtFixedRate(
+                                        { checkAlertsFromCache() } as Runnable,
                                         POLLING_INTERVAL_MINUTES,
                                         POLLING_INTERVAL_MINUTES,
                                         TimeUnit.MINUTES
@@ -429,6 +442,8 @@ class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
+        System.out.println("\n=== Refreshing Calendar Events ===")
+        
         SwingUtilities.invokeLater({
             statusLabel.setText("Status: Refreshing calendar events...")
             refreshButton.setEnabled(false)
@@ -440,6 +455,9 @@ class OutlookAlerterUI extends JFrame {
                 // First check if the token is already valid to provide better user feedback
                 boolean tokenWasAlreadyValid = outlookClient.isTokenAlreadyValid()
                 boolean tokenValidationNeeded = false
+                
+                System.out.println("Token validation check: " + 
+                    (tokenWasAlreadyValid ? "already valid" : "needs validation"))
                 
                 if (tokenWasAlreadyValid) {
                     // Provide immediate feedback if token is already valid
@@ -455,7 +473,9 @@ class OutlookAlerterUI extends JFrame {
                 }
                 
                 // Get events
+                System.out.println("Fetching events from calendar...")
                 List<CalendarEvent> calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
+                System.out.println("Retrieved ${calendarViewEvents.size()} events")
                 
                 // Process events
                 Map<String, CalendarEvent> combinedEventsMap = new HashMap<>()
@@ -466,6 +486,9 @@ class OutlookAlerterUI extends JFrame {
                 // Convert back to list and sort by start time
                 List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
                 combinedEvents.sort { event -> event.getMinutesToStart() }
+                
+                // Update cache
+                lastFetchedEvents = combinedEvents
                 
                 // Update UI
                 updateEventsDisplay(combinedEvents)
@@ -637,22 +660,32 @@ class OutlookAlerterUI extends JFrame {
      * Check for events that need alerts
      */
     private void checkForEventAlerts(List<CalendarEvent> events) {
+        // Debug log
+        System.out.println("Checking ${events.size()} events for alerts...")
+        
         // Check each event for alerts
         for (CalendarEvent event : events) {
+            // Debug log
+            System.out.println("Checking event: ${event.subject}")
+            
             // Skip events that have already ended
             if (event.hasEnded()) {
+                System.out.println("  Skipping: Event has ended")
                 continue
             }
             
             int minutesToStart = event.getMinutesToStart()
+            System.out.println("  Minutes to start: ${minutesToStart}")
             
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.id)) {
+                System.out.println("  Skipping: Already alerted for this event")
                 continue
             }
             
             // Alert for events about to start
             if (minutesToStart <= 1 && minutesToStart >= -1) {
+                System.out.println("  *** Triggering alert ***")
                 final String eventTitle = event.subject
                 SwingUtilities.invokeLater({
                     statusLabel.setText("Status: Alerting for ${eventTitle}")
@@ -674,13 +707,42 @@ class OutlookAlerterUI extends JFrame {
                 
                 // Mark as alerted
                 alertedEventIds.add(event.id)
+            } else {
+                System.out.println("  Not alerting: Outside alert window")
             }
             
             // Clean up alerted events list periodically
             if (alertedEventIds.size() > 100) {
+                System.out.println("Clearing alertedEventIds list (size > 100)")
                 alertedEventIds.clear()
             }
         }
+    }
+    
+
+    /**
+     * Check for alerts using the cached calendar events
+     * This runs more frequently but doesn't make API calls
+     */
+    private void checkAlertsFromCache() {
+        System.out.println("\n=== Checking Alerts (using cached events) ===")
+        
+        // Make sure cached events exist
+        if (lastFetchedEvents == null || lastFetchedEvents.isEmpty()) {
+            return
+        }
+        
+        // Calculate updated times for events but reuse other data
+        List<CalendarEvent> updatedEvents = lastFetchedEvents.collect { event ->
+            // MinutesToStart will be recalculated when accessed since it uses current time
+            return event
+        }
+        
+        // Update the UI with recalculated times (but don't update lastUpdateLabel)
+        updateEventsDisplay(updatedEvents)
+        
+        // Check for alerts
+        checkForEventAlerts(updatedEvents)
     }
     
     /**
@@ -791,14 +853,16 @@ class OutlookAlerterUI extends JFrame {
      * Shutdown the application
      */
     void shutdown() {
-        scheduler.shutdown()
+        // Shutdown schedulers
+        alertScheduler.shutdown()
+        calendarScheduler.shutdown()
+        
         try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow()
-            }
+            // Wait for any pending tasks to complete
+            alertScheduler.awaitTermination(5, TimeUnit.SECONDS)
+            calendarScheduler.awaitTermination(5, TimeUnit.SECONDS)
         } catch (InterruptedException e) {
-            scheduler.shutdownNow()
-            Thread.currentThread().interrupt()
+            println "Error during scheduler shutdown: ${e.message}"
         }
     }
 }

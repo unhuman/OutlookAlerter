@@ -1,0 +1,24 @@
+    /**
+     * Check for alerts using the cached calendar events
+     * This runs more frequently but doesn't make API calls
+     */
+    private void checkAlertsFromCache() {
+        System.out.println("\n=== Checking Alerts (using cached events) ===")
+        
+        // Make sure cached events exist
+        if (lastFetchedEvents == null || lastFetchedEvents.isEmpty()) {
+            return
+        }
+        
+        // Calculate updated times for events but reuse other data
+        List<CalendarEvent> updatedEvents = lastFetchedEvents.collect { event ->
+            // MinutesToStart will be recalculated when accessed since it uses current time
+            return event
+        }
+        
+        // Update the UI with recalculated times
+        updateEventsDisplay(updatedEvents)
+        
+        // Check for alerts
+        checkForEventAlerts(updatedEvents)
+    }
