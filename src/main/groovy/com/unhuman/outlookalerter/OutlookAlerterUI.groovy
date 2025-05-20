@@ -51,20 +51,25 @@ class OutlookAlerterUI extends JFrame {
     // Store last fetched events to avoid frequent API calls
     private List<CalendarEvent> lastFetchedEvents = []
 
+    // Track the current icon state
+    private Boolean currentIconInvalidState = null
+
     /**
      * Create a new OutlookAlerterUI
      */
     OutlookAlerterUI(String configPath) {
         super("Outlook Alerter - Meeting Alerts")
         
-        // Set window icon
-        setIconImage(IconManager.getLargeIconImage())
-        
-        // Initialize components
+        // Initialize components first so we can check token status
         this.configManager = new ConfigManager(configPath)
         this.configManager.loadConfiguration()
+        this.outlookClient = new OutlookClient(configManager, this)
         
-        this.outlookClient = new OutlookClient(configManager)
+        // Set window icon based on initial token validity
+        boolean tokenInvalid = !outlookClient.isTokenAlreadyValid() // Use isTokenAlreadyValid for initial check
+        updateIcons(tokenInvalid)
+
+        this.configManager.loadConfiguration()
         this.screenFlasher = ScreenFlasherFactory.createScreenFlasher()
         
         // Initialize schedulers
@@ -113,6 +118,18 @@ class OutlookAlerterUI extends JFrame {
         setupSystemTray()
     }
     
+    private void updateIcons(boolean invalidToken) {
+        // Update icons based on token validity and state change
+        if (invalidToken != currentIconInvalidState) {
+            IconManager.clearIconCaches() // Force regeneration of icons
+            currentIconInvalidState = invalidToken
+            setIconImage(IconManager.getLargeIconImage(invalidToken))
+            if (trayIcon != null) {
+                trayIcon.setImage(IconManager.getIconImage(invalidToken))
+            }
+        }
+    }
+
     /**
      * Set up system tray icon and menu if supported by the platform
      */
@@ -179,8 +196,9 @@ class OutlookAlerterUI extends JFrame {
                 
                 // Create tray icon with the popup menu
                 try {
-                    // Create a simple icon using Java2D
-                    Image trayIconImage = createTrayIconImage()
+                    // Create icon based on token validity
+                    boolean tokenInvalid = !outlookClient.hasValidToken()
+                    Image trayIconImage = IconManager.getIconImage(tokenInvalid)
                     
                     trayIcon = new TrayIcon(trayIconImage, "Outlook Alerter - Meeting Alerts", popup)
                     trayIcon.setImageAutoSize(true)
@@ -362,6 +380,9 @@ class OutlookAlerterUI extends JFrame {
                         // Attempt authentication - this will show the token dialog if needed
                         final boolean authenticated = outlookClient.authenticate()
                         System.out.println("Authentication process completed, result: " + authenticated)
+
+                        // Apply icon updates
+                        updateIcons(!authenticated)
                         
                         // Switch back to EDT for UI updates
                         SwingUtilities.invokeLater({
@@ -508,6 +529,7 @@ class OutlookAlerterUI extends JFrame {
                     if (tokenWasAlreadyValid) {
                         statusLabel.setText("Status: Ready (token was already valid)")
                     } else {
+                        boolean isTokenValid = true
                         switch (tokenValidationResult) {
                             case OutlookClient.TOKEN_VALID_AFTER_SERVER_VALIDATION:
                                 statusLabel.setText("Status: Ready (token validated with server)")
@@ -517,6 +539,8 @@ class OutlookAlerterUI extends JFrame {
                                     "Token Validation",
                                     JOptionPane.INFORMATION_MESSAGE
                                 )
+                                // Update icons to show valid state
+                                updateIcons(false)
                                 break
                                 
                             case OutlookClient.TOKEN_REFRESHED:
@@ -527,18 +551,29 @@ class OutlookAlerterUI extends JFrame {
                                     "Token Refreshed",
                                     JOptionPane.INFORMATION_MESSAGE
                                 )
+                                // Update icons to show valid state
+                                updateIcons(false)
                                 break
                                 
                             case OutlookClient.TOKEN_NEW_AUTHENTICATION:
                                 statusLabel.setText("Status: Ready (token was updated)")
+                                // Update icons to show valid state
+                                updateIcons(false)
                                 break
                                 
                             default:
-                                statusLabel.setText("Status: Ready")
+                                if (!outlookClient.hasValidToken()) {
+                                    statusLabel.setText("Status: Token Invalid")
+                                    isTokenValid = false
+                                } else {
+                                    statusLabel.setText("Status: Ready")
+                                }
                                 break
                         }
+                        
+                        // Update both window and tray icons based on token validity
+                        updateIcons(!isTokenValid)
                     }
-                    
                     refreshButton.setEnabled(true)
                 } as Runnable)
             } catch (Exception e) {
@@ -1047,5 +1082,32 @@ class OutlookAlerterUI extends JFrame {
                 activateWindow()
             }
         } as Runnable)
+    }
+
+    /**
+     * Show token entry form
+     */
+    private void showTokenEntryForm() {
+        // Clear icon caches to force regeneration with invalid state
+        IconManager.clearIconCaches()
+        
+        // Update window and tray icons to show invalid token state
+        updateIcons(true)
+
+        // Show the token entry form
+        TokenEntryUI tokenEntryUI = new TokenEntryUI(configManager.getSignInUrl())
+        tokenEntryUI.showDialog()
+    }
+
+    /**
+     * Prompt the user for tokens using the SimpleTokenDialog.
+     * @param signInUrl The URL for signing in.
+     * @return A map containing the tokens, or null if the user cancels.
+     */
+    Map<String, String> promptForTokens(String signInUrl) {
+        updateIcons(true)  // Show invalid token state
+        SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
+        dialog.show()
+        return dialog.getTokens()
     }
 }

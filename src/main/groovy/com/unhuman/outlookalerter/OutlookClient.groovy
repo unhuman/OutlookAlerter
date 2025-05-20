@@ -51,15 +51,25 @@ class OutlookClient {
     // Track if we've logged about timezone
     private boolean hasLoggedTimezone = false
 
+    // Reference to OutlookAlerterUI for token dialog handling
+    private final OutlookAlerterUI outlookAlerterUI;
+
     /**
      * Creates a new Outlook client with the given configuration
      */
+    OutlookClient(ConfigManager configManager, OutlookAlerterUI outlookAlerterUI) {
+        this.configManager = configManager;
+        this.outlookAlerterUI = outlookAlerterUI;
+        this.httpClient = HttpClient.newHttpClient();
+    }
+
+    /**
+     * Constructor for OutlookClient.
+     * @param configManager The configuration manager instance.
+     */
     OutlookClient(ConfigManager configManager) {
         this.configManager = configManager
-        this.httpClient = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_2)
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build()
+        this.httpClient = HttpClient.newHttpClient()
     }
     
     /**
@@ -89,7 +99,7 @@ class OutlookClient {
      * Check if we have a valid (non-expired) access token
      * @return true if the token is valid according to our records and/or Microsoft's server
      */
-    private boolean hasValidToken() {
+    boolean hasValidToken() {
         String accessToken = configManager.accessToken
         long expiryTime = configManager.tokenExpiryTime
         long currentTime = System.currentTimeMillis();
@@ -244,7 +254,7 @@ class OutlookClient {
                 
                 println "Validating token with Microsoft's server..."
                 boolean isValid = validateTokenWithServer(accessToken)
-                
+
                 if (!isValid) {
                     println "Token validation failed. The token appears to be invalid. Requesting a new token..."
                     JOptionPane.showMessageDialog(
@@ -1546,40 +1556,39 @@ class OutlookClient {
         try {
             // The sign-in URL (either Okta SSO URL or direct Microsoft login)
             String signInUrl = configManager.signInUrl
-            
+
             if (!signInUrl) {
                 println """
                 ERROR: No sign-in URL configured. You need to set up either:
-                
+
                 1. For Okta SSO: Configure the 'signInUrl' property with your organization's Okta SSO URL
                    Example: https://your-company.okta.com/home/office365/0oa1b2c3d4/aln5b6c7d8
-                
+
                 2. For direct Microsoft authentication: Register your own application in Azure Portal
                    and configure the clientId, clientSecret, and redirectUri properties
                 """
                 return null
             }
-            
+
             println "Starting direct authentication flow with sign-in URL: ${signInUrl}"
-            
-            println "Creating token dialog..."
-            SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
-            dialog.show()
-            Map<String, String> tokens = dialog.getTokens()
-            
-            if (tokens == null) {
-                println "Authentication timed out or was canceled by the user."
-                return null
+
+            Map<String, String> tokens = null
+            while (tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
+                tokens = outlookAlerterUI.promptForTokens(signInUrl)
+
+                if (tokens == null) {
+                    println "Authentication timed out or was canceled by the user."
+                    return null
+                }
+
+                if (!tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
+                    println "No access token was provided. Prompting user again."
+                }
             }
-            
-            if (!tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
-                println "No access token was provided."
-                return null
-            }
-            
+
             println "Token received from user interface."
             return tokens
-            
+
         } catch (Exception e) {
             println "Error during token entry: ${e.message}"
             e.printStackTrace()

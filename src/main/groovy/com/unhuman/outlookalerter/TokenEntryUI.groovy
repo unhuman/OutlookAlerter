@@ -48,6 +48,8 @@ class TokenEntryUI {
             System.err.println("Error creating token dialog: " + e.getMessage())
             e.printStackTrace()
         }
+
+        System.out.println("DONE to show token entry dialog...")
     }
     
     /**
