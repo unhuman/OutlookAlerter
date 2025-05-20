@@ -648,15 +648,15 @@ class OutlookAlerterUI extends JFrame {
             
             if (!laterEvents.isEmpty()) {
                 displayText.append("\n-- LATER MEETINGS --\n\n")
-                laterEvents.take(5).each { CalendarEvent event ->
+                laterEvents.take(10).each { CalendarEvent event ->
                     displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}")
                               .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
                               .append(" (starts in ${event.getMinutesToStart()} minutes)")
                               .append("\n")
                 }
                 
-                if (laterEvents.size() > 5) {
-                    displayText.append("  • ...and ${laterEvents.size() - 5} more later events\n")
+                if (laterEvents.size() > 10) {
+                    displayText.append("  • ...and ${laterEvents.size() - 10} more later events\n")
                 }
             }
         }
