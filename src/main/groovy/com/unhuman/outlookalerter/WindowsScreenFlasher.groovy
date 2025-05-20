@@ -97,7 +97,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                             .createImage(new byte[0])
                 }
                 
-                java.awt.TrayIcon trayIcon = new java.awt.TrayIcon(image, "OutlookAlerter")
+                java.awt.TrayIcon trayIcon = new java.awt.TrayIcon(image, "Outlook Alerter")
                 trayIcon.setImageAutoSize(true)
                 
                 // Show notification

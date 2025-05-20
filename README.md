@@ -1,4 +1,4 @@
-# OutlookAlerter
+# Outlook Alerter
 
 A Groovy application that monitors your Microsoft Outlook/Office 365 calendar and alerts you when meetings are about to start by flashing the screen.
 
@@ -26,7 +26,7 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 
 ## User Interface
 
-OutlookAlerter provides a modern, user-friendly graphical interface with these key features:
+Outlook Alerter provides a modern, user-friendly graphical interface with these key features:
 
 ### Main Window
 - **Current Meetings**: Shows in-progress meetings with duration and status
@@ -49,7 +49,7 @@ OutlookAlerter provides a modern, user-friendly graphical interface with these k
 
 ## Running the Application
 
-You can run OutlookAlerter in two modes, either using the JAR directly or using the provided shell scripts:
+You can run Outlook Alerter in two modes, either using the JAR directly or using the provided shell scripts:
 
 ### Using Maven-built JAR
 
@@ -113,7 +113,7 @@ The new UI-based authentication process:
 
 ## Timezone Handling
 
-OutlookAlerter now provides improved timezone handling to ensure your calendar events are displayed accurately regardless of your location or system timezone settings.
+Outlook Alerter now provides improved timezone handling to ensure your calendar events are displayed accurately regardless of your location or system timezone settings.
 
 ### Timezone Configuration Options
 
@@ -154,7 +154,7 @@ This will show:
 
 ## Diagnostic Tools
 
-OutlookAlerter includes several diagnostic tools to help troubleshoot issues with calendar events not appearing or with timezone handling:
+Outlook Alerter includes several diagnostic tools to help troubleshoot issues with calendar events not appearing or with timezone handling:
 
 ### Basic Diagnostic Tools
 
@@ -254,6 +254,8 @@ OutlookAlerter includes several built-in diagnostic tools:
 
 ### Common Issues
 
+> Note: All dialog windows and system tray notifications will show "Outlook Alerter" as the application name.
+
 1. **Authentication Problems**
    - Verify Okta SSO URL in settings
    - Check token expiration
@@ -289,7 +291,7 @@ OutlookAlerter includes several built-in diagnostic tools:
 
 ## Usage
 
-You can run OutlookAlerter directly using Java with the Maven-built JAR:
+You can run Outlook Alerter directly using Java with the Maven-built JAR:
 
 ```bash
 # Run with default options
@@ -315,7 +317,7 @@ Note: All diagnostic and test scripts (`test-*.sh`, `diagnose-*.sh`) also suppor
 
 ## Installation
 
-There are two ways to build and run OutlookAlerter:
+There are two ways to build and run Outlook Alerter:
 
 ### Using Maven (Recommended)
 1. Clone the repository
@@ -361,7 +363,7 @@ redirectUri=http://localhost:8888/redirect                 # OAuth redirect URI
 
 ## Event Response Status Support
 
-OutlookAlerter now properly displays the response status of each calendar event (accepted, tentative, declined, etc.):
+Outlook Alerter now properly displays the response status of each calendar event (accepted, tentative, declined, etc.):
 
 - All events are displayed regardless of response status, including tentative meetings
 - Response status is shown in the console output for each event
@@ -380,7 +382,7 @@ To test response status support, run the included test script:
 
 ## Build System
 
-OutlookAlerter uses Maven for dependency management and building. The project's key dependencies are managed through the `pom.xml` file:
+Outlook Alerter uses Maven for dependency management and building. The project's key dependencies are managed through the `pom.xml` file:
 
 ### Core Dependencies
 - Groovy 3.0.9 (core, json, and dateutil modules)

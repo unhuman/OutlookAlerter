@@ -47,7 +47,7 @@ class OutlookAlerterConsole {
      * @param daemonMode Whether to run as a daemon (background service)
      */
     void start(boolean daemonMode) {
-        println "Starting OutlookAlerter in console mode..."
+        println "Starting Outlook Alerter in console mode..."
         
         // Print timezone information
         printSystemTimezoneInfo()
@@ -110,7 +110,7 @@ class OutlookAlerterConsole {
      * Stop the application
      */
     void stop() {
-        println "Stopping OutlookAlerter..."
+        println "Stopping Outlook Alerter..."
         scheduler.shutdown()
         
         try {
@@ -122,7 +122,7 @@ class OutlookAlerterConsole {
             Thread.currentThread().interrupt()
         }
         
-        println "OutlookAlerter stopped."
+        println "Outlook Alerter stopped."
     }
     
     /**

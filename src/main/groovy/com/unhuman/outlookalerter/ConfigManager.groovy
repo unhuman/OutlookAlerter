@@ -3,7 +3,7 @@ package com.unhuman.outlookalerter
 import groovy.transform.CompileStatic
 
 /**
- * Manages configuration settings and OAuth credentials for OutlookAlerter
+ * Manages configuration settings and OAuth credentials for Outlook Alerter
  */
 @CompileStatic
 class ConfigManager {
@@ -84,11 +84,9 @@ class ConfigManager {
         
         // Application-specific properties
         properties.setProperty("preferredTimezone", "")
-        properties.setProperty("alertMinutes", "1")
-        
-        // Save to file
+        properties.setProperty("alertMinutes", "1")            // Save to file
         try {
-            properties.store(new FileOutputStream(configFile), "OutlookAlerter Configuration")
+            properties.store(new FileOutputStream(configFile), "Outlook Alerter Configuration")
             
             println """
             Configuration file created at ${configFile.absolutePath}
@@ -185,7 +183,7 @@ class ConfigManager {
             
             // Save to file
             File configFile = new File(configFilePath)
-            properties.store(new FileOutputStream(configFile), "OutlookAlerter Configuration")
+            properties.store(new FileOutputStream(configFile), "Outlook Alerter Configuration")
             println "Configuration saved to ${configFilePath}"
         } catch (Exception e) {
             println "Error saving configuration: ${e.message}"

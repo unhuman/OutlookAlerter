@@ -63,7 +63,7 @@ class TokenEntryUI {
             System.out.println("Creating token entry dialog...");
             
             // Create a JDialog - using false for non-modal to prevent EDT deadlock
-            dialog = new JDialog((Frame)null, "Microsoft OAuth Token Entry", false);
+            dialog = new JDialog((Frame)null, "Outlook Alerter - Token Entry", false);
             dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
             
             // Set a nice background color
@@ -145,7 +145,7 @@ class TokenEntryUI {
         headerPanel.setPreferredSize(new Dimension(800, 50))
         headerPanel.setMaximumSize(new Dimension(1600, 50))
         
-        JLabel titleLabel = new JLabel("Microsoft OAuth Token Entry")
+        JLabel titleLabel = new JLabel("Outlook Alerter - Token Entry")
         titleLabel.setFont(new Font("Dialog", Font.BOLD, 18))
         titleLabel.setForeground(Color.WHITE)
         titleLabel.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 10))

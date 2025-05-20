@@ -135,7 +135,7 @@ class SimpleTokenDialog {
             }
             parentFrame = activeWindow instanceof JFrame ? (JFrame)activeWindow : null
             
-            frame = new JDialog(parentFrame, "Microsoft OAuth Token Entry", true)
+            frame = new JDialog(parentFrame, "Outlook Alerter - Token Entry", true)
             frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE)
             frame.addWindowListener(new WindowAdapter() {
                 @Override
@@ -154,7 +154,7 @@ class SimpleTokenDialog {
                 // Instructions at top - simplified to avoid HTML rendering issues
                 JLabel instructionsLabel = new JLabel(
                     "<html><div style='width: 400px'>" +
-                    "<h2>Microsoft Token Authentication</h2>" +
+                    "<h2>Outlook Alerter Authentication</h2>" +
                     "<p><b>Recommended Method:</b> Use Microsoft Graph Explorer to get your token:</p>" +
                     "<ol>" +
                     "<li>Click the 'Open Graph Explorer' button below</li>" +
@@ -410,7 +410,7 @@ class SimpleTokenDialog {
         parentFrame.setLocationRelativeTo(null)
         
         // Create modal dialog
-        frame = new JDialog(parentFrame, "Microsoft OAuth Token Entry (Fallback)", true)
+        frame = new JDialog(parentFrame, "Outlook Alerter - Token Entry (Fallback)", true)
         frame.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE)
         
         // Use the simplest possible layout

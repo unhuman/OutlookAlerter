@@ -88,9 +88,9 @@ class OutlookAlerter {
      */
     private static void printUsage() {
         println """
-        OutlookAlerter - Monitor Outlook calendar events and alert before meetings
+        Outlook Alerter - Monitor Outlook calendar events and alert before meetings
         
-        Usage: java -jar OutlookAlerter.jar [options]
+        Usage: java -jar outlook-alerter.jar [options]
         
         Options:
           --config <path>   Path to configuration file (default: ~/.outlookalerter/config.properties)

@@ -18,7 +18,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * Main application window for OutlookAlerter
+ * Main application window for Outlook Alerter
  * Provides a user interface for monitoring upcoming meetings
  */
 @CompileStatic
@@ -55,7 +55,7 @@ class OutlookAlerterUI extends JFrame {
      * Create a new OutlookAlerterUI
      */
     OutlookAlerterUI(String configPath) {
-        super("OutlookAlerter")
+        super("Outlook Alerter - Meeting Alerts")
         
         // Initialize components
         this.configManager = new ConfigManager(configPath)
@@ -80,15 +80,15 @@ class OutlookAlerterUI extends JFrame {
                 if (systemTray != null && trayIcon != null) {
                     setVisible(false)
                     trayIcon.displayMessage(
-                        "OutlookAlerter",
-                        "OutlookAlerter is still running in the background. Right-click the tray icon to exit.",
+                        "Outlook Alerter - Meeting Alerts",
+                        "Outlook Alerter is still running in the background. Right-click the tray icon to exit.",
                         TrayIcon.MessageType.INFO
                     )
                 } else {
                     // If no system tray, prompt to exit
                     int option = JOptionPane.showConfirmDialog(
                         OutlookAlerterUI.this,
-                        "Do you want to exit OutlookAlerter?\nYou will no longer receive meeting alerts.",
+                        "Do you want to exit Outlook Alerter?\nYou will no longer receive meeting alerts.",
                         "Confirm Exit",
                         JOptionPane.YES_NO_OPTION,
                         JOptionPane.QUESTION_MESSAGE
@@ -122,7 +122,7 @@ class OutlookAlerterUI extends JFrame {
                 PopupMenu popup = new PopupMenu()
                 
                 // Create menu items
-                MenuItem showItem = new MenuItem("Show OutlookAlerter")
+                MenuItem showItem = new MenuItem("Show Outlook Alerter")
                 showItem.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
@@ -153,7 +153,7 @@ class OutlookAlerterUI extends JFrame {
                     void actionPerformed(ActionEvent e) {
                         int option = JOptionPane.showConfirmDialog(
                             OutlookAlerterUI.this,
-                            "Do you want to exit OutlookAlerter?\nYou will no longer receive meeting alerts.",
+                            "Do you want to exit Outlook Alerter?\nYou will no longer receive meeting alerts.",
                             "Confirm Exit",
                             JOptionPane.YES_NO_OPTION,
                             JOptionPane.QUESTION_MESSAGE
@@ -179,7 +179,7 @@ class OutlookAlerterUI extends JFrame {
                     // Create a simple icon using Java2D
                     Image trayIconImage = createTrayIconImage()
                     
-                    trayIcon = new TrayIcon(trayIconImage, "OutlookAlerter", popup)
+                    trayIcon = new TrayIcon(trayIconImage, "Outlook Alerter - Meeting Alerts", popup)
                     trayIcon.setImageAutoSize(true)
                     
                     // Add double-click action to show window
@@ -199,8 +199,8 @@ class OutlookAlerterUI extends JFrame {
                         void windowIconified(WindowEvent e) {
                             setVisible(false)
                             trayIcon.displayMessage(
-                                "OutlookAlerter",
-                                "OutlookAlerter is still running. Click here to open.",
+                                "Outlook Alerter - Meeting Alerts",
+                                "Outlook Alerter is still running. Click here to open.",
                                 TrayIcon.MessageType.INFO
                             )
                         }
@@ -210,8 +210,8 @@ class OutlookAlerterUI extends JFrame {
                             // Don't exit application, just hide to system tray
                             setVisible(false)
                             trayIcon.displayMessage(
-                                "OutlookAlerter",
-                                "OutlookAlerter is still running in the background. Right-click the tray icon to exit.",
+                                "Outlook Alerter - Meeting Alerts",
+                                "Outlook Alerter is still running in the background. Right-click the tray icon to exit.",
                                 TrayIcon.MessageType.INFO
                             )
                         }
@@ -312,7 +312,7 @@ class OutlookAlerterUI extends JFrame {
             void actionPerformed(ActionEvent e) {
                 int option = JOptionPane.showConfirmDialog(
                     thisFrame,
-                    "Do you want to exit OutlookAlerter?\nYou will no longer receive meeting alerts.",
+                    "Do you want to exit Outlook Alerter?\nYou will no longer receive meeting alerts.",
                     "Confirm Exit",
                     JOptionPane.YES_NO_OPTION,
                     JOptionPane.QUESTION_MESSAGE
@@ -427,7 +427,7 @@ class OutlookAlerterUI extends JFrame {
                 })
                 
                 // Set thread name for debugging
-                authThread.setName("OutlookAlerter-Auth-Thread")
+                authThread.setName("Outlook-Alerter-Auth-Thread")
                 // Start the authentication thread
                 authThread.start()
                 
