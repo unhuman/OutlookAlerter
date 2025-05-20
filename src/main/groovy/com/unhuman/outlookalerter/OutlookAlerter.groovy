@@ -12,9 +12,10 @@ import java.util.concurrent.TimeUnit
 
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
+import javax.swing.JOptionPane
 
 /**
- * Main application class for OutlookAlerter
+ * Main application class for Outlook Alerter
  * Monitors Outlook calendar events and flashes screen when meetings are about to start
  */
 @CompileStatic
@@ -26,6 +27,26 @@ class OutlookAlerter {
      * Main entry point
      */
     static void main(String[] args) {
+        // First check if another instance is running
+        SingleInstanceManager instanceManager = new SingleInstanceManager()
+        if (!instanceManager.tryAcquireLock()) {
+            String message = "Another instance of Outlook Alerter is already running."
+            println message
+            
+            // Show error dialog if not in console mode
+            if (!args.contains("--console")) {
+                JOptionPane.showMessageDialog(
+                    null,
+                    message,
+                    "Outlook Alerter - Already Running",
+                    JOptionPane.INFORMATION_MESSAGE
+                )
+            }
+            
+            System.exit(1)
+            return
+        }
+        
         // Parse command-line arguments
         String configPath = System.getProperty("user.home") + "/.outlookalerter/config.properties"
         boolean consoleMode = false
