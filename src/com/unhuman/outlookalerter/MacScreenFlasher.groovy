@@ -4,6 +4,7 @@ import groovy.transform.CompileStatic
 import javax.swing.JFrame
 import javax.swing.JLabel
 import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
 import javax.swing.Timer
 import java.awt.Color
 import java.awt.Font
@@ -47,13 +48,7 @@ class MacScreenFlasher implements ScreenFlasher {
      */
     private boolean tryMacSpecificFlash(CalendarEvent event) {
         try {
-            // In Java 17, we'll use just the notification system since that works reliably on macOS
-            // We don't strictly need the taskbar bounce as macOS handle notifications well
-            boolean notificationShown = false
-            
-            // Display notification using system tray if available
-            
-            // Display notification using system tray if available
+            // Always show notification if supported
             if (SystemTray.isSupported()) {
                 TrayIcon trayIcon = null
                 try {
@@ -83,14 +78,15 @@ class MacScreenFlasher implements ScreenFlasher {
                     })
                     cleanupTimer.setRepeats(false)
                     cleanupTimer.start()
-                    notificationShown = true
                 } catch (Exception e) {
                     println "System tray notification failed: ${e.message}"
                 }
             }
             
-            // Only return true if we showed a notification
-            return notificationShown
+            // Flash all screens using Java's built-in capabilities
+            flashScreenCrossPlatform(event)
+            
+            return true
         } catch (Exception e) {
             println "Mac notification API not available, falling back to cross-platform approach: ${e.message}"
             return false
@@ -119,6 +115,11 @@ class MacScreenFlasher implements ScreenFlasher {
         JFrame frame = new JFrame("Meeting Alert", screen.getDefaultConfiguration())
         frame.setUndecorated(true)
         frame.setAlwaysOnTop(true)
+        frame.setType(javax.swing.JFrame.Type.UTILITY) // This helps ensure it stays on top
+        
+        // Make sure the window is opaque and visible
+        frame.setOpacity(1.0f)
+        frame.setBackground(Color.RED)
         
         // Set up layout
         frame.setLayout(new GridBagLayout())
@@ -131,17 +132,24 @@ class MacScreenFlasher implements ScreenFlasher {
         
         // Create label with meeting info
         JLabel label = new JLabel("<html><center>" +
-                "<h1>Meeting Starting Soon!</h1>" +
-                "<h2>${event.subject}</h2>" +
-                "<p>Starts in ${event.getMinutesToStart()} minute(s)</p>" +
+                "<h1 style='color: white; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
+                "<h2 style='color: white; font-size: 36px'>${event.subject}</h2>" +
+                "<p style='color: white; font-size: 24px'>Starting in ${event.getMinutesToStart()} minute(s)</p>" +
                 "</center></html>", SwingConstants.CENTER)
         
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
         label.setForeground(Color.WHITE)
         frame.add(label, gbc)
         
+        // Force frame to be fully opaque
+        frame.getRootPane().setOpaque(true)
+        frame.getContentPane().setBackground(Color.RED)
+        
         // Position frame to cover the entire screen
         frame.setBounds(screen.getDefaultConfiguration().getBounds())
+        
+        // Make sure it's displayed in full screen
+        frame.setExtendedState(JFrame.MAXIMIZED_BOTH)
         
         // Start flash sequence
         startFlashSequence(frame)
@@ -151,37 +159,39 @@ class MacScreenFlasher implements ScreenFlasher {
      * Starts the flash sequence animation
      */
     private void startFlashSequence(JFrame frame) {
-        final int[] flashesRemaining = [FLASH_COUNT]
+        final int[] flashesRemaining = [FLASH_COUNT * 2]  // Double the flashes for more visibility
         final boolean[] isVisible = [true]
         
-        // Create timer for flashing
-        Timer timer = new Timer(FLASH_INTERVAL_MS, { event ->
-            if (flashesRemaining[0] <= 0) {
-                frame.dispose()
-                ((Timer)event.getSource()).stop()
-                return
-            }
+        // Ensure the frame starts visible and on top
+        SwingUtilities.invokeLater({
+            frame.setVisible(true)
+            frame.toFront()
             
-            if (isVisible[0]) {
-                // Hide window
-                frame.setVisible(false)
-            } else {
-                // Show window with alternating colors
-                frame.getContentPane().setBackground(
-                    flashesRemaining[0] % 2 == 0 ? Color.RED : Color.ORANGE
-                )
-                frame.setVisible(true)
+            // Create timer for flashing
+            Timer timer = new Timer(FLASH_INTERVAL_MS, { event ->
+                if (flashesRemaining[0] <= 0) {
+                    frame.dispose()
+                    ((Timer)event.getSource()).stop()
+                    return
+                }
+                
+                if (isVisible[0]) {
+                    // Keep window visible but change color
+                    frame.getContentPane().setBackground(Color.RED)
+                    frame.toFront()
+                } else {
+                    frame.getContentPane().setBackground(Color.ORANGE)
+                    frame.toFront()
+                }
+                
+                frame.repaint()
                 flashesRemaining[0]--
-            }
+                isVisible[0] = !isVisible[0]
+            })
             
-            isVisible[0] = !isVisible[0]
-        })
-        
-        // Configure and start timer
-        timer.setInitialDelay(0)
-        timer.start()
-        
-        // Show window
-        frame.setVisible(true)
+            // Configure and start timer
+            timer.setInitialDelay(0)
+            timer.start()
+        } as Runnable)
     }
 }
