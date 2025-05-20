@@ -6,16 +6,11 @@ import javax.swing.JLabel
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 import javax.swing.Timer
-import java.awt.Color
-import java.awt.Font
-import java.awt.GraphicsDevice
-import java.awt.GraphicsEnvironment
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.SystemTray
-import java.awt.TrayIcon
+import java.awt.*
 import java.awt.image.BufferedImage
-import java.awt.Graphics2D
+import javax.swing.*
+import com.sun.jna.*
+import com.unhuman.outlookalerter.MacWindowHelper
 
 /**
  * Mac-specific implementation of ScreenFlasher
@@ -33,7 +28,6 @@ class MacScreenFlasher implements ScreenFlasher {
      */
     @Override
     void flash(CalendarEvent event) {
-        // Try to use Mac-specific APIs if available using reflection to avoid compile-time dependencies
         boolean usedMacApi = tryMacSpecificFlash(event)
         
         if (!usedMacApi) {
@@ -111,15 +105,41 @@ class MacScreenFlasher implements ScreenFlasher {
      * Creates a flashing window for a specific screen
      */
     private void createFlashWindowForScreen(GraphicsDevice screen, CalendarEvent event) {
-        // Create frame
-        JFrame frame = new JFrame("Meeting Alert", screen.getDefaultConfiguration())
+        // Create frame with specific type for better visibility
+        JFrame frame = new JFrame("⚠️ Meeting Alert ⚠️", screen.getDefaultConfiguration())
         frame.setUndecorated(true)
         frame.setAlwaysOnTop(true)
-        frame.setType(javax.swing.JFrame.Type.UTILITY) // This helps ensure it stays on top
+        frame.setType(javax.swing.JFrame.Type.POPUP) // POPUP type may work better than UTILITY
         
         // Make sure the window is opaque and visible
         frame.setOpacity(1.0f)
         frame.setBackground(Color.RED)
+
+        // Position frame to cover the entire screen before showing
+        frame.setBounds(screen.getDefaultConfiguration().getBounds())
+        
+        // Set window to be non-focusable but still visible
+        frame.setFocusableWindowState(false)
+        frame.setAutoRequestFocus(false)
+
+        // Show the frame to create native window
+        frame.setVisible(true)
+        frame.toFront()
+
+        // Set the window level to appear above full screen apps
+        try {
+            // Wait briefly for the native window to be created
+            Thread.sleep(100)
+            
+            // Get the window handle and set its level with enhanced properties
+            long windowHandle = Native.getWindowID(frame)
+            MacWindowHelper.setWindowLevel(windowHandle, 2147483647) // CGMaximumWindowLevel
+            
+            // Force it to the front again after setting level
+            frame.toFront()
+        } catch (Exception e) {
+            println "Could not set macOS window level: ${e.message}"
+        }
         
         // Set up layout
         frame.setLayout(new GridBagLayout())
@@ -144,9 +164,6 @@ class MacScreenFlasher implements ScreenFlasher {
         // Force frame to be fully opaque
         frame.getRootPane().setOpaque(true)
         frame.getContentPane().setBackground(Color.RED)
-        
-        // Position frame to cover the entire screen
-        frame.setBounds(screen.getDefaultConfiguration().getBounds())
         
         // Make sure it's displayed in full screen
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH)

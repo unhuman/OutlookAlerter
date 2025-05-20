@@ -1,32 +1,34 @@
 #!/bin/zsh
 
-# Set up classpath for required libraries
-SCRIPT_DIR="${0:A:h}"  # Get absolute path of script directory
-CP="${SCRIPT_DIR}/build/classes:${SCRIPT_DIR}/lib/*"
+# Get script directory
+SCRIPT_DIR="${0:A:h}"
 
-# Run the test with Groovy
-groovy -cp "$CP" - << 'EOG'
-import com.unhuman.outlookalerter.*
-import java.time.*
+# Ensure build directories exist
+mkdir -p "$SCRIPT_DIR/build/classes"
 
-// Create a test event
-def testEvent = new CalendarEvent(
-    id: "test-123",
-    subject: "⚠️ TEST ALERT ⚠️\nThis is a screen flash test",
-    start: ZonedDateTime.now(),
-    end: ZonedDateTime.now().plusMinutes(30),
-    isOnlineMeeting: true,
-    organizer: "Test Script",
-    responseStatus: "Test"
-)
+# Compile helper class first
+echo "Compiling MacWindowHelper..."
+groovyc -cp "$SCRIPT_DIR/lib/*" \
+  -d "$SCRIPT_DIR/build/classes" \
+  src/com/unhuman/outlookalerter/MacWindowHelper.groovy
 
-// Create screen flasher
-def screenFlasher = ScreenFlasherFactory.createScreenFlasher()
+# Compile remaining classes
+echo "Compiling remaining classes..."
+groovyc -cp "$SCRIPT_DIR/lib/*:$SCRIPT_DIR/build/classes" \
+  -d "$SCRIPT_DIR/build/classes" \
+  src/com/unhuman/outlookalerter/CalendarEvent.groovy \
+  src/com/unhuman/outlookalerter/ScreenFlasher.groovy \
+  src/com/unhuman/outlookalerter/ScreenFlasherFactory.groovy \
+  src/com/unhuman/outlookalerter/MacScreenFlasher.groovy \
+  src/com/unhuman/outlookalerter/WindowsScreenFlasher.groovy \
+  src/com/unhuman/outlookalerter/CrossPlatformScreenFlasher.groovy \
+  TestScreenFlash.groovy
 
-println "Testing screen flash - your screens should flash now..."
-screenFlasher.flash(testEvent)
-
-// Keep script running while flash animation completes
-Thread.sleep(5000)
-println "Test complete."
-EOG
+if [ $? -eq 0 ]; then
+    echo "Compilation successful. Running test..."
+    # Run the test
+    java -cp "$SCRIPT_DIR/build/classes:$SCRIPT_DIR/lib/*" com.unhuman.outlookalerter.TestScreenFlash
+else
+    echo "Compilation failed!"
+    exit 1
+fi
