@@ -57,6 +57,9 @@ class OutlookAlerterUI extends JFrame {
     OutlookAlerterUI(String configPath) {
         super("Outlook Alerter - Meeting Alerts")
         
+        // Set window icon
+        setIconImage(IconManager.getLargeIconImage())
+        
         // Initialize components
         this.configManager = new ConfigManager(configPath)
         this.configManager.loadConfiguration()
@@ -239,19 +242,7 @@ class OutlookAlerterUI extends JFrame {
      */
     @CompileStatic
     private java.awt.Image createTrayIconImage() {
-        // Create a simple icon
-        int size = 16
-        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(
-            size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
-        
-        java.awt.Graphics2D g = img.createGraphics()
-        g.setColor(java.awt.Color.WHITE)
-        g.fillRect(0, 0, size, size)
-        g.setColor(java.awt.Color.BLUE)
-        g.drawRect(0, 0, size-1, size-1)
-        g.dispose()
-        
-        return img
+        return IconManager.getIconImage()
     }
     
     /**
