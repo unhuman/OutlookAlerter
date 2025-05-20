@@ -1,89 +1,80 @@
 #!/bin/bash
 
-# Run OutlookAlerter in GUI mode
-# This script ensures proper error handling and provides user feedback
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}Starting OutlookAlerter in GUI mode${NC}"
 
 # Determine the script's directory to use relative paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-# Set the classpath to include the application JAR and all JARs in the lib directory
-CLASSPATH="$SCRIPT_DIR/dist/OutlookAlerter.jar:$SCRIPT_DIR/lib/*"
-
-echo "Starting OutlookAlerter in GUI mode..."
+# Use Maven's target directory for the executable jar
+JAR_PATH="$SCRIPT_DIR/target/OutlookAlerter-1.0-SNAPSHOT-jar-with-dependencies.jar"
 
 # Check if Java is installed
 if ! command -v java &> /dev/null; then
-    echo "Error: Java is not installed or not in the PATH."
+    echo -e "${RED}Error: Java is not installed or not in the PATH.${NC}"
     echo "Please install Java to run this application."
     exit 1
 fi
 
-# Check if required JAR files exist
-if [ ! -f "$SCRIPT_DIR/dist/OutlookAlerter.jar" ]; then
-    echo "Error: OutlookAlerter.jar not found."
-    echo "Please run build.sh first to compile the application."
-    exit 1
-fi
-
-for jar in "groovy.jar" "groovy-json.jar"; do
-    if [ ! -f "$SCRIPT_DIR/lib/$jar" ]; then
-        echo "Error: Required dependency $jar not found in lib directory."
-        echo "Please ensure all dependencies are available before running."
+# Check if jar exists, if not try to build
+if [ ! -f "$JAR_PATH" ]; then
+    echo -e "${YELLOW}Executable jar not found, running build...${NC}"
+    "$SCRIPT_DIR/build.sh"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Build failed, cannot run application${NC}"
         exit 1
     fi
-done
+fi
 
-# Run the application in GUI mode (default)
-# Add Java options including setting headless mode to false to ensure GUI works
-JAVA_OPTS="-Djava.awt.headless=false ${JAVA_OPTS}"
+# Set base Java options
+JAVA_OPTS="-Djava.awt.headless=false"
 
 # For debugging purposes
 if [[ "$*" == *"--debug"* ]]; then
-    echo "Debug mode enabled - adding Java debug options"
+    echo -e "${YELLOW}Debug mode enabled - adding Java debug options${NC}"
     JAVA_OPTS="${JAVA_OPTS} -Dgroovy.debug=true -Dapple.laf.useScreenMenuBar=true"
 fi
 
-# Force AWT to initialize properly on macOS
+# Handle different operating systems
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "Detected macOS - adding platform-specific Java options"
+    echo -e "${YELLOW}Detected macOS - using platform-specific settings${NC}"
     
     # Export critical environment variables for macOS GUI apps
     export JAVA_AWT_HEADLESS=false
     export AWT_TOOLKIT=CToolkit
     
     # These options help ensure Swing components display properly on macOS
-    JAVA_OPTS="${JAVA_OPTS} -Djava.awt.headless=false -Dapple.awt.UIElement=false"
-    JAVA_OPTS="${JAVA_OPTS} -Dapple.laf.useScreenMenuBar=true -Dapple.awt.application.appearance=system"
-    
-    # Use native macOS look and feel to avoid cross-platform Swing issues
+    JAVA_OPTS="${JAVA_OPTS} -Dapple.awt.UIElement=false"
+    JAVA_OPTS="${JAVA_OPTS} -Dapple.laf.useScreenMenuBar=true"
+    JAVA_OPTS="${JAVA_OPTS} -Dapple.awt.application.appearance=system"
     JAVA_OPTS="${JAVA_OPTS} -Dswing.defaultlaf=com.apple.laf.AquaLookAndFeel"
-    
-    # Add additional rendering options for better macOS compatibility
     JAVA_OPTS="${JAVA_OPTS} -Dsun.java2d.opengl=false -Dsun.java2d.metal=false"
     
-    echo "Using enhanced macOS-specific settings: ${JAVA_OPTS}"
-    
-    # Run with macOS-specific options
-    java ${JAVA_OPTS} -cp "$CLASSPATH" com.unhuman.outlookalerter.OutlookAlerter "$@"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    # Linux
-    echo "Detected Linux - using platform-specific settings"
+    echo -e "${YELLOW}Detected Linux - using platform-specific settings${NC}"
     JAVA_OPTS="${JAVA_OPTS} -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true"
-    java ${JAVA_OPTS} -cp "$CLASSPATH" com.unhuman.outlookalerter.OutlookAlerter "$@"
 elif [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "cygwin"* || "$OSTYPE" == "win"* ]]; then
-    # Windows via msys, cygwin, or native
-    echo "Detected Windows - using platform-specific settings"
-    java ${JAVA_OPTS} -cp "$CLASSPATH" com.unhuman.outlookalerter.OutlookAlerter "$@"
+    echo -e "${YELLOW}Detected Windows - using platform-specific settings${NC}"
 else
-    # Other OS
-    echo "Using generic platform settings"
-    java ${JAVA_OPTS} -cp "$CLASSPATH" com.unhuman.outlookalerter.OutlookAlerter "$@"
+    echo -e "${YELLOW}Using generic platform settings${NC}"
 fi
+
+# Run the application with selected options
+echo -e "${GREEN}Running OutlookAlerter...${NC}"
+java ${JAVA_OPTS} -jar "$JAR_PATH" --gui "$@"
 
 # Check exit code
 exit_code=$?
 if [ $exit_code -ne 0 ]; then
-    echo "OutlookAlerter exited with an error (code: $exit_code)."
+    echo -e "${RED}OutlookAlerter exited with an error (code: $exit_code).${NC}"
     echo "Check the output above for more details."
     exit $exit_code
+else
+    echo -e "${GREEN}OutlookAlerter exited successfully.${NC}"
 fi

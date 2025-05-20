@@ -1,39 +1,96 @@
 #!/bin/bash
 
-# Comprehensive Calendar Diagnostics Suite for OutlookAlerter
-# This script runs all diagnostic tools in sequence to compare all event retrieval methods
+#!/bin/bash
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}===== OutlookAlerter Comprehensive Diagnostics =====${NC}"
 
 # Determine the script's directory to use relative paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-echo "===== OutlookAlerter Comprehensive Calendar Diagnostics ====="
-echo "Current date: $(date)"
-echo "System timezone: $(date +%Z)"
-echo ""
-echo "This script will run all diagnostic tools to identify why meetings might be missing"
-echo ""
+# Use Maven's target directory for the executable jar
+JAR_PATH="$SCRIPT_DIR/target/OutlookAlerter-1.0-SNAPSHOT-jar-with-dependencies.jar"
 
-# Create a diagnostics directory for all output
-DIAG_DIR="$SCRIPT_DIR/diagnostics-$(date +%Y%m%d-%H%M%S)"
+# Check if jar exists, if not try to build
+if [ ! -f "$JAR_PATH" ]; then
+    echo -e "${YELLOW}Executable jar not found, running build...${NC}"
+    "$SCRIPT_DIR/build.sh"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Build failed, cannot run diagnostics${NC}"
+        exit 1
+    fi
+fi
+
+# Create diagnostics directory with timestamp
+DIAG_DIR="diagnostics-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$DIAG_DIR"
-echo "Creating diagnostics directory: $DIAG_DIR"
+echo -e "${GREEN}Created diagnostics directory: $DIAG_DIR${NC}"
 
-# Function to run a command and redirect output to a file
+# Function to run a diagnostic command and save output
 run_diagnostic() {
     local cmd="$1"
     local output_file="$2"
     local description="$3"
     
-    echo "Running $description..."
-    echo "Command: $cmd"
-    echo "Output will be saved to: $output_file"
+    echo -e "${YELLOW}Running $description...${NC}"
+    eval "$cmd" > "$output_file" 2>&1
     
-    # Run the command and capture output
-    $cmd > "$output_file" 2>&1
-    
-    echo "Completed $description"
-    echo ""
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ $description completed${NC}"
+    else
+        echo -e "${RED}× $description failed${NC}"
+    fi
 }
+
+# Run calendar event diagnostics
+echo -e "\n${BLUE}Running calendar event diagnostics...${NC}"
+JAVA_OPTS="-Doutlookalerter.diagnostic.dir=$DIAG_DIR"
+run_diagnostic "java $JAVA_OPTS -jar $JAR_PATH --debug --calendar-diagnostics" \
+    "$DIAG_DIR/calendar-events.log" \
+    "Calendar Event Tests"
+
+# Run enhanced diagnostics with multiple calendars
+echo -e "\n${BLUE}Running enhanced calendar diagnostics...${NC}"
+JAVA_OPTS="$JAVA_OPTS -Doutlookalerter.enhanced.diagnostics=true"
+run_diagnostic "java $JAVA_OPTS -jar $JAR_PATH --debug --multi-calendar" \
+    "$DIAG_DIR/enhanced-calendar.log" \
+    "Enhanced Calendar Diagnostics"
+
+# Run timezone tests
+echo -e "\n${BLUE}Running timezone tests...${NC}"
+JAVA_OPTS="$JAVA_OPTS -Duser.timezone=UTC"
+run_diagnostic "java $JAVA_OPTS -jar $JAR_PATH --debug --test-timezone" \
+    "$DIAG_DIR/timezone-tests.log" \
+    "Timezone Tests"
+
+# Generate summary report
+echo -e "\n${BLUE}Generating summary report...${NC}"
+cat > "$DIAG_DIR/summary-report.txt" << EOL
+OutlookAlerter Diagnostic Summary
+===============================
+Date: $(date)
+System Timezone: $(date +%Z)
+
+Test Results:
+------------
+EOL
+
+# Add test results to summary
+for log in "$DIAG_DIR"/*.log; do
+    echo -e "\nResults from $(basename "$log"):" >> "$DIAG_DIR/summary-report.txt"
+    grep -A 5 "=== Summary ===" "$log" 2>/dev/null >> "$DIAG_DIR/summary-report.txt" || true
+    echo "----------------------------------------" >> "$DIAG_DIR/summary-report.txt"
+done
+
+echo -e "\n${GREEN}All diagnostics complete!${NC}"
+echo -e "${BLUE}Diagnostic files are available in: $DIAG_DIR${NC}"
+echo -e "${YELLOW}Review $DIAG_DIR/summary-report.txt for a complete overview${NC}"
 
 # Run all diagnostic tools and save output to files
 run_diagnostic "$SCRIPT_DIR/test-calendar-events.sh" "$DIAG_DIR/calendar-events-test.txt" "Calendar Events Test"

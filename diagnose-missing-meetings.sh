@@ -1,20 +1,96 @@
 #!/bin/bash
 
-# Calendar diagnostics script for OutlookAlerter
-# This script helps diagnose why some meetings might not appear in the results
+#!/bin/bash
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}===== OutlookAlerter Missing Meetings Diagnostics =====${NC}"
 
 # Determine the script's directory to use relative paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-# Set the classpath to include the application JAR and all JARs in the lib directory
-CLASSPATH="$SCRIPT_DIR/dist/OutlookAlerter.jar:$SCRIPT_DIR/lib/*"
+# Use Maven's target directory for the executable jar
+JAR_PATH="$SCRIPT_DIR/target/OutlookAlerter-1.0-SNAPSHOT-jar-with-dependencies.jar"
 
-echo "===== OutlookAlerter Calendar Diagnostics ====="
-echo "Current date: $(date)"
-echo "System timezone: $(date +%Z)"
-echo ""
-echo "This script will help diagnose why some meetings might not appear in the results"
-echo ""
+# Check if jar exists, if not try to build
+if [ ! -f "$JAR_PATH" ]; then
+    echo -e "${YELLOW}Executable jar not found, running build...${NC}"
+    "$SCRIPT_DIR/build.sh"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Build failed, cannot run diagnostics${NC}"
+        exit 1
+    fi
+fi
+
+# Create diagnostics directory with timestamp
+DIAG_DIR="diagnostics-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$DIAG_DIR"
+echo -e "${GREEN}Created diagnostics directory: $DIAG_DIR${NC}"
+
+# Print system info
+echo -e "\n${BLUE}System Information:${NC}"
+echo -e "${YELLOW}Current date: $(date)"
+echo -e "System timezone: $(date +%Z)${NC}"
+
+# Set up logging
+LOGGING_PROPS="$DIAG_DIR/logging.properties"
+cat > "$LOGGING_PROPS" << EOL
+handlers=java.util.logging.FileHandler, java.util.logging.ConsoleHandler
+java.util.logging.FileHandler.pattern=$DIAG_DIR/missing-meetings.log
+java.util.logging.FileHandler.formatter=java.util.logging.SimpleFormatter
+java.util.logging.FileHandler.level=ALL
+java.util.logging.ConsoleHandler.level=ALL
+java.util.logging.ConsoleHandler.formatter=java.util.logging.SimpleFormatter
+java.net.http.level=ALL
+EOL
+
+# Run different calendar queries to identify missing meetings
+echo -e "\n${BLUE}Running calendar queries...${NC}"
+
+# Run with different time windows
+echo -e "${YELLOW}Testing different time windows...${NC}"
+for hours in 1 2 4 8 24; do
+    echo -e "Testing $hours hour window..."
+    java -Djava.util.logging.config.file=$LOGGING_PROPS \
+         -Doutlookalerter.diagnostic.dir=$DIAG_DIR \
+         -Doutlookalerter.time.window=$hours \
+         -jar "$JAR_PATH" --debug --missing-meetings > "$DIAG_DIR/time-window-${hours}h.log" 2>&1
+done
+
+# Run with different calendars
+echo -e "\n${YELLOW}Testing different calendars...${NC}"
+java -Djava.util.logging.config.file=$LOGGING_PROPS \
+     -Doutlookalerter.diagnostic.dir=$DIAG_DIR \
+     -Doutlookalerter.all.calendars=true \
+     -jar "$JAR_PATH" --debug --missing-meetings > "$DIAG_DIR/all-calendars.log" 2>&1
+
+# Generate summary report
+echo -e "\n${BLUE}Analyzing results...${NC}"
+cat > "$DIAG_DIR/summary.txt" << EOL
+OutlookAlerter Missing Meetings Analysis
+======================================
+Date: $(date)
+System Timezone: $(date +%Z)
+
+Summary of Findings:
+------------------
+EOL
+
+# Add event counts from each test to summary
+for log in "$DIAG_DIR"/*.log; do
+    echo "Results from $(basename "$log"):" >> "$DIAG_DIR/summary.txt"
+    grep "Found.*events" "$log" 2>/dev/null >> "$DIAG_DIR/summary.txt" || true
+    echo "----------------------------------------" >> "$DIAG_DIR/summary.txt"
+done
+
+echo -e "\n${GREEN}Diagnostics complete!${NC}"
+echo -e "${BLUE}Results are available in: $DIAG_DIR${NC}"
+echo -e "${YELLOW}Please check $DIAG_DIR/summary.txt for analysis results${NC}"
 
 # Create a simple Java program to perform calendar diagnostics
 cat > "$SCRIPT_DIR/CalendarDiagnostics.java" << 'EOL'
