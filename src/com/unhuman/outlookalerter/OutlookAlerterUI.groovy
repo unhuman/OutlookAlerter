@@ -956,73 +956,85 @@ class OutlookAlerterUI extends JFrame {
     }
 
     /**
-     * Activate the application window
+     * Activate window and request user attention, with special handling for macOS
      */
+    @CompileStatic
     private void activateWindow() {
-        // First ensure window state is normal
-        setExtendedState(JFrame.NORMAL)
-        
-        // Make window always on top
-        setAlwaysOnTop(true)
-        
-        // Make window visible
-        setVisible(true)
-        
-        // Bring to front
-        toFront()
-        
-        // Request focus - important for keyboard input
-        requestFocus()
-        requestFocusInWindow()
-        
-        // Additional steps to ensure window stays frontmost on macOS
         SwingUtilities.invokeLater({
             try {
-                // Platform-specific window activation for macOS
-                if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-                    try {
-                        // Use the modern java.awt.Taskbar API for notifications
-                        Class<?> taskbarClass = Class.forName("java.awt.Taskbar")
-                        Object taskbar = taskbarClass.getMethod("getTaskbar").invoke(null)
-                        taskbarClass.getMethod("requestUserAttention", boolean.class).invoke(taskbar, true)
-                    } catch (Exception e) {
-                        System.err.println("Could not request macOS user attention: " + e.getMessage())
-                    }
-                }
+                setVisible(true)
+                setExtendedState(JFrame.NORMAL)
                 
-                // Multiple focus requests with delays to ensure window stays on top
-                Timer focusTimer = new Timer(50, { e ->
+                // On macOS, we need special handling to ensure the window comes to front
+                if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+                    // Set window always-on-top temporarily to help with focus
+                    setAlwaysOnTop(true)
+                    
+                    // First focus attempt
                     toFront()
                     requestFocusInWindow()
-                })
-                focusTimer.setRepeats(false)
-                focusTimer.start()
-                
-                // Additional focus request after a longer delay
-                Timer finalFocusTimer = new Timer(200, { e ->
+                    
+                    // Request user attention via Taskbar API
+                    Timer attentionTimer = new Timer(100, new ActionListener() {
+                        int attempts = 0
+                        @Override
+                        void actionPerformed(ActionEvent e) {
+                            try {
+                                Class<?> taskbarClass = Class.forName("java.awt.Taskbar")
+                                Object taskbar = taskbarClass.getMethod("getTaskbar").invoke(null)
+                                taskbarClass.getMethod("requestUserAttention", boolean.class).invoke(taskbar, true)
+                                
+                                attempts++
+                                if (attempts >= 3) {
+                                    ((Timer)e.getSource()).stop()
+                                }
+                            } catch (Exception ex) {
+                                System.err.println("Could not request macOS user attention: " + ex.getMessage())
+                                ((Timer)e.getSource()).stop()
+                            }
+                        }
+                    })
+                    attentionTimer.setInitialDelay(0)
+                    attentionTimer.start()
+                    
+                    // Multiple focus requests with delays to ensure window stays on top
+                    Timer focusTimer = new Timer(50, { e ->
+                        toFront()
+                        requestFocusInWindow()
+                    })
+                    focusTimer.setRepeats(false)
+                    focusTimer.start()
+                    
+                    // Final focus request and cleanup
+                    Timer finalFocusTimer = new Timer(200, { e ->
+                        toFront()
+                        requestFocusInWindow()
+                        setAlwaysOnTop(false)  // Remove always-on-top after final focus
+                    })
+                    finalFocusTimer.setRepeats(false)
+                    finalFocusTimer.start()
+                    
+                } else {
+                    // For non-macOS platforms, simple activation is enough
                     toFront()
                     requestFocusInWindow()
-                    setAlwaysOnTop(false)  // Only remove always-on-top after final focus
-                })
-                finalFocusTimer.setRepeats(false)
-                finalFocusTimer.start()
-                
-                // Platform-specific window activation for macOS
-                if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-                    try {
-                        // Use reflection to safely access macOS-specific functionality
-                        Class<?> taskbarClass = Class.forName("java.awt.Taskbar")
-                        Object taskbar = taskbarClass.getMethod("getTaskbar").invoke(null)
-                        // Request attention with the correct method
-                        taskbarClass.getMethod("requestUserAttention", boolean.class).invoke(taskbar, true)
-                    } catch (Exception e) {
-                        // Fallback - just log the error but continue
-                        System.err.println("Could not request macOS user attention: " + e.getMessage())
-                    }
                 }
             } catch (Exception e) {
                 System.err.println("Error during window activation: " + e.getMessage())
                 e.printStackTrace()
+            }
+        } as Runnable)
+    }
+
+    /**
+     * Shows and activates the window if it's not already visible
+     */
+    @CompileStatic
+    private void showAndActivateWindow() {
+        SwingUtilities.invokeLater({
+            // Only try to activate if window is not already visible
+            if (!isVisible()) {
+                activateWindow()
             }
         } as Runnable)
     }

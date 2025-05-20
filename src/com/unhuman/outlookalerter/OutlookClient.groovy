@@ -48,6 +48,9 @@ class OutlookClient {
     private final Object authLock = new Object()
     private volatile boolean isAuthenticating = false
     
+    // Track if we've logged about timezone
+    private boolean hasLoggedTimezone = false
+
     /**
      * Creates a new Outlook client with the given configuration
      */
@@ -1112,7 +1115,10 @@ class OutlookClient {
                 if (configManager.preferredTimezone && !configManager.preferredTimezone.isEmpty()) {
                     try {
                         targetZoneId = ZoneId.of(configManager.preferredTimezone);
-                        println "Using preferred timezone from config: ${targetZoneId}"
+                        if (!hasLoggedTimezone) {
+                            println "Using preferred timezone from config: ${targetZoneId}"
+                            hasLoggedTimezone = true
+                        }
                     } catch (Exception e) {
                         println "Invalid preferred timezone in config: ${configManager.preferredTimezone}, falling back to system default"
                         targetZoneId = ZonedDateTime.now().getZone();
