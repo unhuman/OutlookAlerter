@@ -22,6 +22,7 @@ class ConfigManager {
     
     // Application-specific properties
     private String preferredTimezone
+    private int alertMinutes = 1 // Default to 1 minute
     
     // SSO related properties
     private String signInUrl
@@ -83,6 +84,7 @@ class ConfigManager {
         
         // Application-specific properties
         properties.setProperty("preferredTimezone", "")
+        properties.setProperty("alertMinutes", "1")
         
         // Save to file
         try {
@@ -134,6 +136,7 @@ class ConfigManager {
         
         // Application-specific properties
         preferredTimezone = properties.getProperty("preferredTimezone")
+        alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"))
         
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")
@@ -168,6 +171,7 @@ class ConfigManager {
             
             // Application-specific properties
             properties.setProperty("preferredTimezone", preferredTimezone ?: "")
+            properties.setProperty("alertMinutes", String.valueOf(alertMinutes))
             
             if (accessToken) {
                 properties.setProperty("accessToken", accessToken)
@@ -214,6 +218,7 @@ class ConfigManager {
     
     // Application-specific getters
     String getPreferredTimezone() { return preferredTimezone }
+    int getAlertMinutes() { return alertMinutes }
     
     /**
      * Updates the preferred timezone setting
@@ -223,6 +228,14 @@ class ConfigManager {
         saveConfiguration()
     }
     
+    /**
+     * Updates the alert minutes setting
+     */
+    void updateAlertMinutes(int minutes) {
+        this.alertMinutes = minutes
+        saveConfiguration()
+    }
+
     /**
      * Updates the sign-in URL setting
      */

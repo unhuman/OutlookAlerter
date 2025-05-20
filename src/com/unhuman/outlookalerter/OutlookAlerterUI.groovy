@@ -696,7 +696,7 @@ class OutlookAlerterUI extends JFrame {
             }
             
             // Alert for events about to start
-            if (minutesToStart <= configManager.alertMinutes && minutesToStart >= -1) {
+            if (minutesToStart <= 1 && minutesToStart >= -1) {
                 System.out.println("  *** Triggering alert ***")
                 final String eventTitle = event.subject
                 SwingUtilities.invokeLater({
@@ -797,30 +797,14 @@ class OutlookAlerterUI extends JFrame {
         gbc.gridy = 0
         formPanel.add(timezoneField, gbc)
         
-        // Alert minutes setting
-        gbc.gridx = 0
-        gbc.gridy = 1
-        formPanel.add(new JLabel("Alert minutes before meeting:"), gbc)
-        
-        SpinnerModel spinnerModel = new SpinnerNumberModel(
-            configManager.alertMinutes, // current
-            1,  // min
-            30, // max
-            1   // step
-        )
-        JSpinner alertMinutesSpinner = new JSpinner(spinnerModel)
-        gbc.gridx = 1
-        gbc.gridy = 1
-        formPanel.add(alertMinutesSpinner, gbc)
-        
         // Okta SSO URL
         gbc.gridx = 0
-        gbc.gridy = 2
+        gbc.gridy = 1
         formPanel.add(new JLabel("Sign-in URL:"), gbc)
         
         JTextField signInUrlField = new JTextField(configManager.signInUrl ?: "", 20)
         gbc.gridx = 1
-        gbc.gridy = 2
+        gbc.gridy = 1
         formPanel.add(signInUrlField, gbc)
         
         // Button panel
@@ -832,7 +816,6 @@ class OutlookAlerterUI extends JFrame {
                 // Save settings
                 String timezone = timezoneField.getText().trim()
                 String signInUrl = signInUrlField.getText().trim()
-                int alertMinutes = (Integer)alertMinutesSpinner.getValue()
                 
                 try {
                     if (!timezone.isEmpty()) {
@@ -843,8 +826,6 @@ class OutlookAlerterUI extends JFrame {
                     if (!signInUrl.isEmpty()) {
                         configManager.updateSignInUrl(signInUrl)
                     }
-                    
-                    configManager.updateAlertMinutes(alertMinutes)
                     
                     settingsDialog.dispose()
                     JOptionPane.showMessageDialog(thisFrame, "Settings saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE)

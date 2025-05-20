@@ -5,32 +5,103 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 ## Features
 
 - Connects to Microsoft Graph API to retrieve your calendar events
-- Flashes the screen when meetings are about to start (within 1 minute)
+- Configurable alert time (1-30 minutes before meetings)
+- Cross-platform screen flashing alerts for upcoming meetings
 - Supports authentication through Okta SSO or direct Microsoft authentication
-- Handles all calendar events, including tentative meetings
-- Shows meeting response status (accepted, tentative, etc.) in alerts
-- Cross-platform support for screen flashing (macOS, Windows, Linux)
-- Configurable polling interval and alert thresholds
-- Graphical user interface with system tray integration
-- Automatic pop-up for token refreshes
+- Comprehensive calendar event handling:
+  - Shows meeting response status (accepted, tentative, declined)
+  - Displays online meeting status
+  - Shows meeting organizer information
+  - Handles concurrent meetings
+  - Includes tentative and all-day events
+- Smart UI features:
+  - System tray integration with minimizable window
+  - Real-time calendar updates
+  - Status indicators for connection and updates
+  - Configurable settings via GUI dialog
+  - Automatic token refresh handling
+- Console mode support for command-line operation
+- Robust timezone handling with configurable preferences
+- Extensive diagnostic and troubleshooting tools
 
 ## User Interface
 
-OutlookAlerter now includes a user-friendly graphical interface for enhanced usability:
+OutlookAlerter provides a modern, user-friendly graphical interface with these key features:
 
-### Main Features
-- **Calendar Display**: View your upcoming meetings in a clear, organized list
-- **Real-time Updates**: Calendar refreshes automatically every minute
-- **System Tray Integration**: Run in the background with system tray notifications
-- **Settings Dialog**: Configure timezone and authentication settings directly in the UI
-- **Token Entry Dialog**: User-friendly form for entering authentication tokens
+### Main Window
+- **Current Meetings**: Shows in-progress meetings with duration and status
+- **Next Meetings**: Displays upcoming meetings within alert window
+- **Later Meetings**: Lists future meetings beyond the current timeframe
+- **Status Bar**: Shows connection state and last update time
+- **Quick Actions**: Refresh, Settings, and Exit buttons
 
-### Running the Application
+### Settings Dialog
+- **Alert Configuration**: Set alert time (1-30 minutes before meetings)
+- **Timezone Settings**: Configure preferred timezone
+- **Authentication**: Set up Okta SSO or direct Microsoft authentication
+- **Visual Preferences**: Configure display options
 
-- **GUI Mode** (default): `./run.sh`
-- **Console Mode** (legacy): `./run.sh --console`
+### System Tray Integration
+- **Background Operation**: Runs minimized while monitoring calendar
+- **Quick Menu**: Right-click for common actions
+- **Status Notifications**: Meeting alerts appear as system notifications
+- **Double-click Restore**: Quickly access the main window
 
-The GUI version will automatically minimize to the system tray when closed, allowing it to continue monitoring your calendar in the background.
+## Running the Application
+
+You can run OutlookAlerter in two modes, either using the JAR directly or using the provided shell scripts:
+
+### Using Maven-built JAR
+
+#### GUI Mode (Default)
+```bash
+java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar
+```
+
+#### Console Mode
+```bash
+java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar --console
+```
+
+### Using Shell Scripts
+
+#### GUI Mode (Default)
+```bash
+./run.sh
+```
+
+#### Console Mode
+```bash
+./run.sh --console
+```
+
+### Features Common to Both Modes
+- **GUI Mode**:
+  - Full graphical interface with system tray integration
+  - Visual alerts and notifications
+  - Settings configurable through dialog
+  - Minimizes to system tray for background operation
+
+- **Console Mode**:
+  - Text-based interface for command-line operation
+  - Same alert functionality without GUI
+  - Suitable for environments without display server
+  - Can run as a background service
+
+### Command Line Options
+The following options work with both the JAR and shell script:
+```bash
+java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar [options]
+# or
+./run.sh [options]
+```
+
+Options:
+- `--config <path>`: Custom config file location (default: ~/.outlookalerter/config.properties)
+- `--console`: Run in console mode
+- `--debug`: Enable detailed logging
+- `--timezone <zone>`: Override timezone setting
+- `--help`: Show help message
 
 ### Authentication
 
@@ -156,33 +227,137 @@ The diagnostic tools help identify why meetings might be missing by:
 
 4. Creating detailed reports with recommendations on which retrieval methods to use
 
+## Troubleshooting
+
+### Diagnostic Tools
+OutlookAlerter includes several built-in diagnostic tools:
+
+1. **Debug Mode**: Enable detailed logging
+   ```bash
+   ./run.sh --debug
+   ```
+
+2. **Timezone Diagnostics**: Test timezone configuration
+   ```bash
+   ./test-timezones.sh
+   ```
+
+3. **Calendar Event Tests**: Validate event retrieval
+   ```bash
+   ./test-calendar-events.sh
+   ```
+
+4. **Full Diagnostics**: Run all tests
+   ```bash
+   ./run-all-diagnostics.sh
+   ```
+
+### Common Issues
+
+1. **Authentication Problems**
+   - Verify Okta SSO URL in settings
+   - Check token expiration
+   - Run with --debug for detailed auth logs
+
+2. **Missing Calendar Events**
+   - Confirm timezone settings
+   - Check calendar permissions
+   - Run event diagnostics
+
+3. **Alert Issues**
+   - Verify system notification settings
+   - Check alert minutes configuration
+   - Test screen flash functionality
+
+4. **System Tray Problems**
+   - Some systems have limited tray support
+   - Application remains functional in window mode
+   - Check system tray application permissions
+
+## Support
+
+### Log Files
+- Application logs: `~/.outlookalerter/outlookalerter.log`
+- Debug logs: `~/.outlookalerter/outlookalerter-debug.log`
+- Diagnostic reports: `~/.outlookalerter/diagnostics/`
+
+### Getting Help
+- Check the troubleshooting section first
+- Run diagnostic tools for detailed reports
+- Review debug logs for error messages
+- File detailed bug reports with diagnostic output
+
 ## Usage
 
+You can run OutlookAlerter directly using Java with the Maven-built JAR:
+
+```bash
+# Run with default options
+java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar
+
+# Run with specific options
+java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar [options]
 ```
+
+Or using the convenience shell script (which uses the same JAR internally):
+```bash
 ./run.sh [options]
 ```
 
-Options:
+Available options:
 - `--config <path>`: Path to configuration file (default: ~/.outlookalerter/config.properties)
 - `--daemon`: Run in daemon mode (background)
 - `--debug`: Enable debug mode with detailed timezone logging
 - `--timezone <zone>`: Override the timezone for displaying events (e.g., America/New_York)
 - `--help`: Show help message
 
+Note: All diagnostic and test scripts (`test-*.sh`, `diagnose-*.sh`) also support running with the Maven-built JAR.
+
 ## Installation
 
+There are two ways to build and run OutlookAlerter:
+
+### Using Maven (Recommended)
 1. Clone the repository
-2. Run `./build.sh` to compile the application
+2. Build the application with Maven:
+   ```bash
+   mvn clean package
+   ```
+3. Run the generated JAR:
+   ```bash
+   java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar
+   ```
+
+### Using Shell Scripts (Alternative)
+1. Clone the repository
+2. Run `./build.sh` to compile the application (uses Maven internally)
 3. Run `./run.sh` to start the application
 
 ## Configuration
 
-On first run, a default configuration file will be created at `~/.outlookalerter/config.properties`. You'll need to edit this file with your authentication details.
+The application stores its configuration in `~/.outlookalerter/config.properties`. This file is created automatically on first run with default values.
 
-For Okta SSO authentication:
-1. Set `signInUrl` to your organization's Okta SSO URL for Microsoft 365
-2. Set `loginHint` to your email address (optional)
-3. Set `preferredTimezone` to your desired timezone (optional)
+### Core Settings
+```properties
+# Authentication
+signInUrl=https://your-company.okta.com/home/office365/...  # Your Okta SSO URL
+loginHint=your.name@company.com                             # Your email (optional)
+
+# Application Settings
+preferredTimezone=America/New_York                          # Your preferred timezone
+alertMinutes=1                                              # Minutes before meeting to alert (1-30)
+
+# Advanced Settings (usually auto-configured)
+clientId=                                                   # OAuth client ID
+clientSecret=                                               # OAuth client secret
+tenantId=common                                            # Azure AD tenant
+redirectUri=http://localhost:8888/redirect                 # OAuth redirect URI
+```
+
+### Settings Management
+- Most settings can be changed through the Settings dialog in GUI mode
+- Direct file editing is required only for advanced configuration
+- Changes take effect immediately after saving
 
 ## Event Response Status Support
 
@@ -201,4 +376,36 @@ To test response status support, run the included test script:
 ## Requirements
 
 - Java 11 or later
-- Groovy libraries (included in the lib directory)
+- Maven 3.6 or later for building
+
+## Build System
+
+OutlookAlerter uses Maven for dependency management and building. The project's key dependencies are managed through the `pom.xml` file:
+
+### Core Dependencies
+- Groovy 3.0.9 (core, json, and dateutil modules)
+- JNA 5.13.0 for native system access
+- Maven 3.6+ for building
+
+### Building with Maven
+The project includes a Maven configuration that:
+- Enforces Java 11 or later
+- Compiles Groovy sources
+- Creates an executable JAR with dependencies
+- Runs tests
+
+To build the project:
+```bash
+# Clean and build
+mvn clean package
+
+# Run tests only
+mvn test
+
+# Install to local Maven repository
+mvn install
+```
+
+The build produces two JARs in the `target` directory:
+- `outlookalerter-1.0-SNAPSHOT.jar`: Basic JAR
+- `outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar`: Executable JAR with all dependencies

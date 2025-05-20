@@ -18,7 +18,6 @@ import java.util.concurrent.TimeUnit
 class OutlookAlerterConsole {
     // Time constants
     private static final int POLLING_INTERVAL_MINUTES = 1
-    private static final int ALERT_THRESHOLD_MINUTES = 1
     
     // Components
     private final ConfigManager configManager
@@ -286,7 +285,7 @@ class OutlookAlerterConsole {
                 }
                 
                 // Alert for events about to start
-                if (minutesToStart <= ALERT_THRESHOLD_MINUTES && minutesToStart >= -ALERT_THRESHOLD_MINUTES) {
+                if (minutesToStart <= configManager.alertMinutes && minutesToStart >= -1) {
                     println "Alerting for event: ${event.subject}" + 
                            (event.responseStatus ? " (${event.responseStatus})" : "") + 
                            " (${minutesToStart >= 0 ? 
