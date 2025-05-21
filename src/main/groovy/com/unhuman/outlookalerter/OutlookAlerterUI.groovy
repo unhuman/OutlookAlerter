@@ -16,6 +16,7 @@ import java.util.List
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.awt.Taskbar;
 
 /**
  * Main application window for Outlook Alerter
@@ -53,6 +54,9 @@ class OutlookAlerterUI extends JFrame {
 
     // Track the current icon state
     private Boolean currentIconInvalidState = null
+
+    // Track settings dialog instance
+    private JDialog settingsDialog = null;
 
     /**
      * Create a new OutlookAlerterUI
@@ -802,101 +806,124 @@ class OutlookAlerterUI extends JFrame {
     /**
      * Show settings dialog
      */
-    private void showSettingsDialog() {
-        final JFrame thisFrame = this
-        JDialog settingsDialog = new JDialog(this, "Settings", true)
-        settingsDialog.setLayout(new BorderLayout())
-        
-        JPanel formPanel = new JPanel(new GridBagLayout())
-        GridBagConstraints gbc = new GridBagConstraints()
-        gbc.fill = GridBagConstraints.HORIZONTAL
-        gbc.insets = new Insets(5, 5, 5, 5)
-        
-        // Timezone setting
-        gbc.gridx = 0
-        gbc.gridy = 0
-        formPanel.add(new JLabel("Timezone:"), gbc)
-        
-        String currentTimezone = configManager.preferredTimezone ?: ZonedDateTime.now().getZone().toString()
-        JTextField timezoneField = new JTextField(currentTimezone, 20)
-        gbc.gridx = 1
-        gbc.gridy = 0
-        formPanel.add(timezoneField, gbc)
-        
-        // Alert minutes setting
-        gbc.gridx = 0
-        gbc.gridy = 1
-        formPanel.add(new JLabel("Alert minutes before meeting:"), gbc)
-        
-        SpinnerModel spinnerModel = new SpinnerNumberModel(
-            configManager.alertMinutes, // current
-            1,  // min
-            30, // max
-            1   // step
-        )
-        JSpinner alertMinutesSpinner = new JSpinner(spinnerModel)
-        gbc.gridx = 1
-        gbc.gridy = 1
-        formPanel.add(alertMinutesSpinner, gbc)
-        
-        // Okta SSO URL
-        gbc.gridx = 0
-        gbc.gridy = 2
-        formPanel.add(new JLabel("Sign-in URL:"), gbc)
-        
-        JTextField signInUrlField = new JTextField(configManager.signInUrl ?: "", 20)
-        gbc.gridx = 1
-        gbc.gridy = 2
-        formPanel.add(signInUrlField, gbc)
-        
-        // Button panel
-        JPanel buttonPanel = new JPanel()
-        JButton saveButton = new JButton("Save")
-        saveButton.addActionListener(new ActionListener() {
-            @Override
-            void actionPerformed(ActionEvent e) {
-                // Save settings
-                String timezone = timezoneField.getText().trim()
-                String signInUrl = signInUrlField.getText().trim()
-                int alertMinutes = (Integer)alertMinutesSpinner.getValue()
-                
+    private synchronized void showSettingsDialog() {
+        if (settingsDialog == null || !settingsDialog.isShowing()) {
+            settingsDialog = new JDialog(this, "Settings", true);
+            settingsDialog.setLayout(new BorderLayout());
+
+            JPanel formPanel = new JPanel(new GridBagLayout());
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.insets = new Insets(5, 5, 5, 5);
+
+            // Timezone setting
+            gbc.gridx = 0;
+            gbc.gridy = 0;
+            formPanel.add(new JLabel("Timezone:"), gbc);
+
+            String currentTimezone = configManager.preferredTimezone ?: ZonedDateTime.now().getZone().toString();
+            JTextField timezoneField = new JTextField(currentTimezone, 20);
+            gbc.gridx = 1;
+            gbc.gridy = 0;
+            formPanel.add(timezoneField, gbc);
+
+            // Alert minutes setting
+            gbc.gridx = 0;
+            gbc.gridy = 1;
+            formPanel.add(new JLabel("Alert minutes before meeting:"), gbc);
+
+            SpinnerModel spinnerModel = new SpinnerNumberModel(
+                configManager.alertMinutes, // current
+                1,  // min
+                30, // max
+                1   // step
+            );
+            JSpinner alertMinutesSpinner = new JSpinner(spinnerModel);
+            gbc.gridx = 1;
+            gbc.gridy = 1;
+            formPanel.add(alertMinutesSpinner, gbc);
+
+            // Okta SSO URL
+            gbc.gridx = 0;
+            gbc.gridy = 2;
+            formPanel.add(new JLabel("Sign-in URL:"), gbc);
+
+            JTextField signInUrlField = new JTextField(configManager.signInUrl ?: "", 20);
+            gbc.gridx = 1;
+            gbc.gridy = 2;
+            formPanel.add(signInUrlField, gbc);
+
+            // Button panel
+            JPanel buttonPanel = new JPanel();
+            JButton saveButton = new JButton("Save");
+            saveButton.addActionListener(new ActionListener() {
+                @Override
+                void actionPerformed(ActionEvent e) {
+                    // Save settings
+                    String timezone = timezoneField.getText().trim();
+                    String signInUrl = signInUrlField.getText().trim();
+                    int alertMinutes = (Integer)alertMinutesSpinner.getValue();
+
+                    try {
+                        if (!timezone.isEmpty()) {
+                            java.time.ZoneId.of(timezone); // Validate timezone
+                            configManager.updatePreferredTimezone(timezone);
+                        }
+
+                        if (!signInUrl.isEmpty()) {
+                            configManager.updateSignInUrl(signInUrl);
+                        }
+
+                        configManager.updateAlertMinutes(alertMinutes);
+
+                        settingsDialog.dispose();
+                        settingsDialog = null;
+                        JOptionPane.showMessageDialog(OutlookAlerterUI.this, "Settings saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(settingsDialog, "Invalid settings: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            });
+
+            JButton cancelButton = new JButton("Cancel");
+            cancelButton.addActionListener(new ActionListener() {
+                @Override
+                void actionPerformed(ActionEvent e) {
+                    settingsDialog.dispose();
+                    settingsDialog = null;
+                }
+            });
+
+            buttonPanel.add(saveButton);
+            buttonPanel.add(cancelButton);
+
+            settingsDialog.add(formPanel, BorderLayout.CENTER);
+            settingsDialog.add(buttonPanel, BorderLayout.SOUTH);
+
+            settingsDialog.pack();
+            settingsDialog.setLocationRelativeTo(this);
+            settingsDialog.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosing(WindowEvent e) {
+                    settingsDialog = null;
+                }
+            });
+
+            // Request user attention on macOS
+            if (System.getProperty("os.name").toLowerCase().contains("mac")) {
                 try {
-                    if (!timezone.isEmpty()) {
-                        java.time.ZoneId.of(timezone) // Validate timezone
-                        configManager.updatePreferredTimezone(timezone)
-                    }
-                    
-                    if (!signInUrl.isEmpty()) {
-                        configManager.updateSignInUrl(signInUrl)
-                    }
-                    
-                    configManager.updateAlertMinutes(alertMinutes)
-                    
-                    settingsDialog.dispose()
-                    JOptionPane.showMessageDialog(thisFrame, "Settings saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE)
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(settingsDialog, "Invalid settings: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE)
+                    Taskbar taskbar = Taskbar.getTaskbar();
+                    // Fallback: Print a message to the console to indicate user attention is needed
+                    // System.out.println("[INFO] Requesting user attention for settings dialog.");
+                } catch (UnsupportedOperationException | SecurityException ex) {
+                    System.err.println("Unable to request user attention: " + ex.getMessage());
                 }
             }
-        })
-        
-        JButton cancelButton = new JButton("Cancel")
-        cancelButton.addActionListener(new ActionListener() {
-            @Override
-            void actionPerformed(ActionEvent e) {
-                settingsDialog.dispose()
-            }
-        })
-        
-        buttonPanel.add(saveButton)
-        buttonPanel.add(cancelButton)
-        
-        settingsDialog.add(formPanel, BorderLayout.CENTER)
-        settingsDialog.add(buttonPanel, BorderLayout.SOUTH)
-        
-        settingsDialog.pack()
-        settingsDialog.setLocationRelativeTo(this)
-        settingsDialog.setVisible(true)
+
+            settingsDialog.setVisible(true);
+        } else {
+            settingsDialog.toFront();
+        }
     }
     
     /**
@@ -1027,7 +1054,8 @@ class OutlookAlerterUI extends JFrame {
                             try {
                                 Class<?> taskbarClass = Class.forName("java.awt.Taskbar")
                                 Object taskbar = taskbarClass.getMethod("getTaskbar").invoke(null)
-                                taskbarClass.getMethod("requestUserAttention", boolean.class).invoke(taskbar, true)
+                                // Fallback: Print a message to the console to indicate user attention is needed
+                                // System.out.println("[INFO] Requesting user attention for application window.");
                                 
                                 attempts++
                                 if (attempts >= 3) {
