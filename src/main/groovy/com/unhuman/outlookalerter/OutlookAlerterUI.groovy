@@ -58,6 +58,9 @@ class OutlookAlerterUI extends JFrame {
     // Track settings dialog instance
     private JDialog settingsDialog = null;
 
+    // Added a flag to track if the token dialog is active
+    private boolean isTokenDialogActive = false;
+
     /**
      * Create a new OutlookAlerterUI
      */
@@ -166,8 +169,12 @@ class OutlookAlerterUI extends JFrame {
                 settingsItem.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
-                        activateWindow()
-                        showSettingsDialog()
+                        if (isTokenDialogActive) {
+                            System.out.println("Cannot display settings dialog while token dialog is active.");
+                        } else {
+                            // activateWindow()
+                            showSettingsDialog()
+                        }
                     }
                 })
                 
@@ -175,18 +182,8 @@ class OutlookAlerterUI extends JFrame {
                 exitItem.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
-                        int option = JOptionPane.showConfirmDialog(
-                            OutlookAlerterUI.this,
-                            "Do you want to exit Outlook Alerter?\nYou will no longer receive meeting alerts.",
-                            "Confirm Exit",
-                            JOptionPane.YES_NO_OPTION,
-                            JOptionPane.QUESTION_MESSAGE
-                        )
-                        
-                        if (option == JOptionPane.YES_OPTION) {
-                            shutdown()
-                            System.exit(0)
-                        }
+                        shutdown()
+                        System.exit(0)
                     }
                 })
                 
@@ -313,7 +310,7 @@ class OutlookAlerterUI extends JFrame {
         settingsButton.addActionListener(new ActionListener() {
             @Override
             void actionPerformed(ActionEvent e) {
-                activateWindow()
+                //activateWindow()
                 showSettingsDialog()
             }
         })
@@ -807,6 +804,11 @@ class OutlookAlerterUI extends JFrame {
      * Show settings dialog
      */
     private synchronized void showSettingsDialog() {
+        if (isTokenDialogActive) {
+            System.out.println("Cannot display settings dialog while token dialog is active.");
+            return;
+        }
+
         if (settingsDialog == null || !settingsDialog.isShowing()) {
             settingsDialog = new JDialog(this, "Settings", true);
             settingsDialog.setLayout(new BorderLayout());
@@ -918,6 +920,15 @@ class OutlookAlerterUI extends JFrame {
                 } catch (UnsupportedOperationException | SecurityException ex) {
                     System.err.println("Unable to request user attention: " + ex.getMessage());
                 }
+            }
+
+            if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+                // Set window always-on-top temporarily to help with focus
+                settingsDialog.setAlwaysOnTop(true)
+                
+                // First focus attempt
+                settingsDialog.toFront()
+                settingsDialog.requestFocusInWindow()
             }
 
             settingsDialog.setVisible(true);
@@ -1113,29 +1124,19 @@ class OutlookAlerterUI extends JFrame {
     }
 
     /**
-     * Show token entry form
-     */
-    private void showTokenEntryForm() {
-        // Clear icon caches to force regeneration with invalid state
-        IconManager.clearIconCaches()
-        
-        // Update window and tray icons to show invalid token state
-        updateIcons(true)
-
-        // Show the token entry form
-        TokenEntryUI tokenEntryUI = new TokenEntryUI(configManager.getSignInUrl())
-        tokenEntryUI.showDialog()
-    }
-
-    /**
      * Prompt the user for tokens using the SimpleTokenDialog.
      * @param signInUrl The URL for signing in.
      * @return A map containing the tokens, or null if the user cancels.
      */
     Map<String, String> promptForTokens(String signInUrl) {
-        updateIcons(true)  // Show invalid token state
-        SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
-        dialog.show()
-        return dialog.getTokens()
+        try {
+            isTokenDialogActive = true
+            updateIcons(true)  // Show invalid token state
+            SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
+            dialog.show()
+            return dialog.getTokens()
+        } finally {
+            isTokenDialogActive = false
+        }
     }
 }
