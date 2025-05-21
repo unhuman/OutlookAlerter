@@ -32,7 +32,7 @@ class IconManager {
      * Get application icon image at standard size (16x16)
      */
     static Image getIconImage(boolean isTokenInvalid = false) {
-        System.out.println("ICON: Requesting ${isTokenInvalid ? 'invalid' : 'valid'} state icon at 16x16")
+        // System.out.println("ICON: Requesting ${isTokenInvalid ? 'invalid' : 'valid'} state icon at 16x16")
         if (isTokenInvalid) {
             if (invalidIconCache == null) {
                 // System.out.println("ICON: Creating new invalid state icon at 16x16")
@@ -52,7 +52,7 @@ class IconManager {
      * Get large application icon image (32x32)
      */
     static Image getLargeIconImage(boolean isTokenInvalid = false) {
-        System.out.println("ICON: Requesting ${isTokenInvalid ? 'invalid' : 'valid'} state icon at 32x32")
+        // System.out.println("ICON: Requesting ${isTokenInvalid ? 'invalid' : 'valid'} state icon at 32x32")
         if (isTokenInvalid) {
             if (invalidLargeIconCache == null) {
                 // System.out.println("ICON: Creating new invalid state icon at 32x32")
@@ -74,7 +74,7 @@ class IconManager {
      * @param isTokenInvalid If true, inverts the blue and red colors
      */
     private static BufferedImage createIconImage(int size, boolean isTokenInvalid) {
-        System.out.println("ICON: Creating new icon with size=${size}, isTokenInvalid=${isTokenInvalid}")
+        // System.out.println("ICON: Creating new icon with size=${size}, isTokenInvalid=${isTokenInvalid}")
         BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
         Graphics2D g = img.createGraphics()
         
