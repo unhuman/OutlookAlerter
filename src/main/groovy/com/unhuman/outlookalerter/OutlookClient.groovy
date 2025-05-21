@@ -10,6 +10,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.function.Supplier
 import javax.swing.JOptionPane
+import javax.net.ssl.SSLContext
 
 // Additional imports for TokenEntryServer
 import com.sun.net.httpserver.HttpExchange
@@ -53,6 +54,40 @@ class OutlookClient {
 
     // Reference to OutlookAlerterUI for token dialog handling
     private final OutlookAlerterUI outlookAlerterUI;
+    
+    // Static initializer to set up SSL trust before any instances are created
+    static {
+        try {
+            // Run certificate diagnostics if debug mode is enabled
+            boolean debugMode = Boolean.parseBoolean(System.getProperty("outlookalerter.ssl.debug", "false"))
+            if (debugMode) {
+                println "Running certificate diagnostics before SSL initialization"
+                CertificateDebugger.fullDiagnostics("graph.microsoft.com")
+            }
+            
+            // Initialize SSL trust store with system certs and Netskope cert
+            SSLUtils.initializeSSLContext()
+            
+            // Print debug information if debug mode is enabled
+            if (debugMode) {
+                println "Running certificate diagnostics after SSL initialization"
+                CertificateDebugger.fullDiagnostics(null) // Don't test connection again
+            }
+            
+            println "SSL context initialized"
+        } catch (Exception e) {
+            println "Error initializing SSL context: ${e.message}"
+            e.printStackTrace()
+            println "Please ensure your truststore includes all necessary certificates"
+            
+            // Even in case of failure, try to run diagnostics
+            try {
+                CertificateDebugger.fullDiagnostics("graph.microsoft.com")
+            } catch (Exception diagError) {
+                println "Error running certificate diagnostics: ${diagError.message}"
+            }
+        }
+    }
 
     /**
      * Creates a new Outlook client with the given configuration
@@ -60,7 +95,7 @@ class OutlookClient {
     OutlookClient(ConfigManager configManager, OutlookAlerterUI outlookAlerterUI) {
         this.configManager = configManager;
         this.outlookAlerterUI = outlookAlerterUI;
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = createHttpClient();
     }
 
     /**
@@ -69,7 +104,36 @@ class OutlookClient {
      */
     OutlookClient(ConfigManager configManager) {
         this.configManager = configManager
-        this.httpClient = HttpClient.newHttpClient()
+        this.httpClient = createHttpClient()
+    }
+    
+    /**
+     * Create an HTTP client with custom SSL settings
+     */
+    private HttpClient createHttpClient() {
+        try {
+            println "Creating HTTP client with SSL context from truststore"
+            
+            // Create the HTTP client builder with our custom SSL context
+            def builder = HttpClient.newBuilder()
+            
+            // Use the default SSL context (which has been initialized in the static block)
+            // This will use our custom truststore that includes the Netskope certificate
+            SSLContext sslContext = SSLContext.getDefault()
+            builder = builder.sslContext(sslContext)
+            
+            // Configure connection timeout
+            builder = builder.connectTimeout(java.time.Duration.ofSeconds(30))
+            
+            return builder.build()
+        } catch (Exception e) {
+            println "Error creating custom HTTP client: ${e.message}"
+            e.printStackTrace()
+            
+            // Log that we're falling back to the default HttpClient
+            println "Falling back to default HttpClient"
+            return HttpClient.newHttpClient()
+        }
     }
     
     /**
@@ -863,25 +927,66 @@ class OutlookClient {
      */
     private boolean validateTokenWithServer(String token) {
         if (!isValidTokenFormat(token)) {
+            println "Token validation failed: Invalid token format"
             return false
         }
 
         try {
             // Make a lightweight request to validate the token
             // Using /me endpoint which is a minimal call
+            URI requestUri = URI.create("${GRAPH_ENDPOINT}/me")
+            println "Validating token with request to: ${requestUri}"
+            
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("${GRAPH_ENDPOINT}/me"))
+                .uri(requestUri)
                 .header("Authorization", "Bearer ${token}")
                 .header("Accept", "application/json")
                 .GET()
                 .build()
 
+            // If we're in debug mode, run certificate diagnostics before attempting connection
+            if (Boolean.parseBoolean(System.getProperty("outlookalerter.ssl.debug", "false"))) {
+                println "Running certificate diagnostics before token validation request"
+                CertificateDebugger.fullDiagnostics("graph.microsoft.com")
+            }
+            
+            println "Sending token validation request to Microsoft Graph API..."
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
 
             // If we get a 200 OK, the token is valid
-            return response.statusCode() == 200
+            boolean isValid = (response.statusCode() == 200)
+            println "Token validation response status: ${response.statusCode()}" + 
+                   (isValid ? " (Valid)" : " (Invalid)")
+            
+            if (!isValid) {
+                println "Response body: ${response.body()}"
+            }
+            
+            return isValid
         } catch (Exception e) {
             println "Error validating token with server: ${e.message}"
+            
+            // Enhanced error diagnostics
+            if (e instanceof javax.net.ssl.SSLHandshakeException || 
+                e.message?.contains("PKIX") || 
+                e.message?.contains("certificate")) {
+                
+                println "\n===== CERTIFICATE ERROR DIAGNOSTICS ====="
+                println "This appears to be an SSL certificate validation error."
+                println "Running detailed certificate diagnostics..."
+                
+                try {
+                    CertificateDebugger.fullDiagnostics("graph.microsoft.com")
+                } catch (Exception diagError) {
+                    println "Error running certificate diagnostics: ${diagError.message}"
+                }
+                
+                println "===== END CERTIFICATE ERROR DIAGNOSTICS ====="
+            } else {
+                // For other types of errors, print the stack trace
+                e.printStackTrace()
+            }
+            
             return false
         }
     }

@@ -16,5 +16,15 @@
     <string>OutlookAlerter</string>
     <key>LSUIElement</key>
     <true/>
+
+    <key>Java</key>
+    <dict>
+        <key>JVMOptions</key>
+        <array>
+            <string>-Djavax.net.ssl.trustStore=$APP_ROOT/Contents/Resources/truststore.jks</string>
+            <string>-Djavax.net.ssl.trustStorePassword=changeit</string>
+            <string>-Doutlookalerter.ssl.debug=true</string>
+        </array>
+    </dict>
 </dict>
 </plist>

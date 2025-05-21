@@ -198,6 +198,10 @@
                                 <argument>${project.build.directory}/classes/icon.icns</argument>
                                 <argument>--resource-dir</argument>
                                 <argument>${project.build.directory}/classes</argument>
+                                <argument>--java-options</argument>
+                                <argument>-Djavax.net.ssl.trustStore=$APP_ROOT/Contents/Resources/truststore.jks</argument>
+                                <argument>--java-options</argument>
+                                <argument>-Djavax.net.ssl.trustStorePassword=changeit</argument>
                             </arguments>
                             <skip>${os.name} != 'Mac OS X'</skip>
                         </configuration>
@@ -231,6 +235,104 @@
                                 </resource>
                             </resources>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Maven Antrun Plugin for custom truststore configuration -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.0.0</version>
+                <executions>
+                    <execution>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <echo message="Setting up custom truststore for SSL validation..."/>
+                                <property name="javax.net.ssl.trustStore" value="${project.build.directory}/truststore/truststore.jks"/>
+                                <property name="javax.net.ssl.trustStorePassword" value="changeit"/>
+                                <mkdir dir="${project.build.directory}/truststore"/>
+                                <exec executable="sh" output="${project.build.directory}/security-output.log" error="${project.build.directory}/security-error.log" failonerror="true">
+                                    <arg value="-c"/>
+                                    <arg value="security find-certificate -a -p | openssl x509 -outform der > ${project.build.directory}/truststore/system-certs.der"/>
+                                </exec>
+                                <exec executable="keytool" output="${project.build.directory}/keytool-output.log" error="${project.build.directory}/keytool-error.log" failonerror="true">
+                                    <arg value="-importcert"/>
+                                    <arg value="-file"/>
+                                    <arg value="${project.build.directory}/truststore/system-certs.der"/>
+                                    <arg value="-keystore"/>
+                                    <arg value="${project.build.directory}/truststore/truststore.jks"/>
+                                    <arg value="-storepass"/>
+                                    <arg value="changeit"/>
+                                    <arg value="-noprompt"/>
+                                    <arg value="-alias"/>
+                                    <arg value="cert-${maven.build.timestamp}"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>pre-clean</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <echo message="Cleaning up existing .app directory..."/>
+                                <delete dir="${project.build.directory}/OutlookAlerter.app" failonerror="false"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>copy-truststore</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <echo message="Copying truststore.jks into .app bundle..."/>
+                                <copy file="${project.build.directory}/truststore/truststore.jks" todir="${project.build.directory}/OutlookAlerter.app/Contents/Resources"/>
+                                <echo message="Verifying truststore content..."/>
+                                <exec executable="keytool">
+                                    <arg value="-list"/>
+                                    <arg value="-keystore"/>
+                                    <arg value="${project.build.directory}/OutlookAlerter.app/Contents/Resources/truststore.jks"/>
+                                    <arg value="-storepass"/>
+                                    <arg value="changeit"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>add-certificate-to-truststore</id>
+                        <phase>prepare-package</phase>
+                        <configuration>
+                            <target>
+                                <echo message="Importing Netskope certificate to truststore..."/>
+                                <exec executable="keytool" failonerror="false">
+                                    <arg value="-import"/>
+                                    <arg value="-trustcacerts"/>
+                                    <arg value="-file"/>
+                                    <arg value="/Library/Application Support/Netskope/STAgent/download/nscacert_combined.pem"/>
+                                    <arg value="-keystore"/>
+                                    <arg value="${project.build.directory}/truststore/truststore.jks"/>
+                                    <arg value="-storepass"/>
+                                    <arg value="changeit"/>
+                                    <arg value="-alias"/>
+                                    <arg value="nscacert_combined"/>
+                                    <arg value="-noprompt"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>

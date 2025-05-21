@@ -24,6 +24,13 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 - Robust timezone handling with configurable preferences
 - Extensive diagnostic and troubleshooting tools
 
+## Documentation
+
+Additional documentation is available in the `documentation` folder:
+
+- [SSL Certificate Management](documentation/certificates.md) - Comprehensive guide to managing SSL certificates for the application, including Netskope integration and troubleshooting
+- [Icon Creation Guide](documentation/iconCreation.md) - Instructions for creating and customizing application icons
+
 ## User Interface
 
 Outlook Alerter provides a modern, user-friendly graphical interface with these key features:
@@ -252,6 +259,32 @@ OutlookAlerter includes several built-in diagnostic tools:
    ./run-all-diagnostics.sh
    ```
 
+### SSL Certificate Issues
+
+If you encounter SSL certificate validation errors, especially in environments using Netskope or other SSL inspection tools:
+
+1. Run the SSL diagnostics script:
+   ```bash
+   ./diagnose-ssl-issues.sh
+   ```
+
+2. Fix certificate issues in an existing app bundle:
+   ```bash
+   ./fix-app-certificates.sh /path/to/OutlookAlerter.app
+   ```
+
+3. Rebuild with fixed certificate configuration:
+   ```bash
+   ./build-with-fixed-certs.sh
+   ```
+
+4. Run with SSL debugging enabled:
+   ```bash
+   ./run-with-ssl-debug.sh
+   ```
+
+For comprehensive information about SSL certificate management, see the [SSL Certificate Management](documentation/certificates.md) guide.
+
 ### Common Issues
 
 > Note: All dialog windows and system tray notifications will show "Outlook Alerter" as the application name.
@@ -379,6 +412,7 @@ To test response status support, run the included test script:
 
 - Java 11 or later
 - Maven 3.6 or later for building
+- Properly configured SSL certificates (especially if using Netskope SSL inspection)
 
 ## Build System
 
@@ -388,6 +422,14 @@ Outlook Alerter uses Maven for dependency management and building. The project's
 - Groovy 3.0.9 (core, json, and dateutil modules)
 - JNA 5.13.0 for native system access
 - Maven 3.6+ for building
+
+### Certificate Management
+The build process automatically manages SSL certificates:
+- System certificates are exported during build
+- Netskope certificate is imported if available
+- A custom truststore is generated and included in the app bundle
+
+See the [SSL Certificate Management](documentation/certificates.md) guide for details.
 
 ### Building with Maven
 The project includes a Maven configuration that:

@@ -13,6 +13,8 @@ import java.util.concurrent.TimeUnit
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.JOptionPane
+import java.security.KeyStore
+import java.io.FileInputStream
 
 /**
  * Main application class for Outlook Alerter
@@ -27,6 +29,13 @@ class OutlookAlerter {
      * Main entry point
      */
     static void main(String[] args) {
+        // Check for certificate debug mode
+        if (args.contains("--cert-debug") || args.contains("-cd")) {
+            println "Certificate debug mode detected"
+            CertificateDebugMain.main(args)
+            return
+        }
+    
         // First check if another instance is running
         SingleInstanceManager instanceManager = new SingleInstanceManager()
         if (!instanceManager.tryAcquireLock()) {
@@ -47,8 +56,14 @@ class OutlookAlerter {
             return
         }
         
+        // Set truststore properties
+        System.setProperty("javax.net.ssl.trustStore", "${System.getProperty('user.dir')}/OutlookAlerter.app/Contents/Resources/truststore.jks")
+        System.setProperty("javax.net.ssl.trustStorePassword", "changeit")
+        
         // Parse command-line arguments
         String configPath = System.getProperty("user.home") + "/.outlookalerter/config.properties"
+        println "Resolved user.home: ${System.getProperty("user.home")}";
+        println "Using config path: ${configPath}";
         boolean consoleMode = false
         String timezoneOverride = null
         
@@ -68,6 +83,49 @@ class OutlookAlerter {
             } else if (args[i] == "--help") {
                 printUsage()
                 return
+            }
+        }
+        
+        if (DEBUG_MODE) {
+            // Log environment variables
+            System.getenv().each { key, value -> println "$key=$value" }
+
+            // Log working directory
+            println "Working Directory: ${System.getProperty('user.dir')}"
+
+            // Log Java system properties
+            System.getProperties().each { key, value -> println "$key=$value" }
+
+            // Verify access to the config file
+            File configFile = new File(configPath)
+            println "Config file exists: ${configFile.exists()}"
+            println "Config file path: ${configFile.absolutePath}"
+
+            // Verify network connectivity
+            try {
+                URL url = new URL("https://login.microsoftonline.com")
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection()
+                connection.connect()
+                println "Connection successful: ${connection.responseCode}"
+            } catch (Exception e) {
+                println "Connection failed: ${e.message}"
+            }
+
+            // List certificates in the truststore
+            println "Listing certificates in the truststore..."
+            try {
+                String trustStorePath = System.getProperty("javax.net.ssl.trustStore", System.getProperty("java.home") + "/lib/security/cacerts")
+                String trustStorePassword = System.getProperty("javax.net.ssl.trustStorePassword", "changeit")
+                KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType())
+                trustStore.load(new FileInputStream(trustStorePath), trustStorePassword.toCharArray())
+
+                trustStore.aliases().each { alias ->
+                    println "Alias: $alias"
+                    println "Certificate: ${trustStore.getCertificate(alias as String)}"
+                }
+            } catch (Exception e) {
+                println "Error listing truststore certificates: ${e.message}"
+                e.printStackTrace()
             }
         }
         

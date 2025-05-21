@@ -1,9 +1,15 @@
 .DS_Store
 .vscode/
 build/
+diagnostics-*/
 dist/
 lib/
+ssl-diagnostics-*/
 target/
-diagnostics-*/
 **/*.class
 **/*.log
+system-certs.der
+*.jks
+*.pem
+*.der
+*.p12
