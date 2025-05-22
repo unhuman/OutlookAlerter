@@ -8,7 +8,7 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 
 - Connects to Microsoft Graph API to retrieve your calendar events
 - Configurable alert time (1-30 minutes before meetings)
-- Cross-platform screen flashing alerts for upcoming meetings
+- Cross-platform screen flashing alerts for upcoming meetings (without menu bar icons on macOS)
 - Supports authentication through Okta SSO or direct Microsoft authentication
 - Comprehensive calendar event handling:
   - Shows meeting response status (accepted, tentative, declined)
