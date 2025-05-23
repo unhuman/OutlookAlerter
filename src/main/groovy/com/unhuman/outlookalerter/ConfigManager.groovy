@@ -18,7 +18,6 @@ class ConfigManager {
     private String redirectUri
     private String accessToken
     private String refreshToken
-    private long tokenExpiryTime
     
     // Application-specific properties
     private String preferredTimezone
@@ -138,17 +137,6 @@ class ConfigManager {
         
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")
-        
-        String expiryTimeStr = properties.getProperty("tokenExpiryTime")
-        if (expiryTimeStr) {
-            try {
-                tokenExpiryTime = Long.parseLong(expiryTimeStr)
-            } catch (NumberFormatException e) {
-                tokenExpiryTime = 0
-            }
-        } else {
-            tokenExpiryTime = 0
-        }
     }
     
     /**
@@ -179,8 +167,6 @@ class ConfigManager {
                 properties.setProperty("refreshToken", refreshToken)
             }
             
-            properties.setProperty("tokenExpiryTime", String.valueOf(tokenExpiryTime))
-            
             // Save to file
             File configFile = new File(configFilePath)
             properties.store(new FileOutputStream(configFile), "Outlook Alerter Configuration")
@@ -193,10 +179,9 @@ class ConfigManager {
     /**
      * Updates OAuth tokens and saves the configuration
      */
-    void updateTokens(String accessToken, String refreshToken, long expiryTime) {
+    void updateTokens(String accessToken, String refreshToken) {
         this.accessToken = accessToken
         this.refreshToken = refreshToken
-        this.tokenExpiryTime = expiryTime
         saveConfiguration()
     }
     
@@ -207,7 +192,6 @@ class ConfigManager {
     String getRedirectUri() { return redirectUri }
     String getAccessToken() { return accessToken }
     String getRefreshToken() { return refreshToken }
-    long getTokenExpiryTime() { return tokenExpiryTime }
     
     // SSO specific getters
     String getSignInUrl() { return signInUrl }

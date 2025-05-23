@@ -86,10 +86,9 @@ If you already have a valid access token and refresh token, you can add them dir
 ```
 accessToken=eyJ...your-token-here...
 refreshToken=0.AU...your-refresh-token-here...
-expiryTime=1715643000000
 ```
 
-The `expiryTime` should be a timestamp in milliseconds representing when the token expires.
+The application will validate the token with the Microsoft Graph API server.
 
 ## macOS-Specific Solutions
 

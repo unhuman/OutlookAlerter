@@ -292,8 +292,7 @@ class SimpleTokenDialog {
                         // Store tokens
                         tokens = [
                             accessToken: accessToken,
-                            refreshToken: refreshToken,
-                            expiryTime: String.valueOf(System.currentTimeMillis() + (3600 - 300) * 1000) // Default 1-hour expiry
+                            refreshToken: refreshToken
                         ]
                         
                         // Signal completion and close
@@ -490,8 +489,7 @@ class SimpleTokenDialog {
             // Store token data
             tokens = [
                 accessToken: token,
-                refreshToken: refreshToken.isEmpty() ? null : refreshToken,
-                expiryTime: Long.toString(System.currentTimeMillis() + 3300000) // 55 minutes
+                refreshToken: refreshToken.isEmpty() ? null : refreshToken
             ]
             
             System.out.println("SimpleTokenDialog: Token submitted (first 10 chars): " + 

@@ -96,58 +96,45 @@ class OutlookClient {
     }
     
     /**
-     * Check if we have a valid (non-expired) access token
-     * @return true if the token is valid according to our records and/or Microsoft's server
+     * Check if we have a valid token by validating with Microsoft's server
+     * @return true if the token is valid according to the server
      */
     boolean hasValidToken() {
         String accessToken = configManager.accessToken
-        long expiryTime = configManager.tokenExpiryTime
-        long currentTime = System.currentTimeMillis();
 
         // Quick check: Do we have a token at all?
         if (accessToken == null || accessToken.isEmpty()) {
             return false;
         }
 
-        // Not expired, just use it
-        if (expiryTime > currentTime) {
-            return true;
-        }
-
-        // Perform server validation if needed
+        // Always perform server validation
         boolean isValid = validateTokenWithServer(accessToken);
 
         if (!isValid) {
-            println "Token appears to be expired or invalid according to Microsoft's server, despite our records";
+            println "Token appears to be invalid according to Microsoft's server";
             return false;
         }
 
-        // Update expiry time since the token is still valid according to server
-        long newExpiryTime = currentTime + SERVER_VALIDATION_INTERVAL_MS; // Add 15 mins to current time as a safe default
-        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
-        println "Token validated with server. Updated expiry time in configuration to: " + new Date(newExpiryTime);
-        
-        // If we got here, the token is valid (either by our records alone or confirmed with the server)
+        // If we got here, the token is valid according to the server
+        println "Token validated with server successfully.";
         return true;
     }
     
     /**
      * Check if we already have a valid token without refreshing or re-authenticating
      * This method is specifically designed for UI feedback purposes
-     * @return true if the token is valid according to our records, false if re-authentication or refresh is needed
+     * @return true if the token is valid according to the server, false if re-authentication or refresh is needed
      */
     boolean isTokenAlreadyValid() {
         String accessToken = configManager.accessToken
-        long expiryTime = configManager.tokenExpiryTime
-        long currentTime = System.currentTimeMillis();
 
         // Quick check: Do we have a token at all?
         if (accessToken == null || accessToken.isEmpty()) {
             return false;
         }
 
-        // Not expired according to our records
-        return expiryTime > currentTime;
+        // Validate with server
+        return validateTokenWithServer(accessToken);
     }
     
     /**
@@ -193,12 +180,8 @@ class OutlookClient {
                 // Update tokens
                 String accessToken = json['access_token'] as String
                 String refreshToken = json['refresh_token'] as String
-                int expiresIn = (json['expires_in'] as Number).intValue()
                 
-                // Calculate expiry time (subtract 5 minutes for safety)
-                long expiryTime = System.currentTimeMillis() + (expiresIn - 300) * 1000
-                
-                configManager.updateTokens(accessToken, refreshToken, expiryTime)
+                configManager.updateTokens(accessToken, refreshToken)
                 lastTokenValidationResult = TOKEN_REFRESHED
                 println "Token refreshed successfully!"
                 return true
@@ -274,15 +257,13 @@ class OutlookClient {
                 
                 // Token is valid, save all tokens
                 refreshToken = tokens.refreshToken
-                expiryTime = tokens.expiryTime ? Long.parseLong(tokens.expiryTime.toString()) : 
-                    (System.currentTimeMillis() + (3600 - 300) * 1000) // Default 1-hour expiry
                 
                 // Break the loop since we have a valid token
                 break
             }
             
-            configManager.updateTokens(accessToken, refreshToken, expiryTime)
-            println "Authentication successful! Token validated and saved with expiry at: " + new Date(expiryTime).format("yyyy-MM-dd HH:mm:ss z")
+            configManager.updateTokens(accessToken, refreshToken)
+            println "Authentication successful! Token validated and saved."
             return true
             
         } catch (Exception e) {
@@ -308,7 +289,7 @@ class OutlookClient {
         println "Access token was rejected (${errorType}). Attempting to re-authenticate..."
 
         // Clear the existing token's expiry time to force validation
-        configManager.updateTokens(configManager.accessToken, configManager.refreshToken, 0);
+        configManager.updateTokens(configManager.accessToken, configManager.refreshToken);
 
         // Try to refresh the token first if we have one
         if (configManager.refreshToken && refreshToken()) {
@@ -431,21 +412,15 @@ class OutlookClient {
             if (!validFormat || !hasValidToken()) {
                 // If the token format is valid but may be expired, validate with server before prompting
                 if (validFormat && accessToken) {
-                    boolean isValid = validateTokenWithServer(accessToken);
-
+                    boolean isValid = validateTokenWithServer(accessToken);                
                     if (isValid) {
-                        // Token is actually still valid according to server - update our expiry time
-                        // Add 1 hour to current time as a safe default
-                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
-                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
-                        println "Token was still valid according to server. Updated expiry time."
-                    } else {
-                        // Token truly invalid - try to refresh or re-authenticate
-                        if (!authenticate()) {
-                            throw new RuntimeException("Failed to authenticate with Outlook")
-                        }
-                        accessToken = configManager.accessToken;
+                        // Token is valid according to server validation
+                        configManager.updateTokens(accessToken, configManager.refreshToken);
+                        println "Token validated with server successfully."
+                    } else if (!authenticate()) {
+                        throw new RuntimeException("Failed to authenticate with Outlook")
                     }
+                    accessToken = configManager.accessToken;
                 } else {
                     // No valid token at all - authenticate from scratch
                     if (!authenticate()) {
@@ -581,25 +556,20 @@ class OutlookClient {
                 }
                 lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
             } 
-            // Then check if we have a valid token (by local time or server validation)
+            // Then check if we have a valid token (by server validation)
             else if (!hasValidToken()) {
-                // hasValidToken will have already tried server validation and updated config if valid
-                // If we get here, the token is truly invalid and we need to authenticate
+                // If we get here, the token is invalid according to the server and we need to authenticate
                 println "Token validation failed. Need to authenticate again.";
                 if (!authenticate()) {
                     throw new RuntimeException("Failed to re-authenticate to obtain a valid token");
                 }
                 lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
             } 
-            // If token was validated with server in hasValidToken() method, set the right status
-            else if (configManager.tokenExpiryTime > System.currentTimeMillis() - SERVER_VALIDATION_INTERVAL_MS) {
-                // Token was likely just validated with the server in hasValidToken()
+            else {
+                // Token was validated with the server in hasValidToken()
                 lastTokenValidationResult = TOKEN_VALID_AFTER_SERVER_VALIDATION;
                 println "Token was validated with server. Using validated token.";
                 accessToken = configManager.accessToken;
-            } else {
-                println "Using existing valid token - no need to validate or refresh."
-                lastTokenValidationResult = TOKEN_VALID_NO_ACTION;
             }
             
             // Make sure we use the latest token
@@ -667,10 +637,9 @@ class OutlookClient {
                     boolean isValid = validateTokenWithServer(accessToken);
 
                     if (isValid) {
-                        // Update expiry time since the token is actually still valid
-                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
-                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
-                        println "Token validated with server. Updated expiry time."
+                        // Token is valid according to server
+                        configManager.updateTokens(accessToken, configManager.refreshToken);
+                        println "Token validated with server successfully."
                     } else if (!authenticate()) {
                         throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
                     }
@@ -752,10 +721,9 @@ class OutlookClient {
                     boolean isValid = validateTokenWithServer(accessToken);
 
                     if (isValid) {
-                        // Update expiry time since the token is actually still valid
-                        long newExpiryTime = System.currentTimeMillis() + (3600 * 1000);
-                        configManager.updateTokens(accessToken, configManager.refreshToken, newExpiryTime);
-                        println "Token validated with server. Updated expiry time."
+                        // Token is valid according to server validation
+                        configManager.updateTokens(accessToken, configManager.refreshToken);
+                        println "Token validated with server successfully."
                     } else if (!authenticate()) {
                         throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
                     }
@@ -1428,8 +1396,7 @@ class OutlookClient {
                             <label for="refreshToken">Refresh Token (if available):</label>
                             <textarea id="refreshToken" name="refreshToken" placeholder="Optional: Refresh token allows the app to get new access tokens without re-authentication"></textarea>
                             
-                            <label for="expiryTime">Token Expiry Time (leave blank for default 1-hour expiry):</label>
-                            <input type="text" id="expiryTime" name="expiryTime" placeholder="Optional: Unix timestamp in milliseconds">
+
                             
                             <button type="submit">Submit</button>
                         </form>
@@ -1499,8 +1466,7 @@ class OutlookClient {
                     // Store tokens
                     tokens = [
                         accessToken: formParams["accessToken"],
-                        refreshToken: formParams["refreshToken"],
-                        expiryTime: formParams["expiryTime"]
+                        refreshToken: formParams["refreshToken"]
                     ]
                     
                     // Send success response

@@ -30,12 +30,6 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 
 Reference documentation for users and developers is available in the `documentation` directory:
 
-- [SSL Certificate Management](documentation/certificates.md) - Comprehensive guide to SSL certificate handling, including:
-  - Netskope SSL certificate integration
-  - Truststore configuration and management
-  - SSL troubleshooting and diagnostic tools
-  - Certificate verification and maintenance
-
 - [Icon Creation Guide](documentation/iconCreation.md) - Instructions for creating and managing application icons:
   - Icon design specifications
   - Converting icons to different formats
@@ -397,8 +391,6 @@ To test response status support, run the included test script:
 
 - Java 11 or later
 - Maven 3.6 or later for building
-- Properly configured SSL certificates (especially in environments using Netskope for SSL interception)
-- See [SSL Certificate Management](documentation/certificates.md) for certificate requirements
 
 ## Build System
 
@@ -409,10 +401,4 @@ Outlook Alerter uses Maven for dependency management and building. The project's
 - JNA 5.13.0 for native system access
 - Maven 3.6+ for building
 
-### SSL Certificate Handling
-The build process includes automatic SSL certificate management:
-- System certificates are imported into a custom truststore
-- Netskope certificates are detected and imported if available
-- Certificate configuration is integrated into the app bundle
 
-For details on certificate management during the build process, see the [SSL Certificate Management](documentation/certificates.md) documentation.

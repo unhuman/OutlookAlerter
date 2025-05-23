@@ -6,5 +6,6 @@ dist/
 lib/
 target/
 diagnostics-*/
+**/nohup.out
 **/*.class
 **/*.log
