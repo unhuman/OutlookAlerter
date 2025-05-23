@@ -2,11 +2,13 @@
 
 A Groovy application that monitors your Microsoft Outlook/Office 365 calendar and alerts you when meetings are about to start by flashing the screen.
 
+> **Note:** All utility, diagnostic, and test scripts have been organized into the `scripts/` directory for better project organization. Documentation has been updated to reference these new paths.
+
 ## Features
 
 - Connects to Microsoft Graph API to retrieve your calendar events
 - Configurable alert time (1-30 minutes before meetings)
-- Cross-platform screen flashing alerts for upcoming meetings
+- Cross-platform screen flashing alerts for upcoming meetings (without menu bar icons on macOS)
 - Supports authentication through Okta SSO or direct Microsoft authentication
 - Comprehensive calendar event handling:
   - Shows meeting response status (accepted, tentative, declined)
@@ -26,10 +28,19 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 
 ## Documentation
 
-Additional documentation is available in the `documentation` folder:
+Reference documentation for users and developers is available in the `documentation` directory:
 
-- [SSL Certificate Management](documentation/certificates.md) - Comprehensive guide to managing SSL certificates for the application, including Netskope integration and troubleshooting
-- [Icon Creation Guide](documentation/iconCreation.md) - Instructions for creating and customizing application icons
+- [SSL Certificate Management](documentation/certificates.md) - Comprehensive guide to SSL certificate handling, including:
+  - Netskope SSL certificate integration
+  - Truststore configuration and management
+  - SSL troubleshooting and diagnostic tools
+  - Certificate verification and maintenance
+
+- [Icon Creation Guide](documentation/iconCreation.md) - Instructions for creating and managing application icons:
+  - Icon design specifications
+  - Converting icons to different formats
+  - Integrating icons into the build process
+  - Troubleshooting icon display issues
 
 ## User Interface
 
@@ -167,17 +178,17 @@ Outlook Alerter includes several diagnostic tools to help troubleshoot issues wi
 
 1. **Debug Mode**: Run with detailed logging
    ```
-   ./run-debug.sh
+   ./scripts/run-debug.sh
    ```
    
 2. **Timezone Test**: Test the application's timezone handling
    ```
-   ./test-timezones.sh
+   ./scripts/test-timezones.sh
    ```
 
 3. **Timezone Override**: Run with an explicit timezone
    ```
-   ./run-with-timezone.sh America/New_York
+   ./scripts/run-with-timezone.sh America/New_York
    ```
 
 ### Advanced Diagnostic Tools
@@ -186,37 +197,37 @@ These tools can help diagnose missing calendar events:
 
 1. **Calendar Events Test**: Comprehensive calendar event testing
    ```
-   ./test-calendar-events.sh
+   ./scripts/test-calendar-events.sh
    ```
 
 2. **Missing Meetings Diagnostic**: Find meetings that might be missing
    ```
-   ./diagnose-missing-meetings.sh
+   ./scripts/diagnose-missing-meetings.sh
    ```
 
 3. **Multi-Calendar Diagnostic**: Diagnose issues with events in multiple calendars
    ```
-   ./diagnose-multi-calendar.sh
+   ./scripts/diagnose-multi-calendar.sh
    ```
 
 4. **Enhanced Calendar Diagnostics**: Deep analysis of calendar retrieval methods
    ```
-   ./enhanced-calendar-diagnostics.sh
+   ./scripts/enhanced-calendar-diagnostics.sh
    ```
 
 5. **Time Comparison Test**: Verify event timing logic is working correctly
    ```
-   ./test-time-comparisons.sh
+   ./scripts/test-time-comparisons.sh
    ```
 
 6. **Comprehensive Diagnostics**: Run all diagnostics in one go
    ```
-   ./run-all-diagnostics.sh
+   ./scripts/run-all-diagnostics.sh
    ```
    
 7. **Debug with Diagnostics**: Run in debug mode with diagnostics
    ```
-   ./run-debug.sh --diagnostics
+   ./scripts/run-debug.sh --diagnostics
    ```
 
 ### Understanding Diagnostic Results
@@ -246,17 +257,17 @@ OutlookAlerter includes several built-in diagnostic tools:
 
 2. **Timezone Diagnostics**: Test timezone configuration
    ```bash
-   ./test-timezones.sh
+   ./scripts/test-timezones.sh
    ```
 
 3. **Calendar Event Tests**: Validate event retrieval
    ```bash
-   ./test-calendar-events.sh
+   ./scripts/test-calendar-events.sh
    ```
 
 4. **Full Diagnostics**: Run all tests
    ```bash
-   ./run-all-diagnostics.sh
+   ./scripts/run-all-diagnostics.sh
    ```
 
 ### SSL Certificate Issues
@@ -346,7 +357,7 @@ Available options:
 - `--timezone <zone>`: Override the timezone for displaying events (e.g., America/New_York)
 - `--help`: Show help message
 
-Note: All diagnostic and test scripts (`test-*.sh`, `diagnose-*.sh`) also support running with the Maven-built JAR.
+Note: All diagnostic and test scripts (`scripts/test-*.sh`, `scripts/diagnose-*.sh`) also support running with the Maven-built JAR.
 
 ## Installation
 
@@ -365,7 +376,7 @@ There are two ways to build and run Outlook Alerter:
 
 ### Using Shell Scripts (Alternative)
 1. Clone the repository
-2. Run `./build.sh` to compile the application (uses Maven internally)
+2. Run `./scripts/build.sh` to compile the application (uses Maven internally)
 3. Run `./run.sh` to start the application
 
 ## Configuration
@@ -405,14 +416,15 @@ Outlook Alerter now properly displays the response status of each calendar event
 
 To test response status support, run the included test script:
 ```
-./test-tentative-meetings.sh
+./scripts/test-tentative-meetings.sh
 ```
 
 ## Requirements
 
 - Java 11 or later
 - Maven 3.6 or later for building
-- Properly configured SSL certificates (especially if using Netskope SSL inspection)
+- Properly configured SSL certificates (especially in environments using Netskope for SSL interception)
+- See [SSL Certificate Management](documentation/certificates.md) for certificate requirements
 
 ## Build System
 
@@ -431,25 +443,10 @@ The build process automatically manages SSL certificates:
 
 See the [SSL Certificate Management](documentation/certificates.md) guide for details.
 
-### Building with Maven
-The project includes a Maven configuration that:
-- Enforces Java 11 or later
-- Compiles Groovy sources
-- Creates an executable JAR with dependencies
-- Runs tests
+### SSL Certificate Handling
+The build process includes automatic SSL certificate management:
+- System certificates are imported into a custom truststore
+- Netskope certificates are detected and imported if available
+- Certificate configuration is integrated into the app bundle
 
-To build the project:
-```bash
-# Clean and build
-mvn clean package
-
-# Run tests only
-mvn test
-
-# Install to local Maven repository
-mvn install
-```
-
-The build produces two JARs in the `target` directory:
-- `outlookalerter-1.0-SNAPSHOT.jar`: Basic JAR
-- `outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar`: Executable JAR with all dependencies
+For details on certificate management during the build process, see the [SSL Certificate Management](documentation/certificates.md) documentation.

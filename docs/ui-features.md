@@ -55,6 +55,14 @@ The application can run in either:
 - **Foreground**: With the GUI visible
 - **Background**: Minimized to system tray, delivering notifications
 
+## Screen Flashing Alerts
+
+When a meeting is about to start:
+- The screen flashes to get your attention
+- A notification appears with meeting details
+- On macOS, the flashing happens without showing a temporary red square in the menu bar
+- The flashing gradually alternates between red and orange colors
+
 ## Troubleshooting
 
 If you encounter issues with the UI:

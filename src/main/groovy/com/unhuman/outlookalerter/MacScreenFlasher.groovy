@@ -42,40 +42,10 @@ class MacScreenFlasher implements ScreenFlasher {
      */
     private boolean tryMacSpecificFlash(CalendarEvent event) {
         try {
-            // Always show notification if supported
-            if (SystemTray.isSupported()) {
-                TrayIcon trayIcon = null
-                try {
-                    SystemTray tray = SystemTray.getSystemTray()
-                    
-                    // Create a simple icon
-                    BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB)
-                    Graphics2D g = img.createGraphics()
-                    g.setColor(Color.RED)
-                    g.fillRect(0, 0, 16, 16)
-                    g.dispose()
-                    
-                    trayIcon = new TrayIcon(img)
-                    trayIcon.setImageAutoSize(true)
-                    tray.add(trayIcon)
-                    
-                    // Show notification
-                    trayIcon.displayMessage(
-                        "Meeting Reminder",
-                        "${event.subject} starts in ${event.getMinutesToStart()} minute(s)",
-                        TrayIcon.MessageType.WARNING
-                    )
-                    
-                    // Clean up tray icon after a delay
-                    Timer cleanupTimer = new Timer(10000, { e ->
-                        SystemTray.getSystemTray().remove(trayIcon)
-                    })
-                    cleanupTimer.setRepeats(false)
-                    cleanupTimer.start()
-                } catch (Exception e) {
-                    println "System tray notification failed: ${e.message}"
-                }
-            }
+            // We don't create a temporary tray icon for notifications on macOS
+            // This avoids the red square appearing in the menu bar during flashing
+            // Notifications will still be shown through the main application's tray icon instead
+            // This was changed to improve the user experience on macOS
             
             // Flash all screens using Java's built-in capabilities
             flashScreenCrossPlatform(event)
