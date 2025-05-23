@@ -26,6 +26,13 @@ import java.util.concurrent.Executors
 import java.awt.Desktop
 import java.net.URI
 
+// Imports for SSL/TLS certificate handling
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+
 /**
  * Client for Microsoft Graph API to access Outlook calendar
  * with simplified authentication support
@@ -39,7 +46,7 @@ class OutlookClient {
     private static final long SERVER_VALIDATION_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
     // HTTP client for API requests
-    private final HttpClient httpClient
+    private HttpClient httpClient
     
     // Configuration manager
     private final ConfigManager configManager
@@ -60,7 +67,7 @@ class OutlookClient {
     OutlookClient(ConfigManager configManager, OutlookAlerterUI outlookAlerterUI) {
         this.configManager = configManager;
         this.outlookAlerterUI = outlookAlerterUI;
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = createHttpClient();
     }
 
     /**
@@ -69,7 +76,80 @@ class OutlookClient {
      */
     OutlookClient(ConfigManager configManager) {
         this.configManager = configManager
-        this.httpClient = HttpClient.newHttpClient()
+        this.httpClient = createHttpClient()
+    }
+    
+    /**
+     * Creates an HttpClient with or without certificate validation based on settings
+     */
+    private HttpClient createHttpClient() {
+        boolean ignoreCertValidation = configManager.ignoreCertValidation
+        println "Creating HTTP client with certificate validation: " + (ignoreCertValidation ? "disabled" : "enabled") 
+        if (ignoreCertValidation) {
+            return createHttpClientWithoutCertValidation();
+        } else {
+            return HttpClient.newHttpClient();
+        }
+    }
+    
+    /**
+     * Creates an HttpClient that ignores certificate validation
+     * 
+     * WARNING: This method disables SSL certificate validation, which is a security risk.
+     * It should only be used in environments where self-signed or invalid certificates are used,
+     * and the user understands the security implications.
+     * 
+     * Security risks include:
+     * - Vulnerability to man-in-the-middle attacks
+     * - Inability to verify server identity
+     * - Exposure of sensitive data to potential eavesdropping
+     */
+    private HttpClient createHttpClientWithoutCertValidation() {
+        try {
+            // Create a trust manager that does not validate certificate chains
+            TrustManager[] trustAllCerts = [ 
+                new X509TrustManager() {
+                    void checkClientTrusted(X509Certificate[] chain, String authType) {}
+                    void checkServerTrusted(X509Certificate[] chain, String authType) {}
+                    X509Certificate[] getAcceptedIssuers() { return null }
+                }
+            ] as TrustManager[];
+
+            // Install the all-trusting trust manager
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            
+            // Create an HttpClient that uses the custom SSLContext
+            return HttpClient.newBuilder()
+                .sslContext(sslContext)
+                .build();
+        } catch (Exception e) {
+            System.err.println("Error creating HttpClient without certificate validation: " + e.getMessage());
+            e.printStackTrace();
+            // Fall back to default HttpClient
+            return HttpClient.newHttpClient();
+        }
+    }
+    
+    /**
+     * Update the HTTP client based on current settings
+     */
+    void updateHttpClient() {
+        println "Updating HTTP client based on current settings"
+        this.httpClient = createHttpClient();
+    }
+    
+    /**
+     * Force update of certificate validation setting and HTTP client
+     * @param ignoreCertValidation Whether to ignore SSL certificate validation
+     */
+    void updateCertificateValidation(boolean ignoreCertValidation) {
+        boolean settingChanged = configManager.ignoreCertValidation != ignoreCertValidation
+        if (settingChanged) {
+            println "Certificate validation setting changed to: " + (ignoreCertValidation ? "disabled" : "enabled")
+            configManager.updateIgnoreCertValidation(ignoreCertValidation)
+            updateHttpClient()
+        }
     }
     
     /**
@@ -221,6 +301,29 @@ class OutlookClient {
             
             println "Token received from user interface."
             
+            // Check if certificate validation setting was provided and update if needed
+            if (tokens.containsKey("ignoreCertValidation")) {
+                boolean ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
+                boolean currentSetting = configManager.ignoreCertValidation
+                
+                // Always log the certificate validation setting
+                println "Certificate validation setting from token dialog: " + 
+                       (ignoreCertValidation ? "disabled" : "enabled") + 
+                       " (current setting: " + (currentSetting ? "disabled" : "enabled") + ")"
+                       
+                boolean settingChanged = currentSetting != ignoreCertValidation
+                
+                if (settingChanged) {
+                    println "Certificate validation setting changed, updating HTTP client..."
+                    configManager.updateIgnoreCertValidation(ignoreCertValidation)
+                    updateHttpClient()
+                } else {
+                    println "Certificate validation setting unchanged"
+                }
+            } else {
+                println "No certificate validation setting provided in tokens"
+            }
+            
             // Redact token for logging (show only first 10 chars)
             String redactedToken = tokens.accessToken?.size() > 10 ? 
                 tokens.accessToken.substring(0, 10) + "..." : 
@@ -228,7 +331,6 @@ class OutlookClient {
             println "Received token starting with: ${redactedToken}"
             
             String accessToken = null
-            String refreshToken = null
             long expiryTime = 0
             
             while (true) {
@@ -255,14 +357,12 @@ class OutlookClient {
                     continue
                 }
                 
-                // Token is valid, save all tokens
-                refreshToken = tokens.refreshToken
-                
                 // Break the loop since we have a valid token
                 break
             }
             
-            configManager.updateTokens(accessToken, refreshToken)
+            // Refresh token is not collected anymore, pass null as refresh token
+            configManager.updateTokens(accessToken, null)
             println "Authentication successful! Token validated and saved."
             return true
             
@@ -1540,7 +1640,26 @@ class OutlookClient {
 
             Map<String, String> tokens = null
             while (tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
-                tokens = outlookAlerterUI.promptForTokens(signInUrl)
+                // Handle both UI and console mode
+                if (outlookAlerterUI != null) {
+                    // UI mode
+                    tokens = outlookAlerterUI.promptForTokens(signInUrl)
+                } else {
+                    // Console mode - show dialog directly
+                    SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
+                    dialog.show()
+                    tokens = dialog.getTokens()
+                    
+                    // In console mode, we need to manually update the HTTP client
+                    if (tokens != null && tokens.containsKey("ignoreCertValidation")) {
+                        boolean ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
+                        println "Console mode: Certificate validation from dialog: " + 
+                               (ignoreCertValidation ? "disabled" : "enabled")
+                        updateCertificateValidation(ignoreCertValidation)
+                    } else {
+                        println "Console mode: No certificate validation setting in tokens"
+                    }
+                }
 
                 if (tokens == null) {
                     println "Authentication timed out or was canceled by the user."

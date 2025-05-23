@@ -7,6 +7,17 @@ import groovy.transform.CompileStatic
  */
 @CompileStatic
 class ConfigManager {
+    // Singleton instance
+    private static ConfigManager instance
+    
+    /**
+     * Gets the singleton instance of ConfigManager
+     * @return The ConfigManager instance or null if not initialized
+     */
+    static ConfigManager getInstance() {
+        return instance
+    }
+    
     // Configuration properties
     private String configFilePath
     private Properties properties = new Properties()
@@ -22,6 +33,7 @@ class ConfigManager {
     // Application-specific properties
     private String preferredTimezone
     private int alertMinutes = 1 // Default to 1 minute
+    private boolean ignoreCertValidation = false // Default to validating certificates
     
     // SSO related properties
     private String signInUrl
@@ -33,6 +45,8 @@ class ConfigManager {
      */
     ConfigManager(String configFilePath) {
         this.configFilePath = configFilePath
+        instance = this  // Set this instance as the singleton
+        println "ConfigManager initialized with path: ${configFilePath}"
     }
     
     /**
@@ -83,7 +97,10 @@ class ConfigManager {
         
         // Application-specific properties
         properties.setProperty("preferredTimezone", "")
-        properties.setProperty("alertMinutes", "1")            // Save to file
+        properties.setProperty("alertMinutes", "1")
+        properties.setProperty("ignoreCertValidation", "false")
+        
+        // Save to file
         try {
             properties.store(new FileOutputStream(configFile), "Outlook Alerter Configuration")
             
@@ -134,6 +151,7 @@ class ConfigManager {
         // Application-specific properties
         preferredTimezone = properties.getProperty("preferredTimezone")
         alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"))
+        ignoreCertValidation = Boolean.parseBoolean(properties.getProperty("ignoreCertValidation", "false"))
         
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")
@@ -158,6 +176,7 @@ class ConfigManager {
             // Application-specific properties
             properties.setProperty("preferredTimezone", preferredTimezone ?: "")
             properties.setProperty("alertMinutes", String.valueOf(alertMinutes))
+            properties.setProperty("ignoreCertValidation", String.valueOf(ignoreCertValidation))
             
             if (accessToken) {
                 properties.setProperty("accessToken", accessToken)
@@ -201,6 +220,7 @@ class ConfigManager {
     // Application-specific getters
     String getPreferredTimezone() { return preferredTimezone }
     int getAlertMinutes() { return alertMinutes }
+    boolean getIgnoreCertValidation() { return ignoreCertValidation }
     
     /**
      * Updates the preferred timezone setting
@@ -218,6 +238,14 @@ class ConfigManager {
         saveConfiguration()
     }
 
+    /**
+     * Updates the certificate validation setting
+     */
+    void updateIgnoreCertValidation(boolean ignore) {
+        this.ignoreCertValidation = ignore
+        saveConfiguration()
+    }
+    
     /**
      * Updates the sign-in URL setting
      */

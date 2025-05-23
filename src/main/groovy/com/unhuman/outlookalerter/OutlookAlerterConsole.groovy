@@ -38,6 +38,10 @@ class OutlookAlerterConsole {
         this.configManager = new ConfigManager(configPath)
         this.configManager.loadConfiguration()
         
+        // Load certificate validation setting from config
+        boolean ignoreCertValidation = this.configManager.ignoreCertValidation
+        println "Loaded certificate validation setting: " + (ignoreCertValidation ? "disabled" : "enabled")
+        
         this.outlookClient = new OutlookClient(configManager)
         this.screenFlasher = ScreenFlasherFactory.createScreenFlasher()
     }

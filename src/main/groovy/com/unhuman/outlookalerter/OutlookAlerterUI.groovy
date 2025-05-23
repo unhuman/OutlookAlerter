@@ -855,6 +855,9 @@ class OutlookAlerterUI extends JFrame {
             gbc.gridy = 2;
             formPanel.add(signInUrlField, gbc);
 
+            // Note: SSL Certificate Validation setting moved to token dialog
+            gbc.gridwidth = 1;
+
             // Button panel
             JPanel buttonPanel = new JPanel();
             JButton saveButton = new JButton("Save");
@@ -1134,7 +1137,23 @@ class OutlookAlerterUI extends JFrame {
             updateIcons(true)  // Show invalid token state
             SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
             dialog.show()
-            return dialog.getTokens()
+            Map<String, String> tokens = dialog.getTokens()
+            
+            // If tokens were obtained and certificate validation setting might have changed,
+            // ensure the HTTP client is updated
+            if (tokens != null && outlookClient != null) {
+                if (tokens.containsKey("ignoreCertValidation")) {
+                    boolean ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
+                    println "UI mode: Certificate validation from dialog: " + 
+                           (ignoreCertValidation ? "disabled" : "enabled")
+                    outlookClient.updateCertificateValidation(ignoreCertValidation)
+                } else {
+                    println "UI mode: No certificate validation setting in tokens, updating HTTP client anyway"
+                    outlookClient.updateHttpClient()
+                }
+            }
+            
+            return tokens
         } finally {
             isTokenDialogActive = false
         }

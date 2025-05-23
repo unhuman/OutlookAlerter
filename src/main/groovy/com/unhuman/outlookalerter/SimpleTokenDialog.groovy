@@ -28,7 +28,6 @@ class SimpleTokenDialog {
     private JDialog frame
     private JFrame parentFrame
     private JTextField tokenField
-    private JTextField refreshTokenField
     private CountDownLatch latch = new CountDownLatch(1)
     private Map<String, String> tokens
     private final String signInUrl
@@ -93,7 +92,6 @@ class SimpleTokenDialog {
                             
                             // Clear any previous text
                             if (tokenField != null) tokenField.setText("")
-                            if (refreshTokenField != null) refreshTokenField.setText("")
                             
                             System.out.println("SimpleTokenDialog: Frame state - visible: " + frame.isVisible() + 
                                              ", showing: " + frame.isShowing())
@@ -173,7 +171,7 @@ class SimpleTokenDialog {
                 panel.add(instructionsLabel, BorderLayout.NORTH)
             
                 // Form in center with more spacing
-                JPanel formPanel = new JPanel(new GridLayout(4, 1, 10, 15))
+                JPanel formPanel = new JPanel(new GridLayout(2, 1, 10, 15))
                 
                 // Add some padding around the form
                 formPanel.setBorder(BorderFactory.createCompoundBorder(
@@ -195,30 +193,16 @@ class SimpleTokenDialog {
                 tokenField.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
-                        // When enter is pressed, either move focus to refresh token field if empty, or submit
-                        if (refreshTokenField.getText().trim().isEmpty()) {
-                            refreshTokenField.requestFocusInWindow()
-                        } else {
-                            submitToken()
-                        }
+                        submitToken() // Submit when enter is pressed
                     }
                 })
                 formPanel.add(tokenField)
                 
-                JLabel refreshLabel = new JLabel("Refresh Token (optional):")
-                refreshLabel.setFont(refreshLabel.getFont().deriveFont(Font.BOLD))
-                formPanel.add(refreshLabel)
-                
-                refreshTokenField = new JTextField(30)
-                refreshTokenField.setEnabled(true)
-                refreshTokenField.setEditable(true)
-                refreshTokenField.addActionListener(new ActionListener() {
-                    @Override
-                    void actionPerformed(ActionEvent e) {
-                        submitToken() // Submit when enter is pressed in refresh token field
-                    }
-                })
-                formPanel.add(refreshTokenField)
+                // Add certificate validation option (always initially unchecked)
+                JPanel certPanel = new JPanel(new FlowLayout(FlowLayout.LEFT))
+                JCheckBox ignoreCertValidationCheckbox = new JCheckBox("Ignore SSL certificate validation (security risk)", false)
+                certPanel.add(ignoreCertValidationCheckbox)
+                formPanel.add(certPanel)
                 
                 panel.add(formPanel, BorderLayout.CENTER)
                 
@@ -274,7 +258,6 @@ class SimpleTokenDialog {
                     void actionPerformed(ActionEvent e) {
                         // Get token and trim whitespace
                         String accessToken = tokenField.getText().trim()
-                        String refreshToken = refreshTokenField.getText().trim()
                         
                         // Strip off "Bearer " prefix if present (case insensitive)
                         if (accessToken.toLowerCase().startsWith("bearer ")) {
@@ -289,10 +272,33 @@ class SimpleTokenDialog {
                             return
                         }
                         
-                        // Store tokens
+                        // Get certificate validation setting
+                        boolean ignoreCertValidation = false
+                        try {
+                            // Find the checkbox in the form
+                            for (Component component : formPanel.getComponents()) {
+                                if (component instanceof JPanel) {
+                                    JPanel innerCertPanel = (JPanel)component
+                                    Component[] certComponents = innerCertPanel.getComponents()
+                                    for (Component certComponent : certComponents) {
+                                        if (certComponent instanceof JCheckBox) {
+                                            JCheckBox checkbox = (JCheckBox)certComponent
+                                            if (checkbox.getText().contains("certificate validation")) {
+                                                ignoreCertValidation = checkbox.isSelected()
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Exception ex) {
+                            System.err.println("Error getting certificate validation setting: " + ex.getMessage())
+                        }
+                        
+                        // Store token and certificate validation setting
                         tokens = [
                             accessToken: accessToken,
-                            refreshToken: refreshToken
+                            ignoreCertValidation: String.valueOf(ignoreCertValidation)
                         ]
                         
                         // Signal completion and close
@@ -322,7 +328,7 @@ class SimpleTokenDialog {
                 // Set content and show
                 frame.setContentPane(panel)
                 frame.pack()
-                frame.setSize(550, 450)
+                frame.setSize(550, 400)
                 frame.setLocationRelativeTo(null)
                 
                 // Configure dialog behavior
@@ -358,9 +364,6 @@ class SimpleTokenDialog {
                 if (tokenField != null) {
                     tokenField.getActionListeners().each { tokenField.removeActionListener(it) }
                 }
-                if (refreshTokenField != null) {
-                    refreshTokenField.getActionListeners().each { refreshTokenField.removeActionListener(it) }
-                }
                 
                 // Dispose frame on EDT
                 SwingUtilities.invokeLater(() -> {
@@ -370,7 +373,6 @@ class SimpleTokenDialog {
                     }
                     frame = null
                     tokenField = null
-                    refreshTokenField = null
                     if (parentFrame != null && parentFrame.isUndecorated()) {
                         parentFrame.dispose()
                         parentFrame = null
@@ -412,18 +414,22 @@ class SimpleTokenDialog {
         frame = new JDialog(parentFrame, "Outlook Alerter - Token Entry (Fallback)", true)
         frame.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE)
         
-        // Use the simplest possible layout
-        JPanel panel = new JPanel(new GridLayout(3, 1, 10, 10))
+        // Use a simple layout
+        JPanel panel = new JPanel(new GridLayout(4, 1, 10, 10))
         panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20))
         
         JLabel label = new JLabel("Enter access token:")
         tokenField = new JTextField(20)
         
+        // Add certificate validation option (always initially unchecked)
+        JCheckBox ignoreCertValidationCheckbox = new JCheckBox("Ignore SSL certificate validation (security risk)", false)
+            
         JButton submitButton = new JButton("Submit")
         submitButton.addActionListener(e -> submitToken())
         
         panel.add(label)
         panel.add(tokenField)
+        panel.add(ignoreCertValidationCheckbox)
         panel.add(submitButton)
         
         frame.add(panel)
@@ -444,14 +450,40 @@ class SimpleTokenDialog {
             
             // Get token values - with fallbacks if UI components fail
             String token = ""
-            String refreshToken = ""
+            boolean ignoreCertValidation = false
             
             try {
                 token = tokenField != null ? tokenField.getText().trim() : ""
-                // If refresh token field is null, it might be the fallback UI
-                refreshToken = refreshTokenField != null ? refreshTokenField.getText().trim() : ""
+                
+                // Get certificate validation setting
+                Container contentPane = frame.getContentPane()
+                if (contentPane instanceof JPanel) {
+                    JPanel panel = (JPanel)contentPane
+                    Component[] components = panel.getComponents()
+                    for (Component component : components) {
+                        if (component instanceof JPanel && ((JPanel)component).getLayout() instanceof GridLayout) {
+                            JPanel formPanel = (JPanel)component
+                            Component[] formComponents = formPanel.getComponents()
+                            for (Component formComponent : formComponents) {
+                                if (formComponent instanceof JPanel) {
+                                    JPanel innerCertPanel = (JPanel)formComponent
+                                    Component[] certComponents = innerCertPanel.getComponents()
+                                    for (Component certComponent : certComponents) {
+                                        if (certComponent instanceof JCheckBox) {
+                                            JCheckBox checkbox = (JCheckBox)certComponent
+                                            if (checkbox.getText().contains("certificate validation")) {
+                                                ignoreCertValidation = checkbox.isSelected()
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } catch (Exception e) {
-                System.err.println("SimpleTokenDialog: Error getting token text: " + e.getMessage())
+                System.err.println("SimpleTokenDialog: Error getting token text or certificate setting: " + e.getMessage())
             }
             
             // Strip off "Bearer " prefix if present (case insensitive)
@@ -489,8 +521,22 @@ class SimpleTokenDialog {
             // Store token data
             tokens = [
                 accessToken: token,
-                refreshToken: refreshToken.isEmpty() ? null : refreshToken
+                ignoreCertValidation: String.valueOf(ignoreCertValidation) // Convert boolean to String to match Map<String, String>
             ]
+            
+            // Update the certificate validation setting in ConfigManager
+            ConfigManager configManager = ConfigManager.getInstance()
+            if (configManager != null) {
+                boolean certSettingChanged = configManager.ignoreCertValidation != ignoreCertValidation
+                if (certSettingChanged) {
+                    System.out.println("SimpleTokenDialog: Certificate validation setting changed to: " +
+                            (ignoreCertValidation ? "disabled" : "enabled"))
+                    configManager.updateIgnoreCertValidation(ignoreCertValidation)
+                } else {
+                    System.out.println("SimpleTokenDialog: Certificate validation setting unchanged: " +
+                            (ignoreCertValidation ? "disabled" : "enabled"))
+                }
+            }
             
             System.out.println("SimpleTokenDialog: Token submitted (first 10 chars): " + 
                                token.substring(0, Math.min(10, token.length())) + "...")
@@ -552,7 +598,7 @@ class SimpleTokenDialog {
     /**
      * Wait for the user to enter a token or cancel
      * @param timeout Maximum seconds to wait
-     * @return Map with accessToken and refreshToken, or null if canceled
+     * @return Map with accessToken and ignoreCertValidation, or null if canceled
      */
     Map<String, String> waitForTokens(int timeout) {
         try {
@@ -602,7 +648,7 @@ class SimpleTokenDialog {
     
     /**
      * Get tokens entered by user. Waits until tokens are submitted or dialog is closed.
-     * @return Map containing accessToken and refreshToken, or null if canceled
+     * @return Map containing accessToken and ignoreCertValidation, or null if canceled
      */
     Map<String, String> getTokens() {
         try {
