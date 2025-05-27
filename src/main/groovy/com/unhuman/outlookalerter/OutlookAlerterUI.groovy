@@ -409,7 +409,7 @@ class OutlookAlerterUI extends JFrame {
                                     statusLabel.setText("Status: Authentication Failed")
                                     JOptionPane.showMessageDialog(
                                         this,
-                                        "Failed to authenticate with Outlook. Please restart the application and try again.",
+                                        "Failed to authenticate with Outlook. Please check your configuration and try again.",
                                         "Authentication Error",
                                         JOptionPane.ERROR_MESSAGE
                                     )
@@ -419,7 +419,7 @@ class OutlookAlerterUI extends JFrame {
                                 e.printStackTrace()
                                 JOptionPane.showMessageDialog(
                                     this,
-                                    "Error during authentication: " + e.getMessage() + "\n\nPlease restart the application.",
+                                    "Error during authentication: " + e.getMessage() + "\n\nPlease check your configuration and try again.",
                                     "Authentication Error",
                                     JOptionPane.ERROR_MESSAGE
                                 )
@@ -431,7 +431,7 @@ class OutlookAlerterUI extends JFrame {
                         SwingUtilities.invokeLater({
                             JOptionPane.showMessageDialog(
                                 this,
-                                "Error during authentication: " + e.getMessage() + "\n\nPlease restart the application.",
+                                "Error during authentication: " + e.getMessage() + "\n\nPlease check your configuration and try again.",
                                 "Authentication Error",
                                 JOptionPane.ERROR_MESSAGE
                             )
@@ -1135,6 +1135,13 @@ class OutlookAlerterUI extends JFrame {
         try {
             isTokenDialogActive = true
             updateIcons(true)  // Show invalid token state
+            
+            // Make sure we have a valid sign-in URL, default to Microsoft Graph URL if not
+            if (signInUrl == null || signInUrl.trim().isEmpty()) {
+                signInUrl = SimpleTokenDialog.DEFAULT_GRAPH_URL
+                println "UI mode: Using default sign-in URL: ${signInUrl}"
+            }
+            
             SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
             dialog.show()
             Map<String, String> tokens = dialog.getTokens()

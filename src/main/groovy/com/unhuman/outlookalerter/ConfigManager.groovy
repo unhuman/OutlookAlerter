@@ -1,6 +1,7 @@
 package com.unhuman.outlookalerter
 
 import groovy.transform.CompileStatic
+import com.unhuman.outlookalerter.SimpleTokenDialog
 
 /**
  * Manages configuration settings and OAuth credentials for Outlook Alerter
@@ -90,8 +91,8 @@ class ConfigManager {
         properties.setProperty("tenantId", "common")
         properties.setProperty("redirectUri", "http://localhost:8888/redirect")
         
-        // SSO related properties
-        properties.setProperty("signInUrl", "")
+        // SSO related properties - default to Microsoft Graph URL
+        properties.setProperty("signInUrl", SimpleTokenDialog.DEFAULT_GRAPH_URL)
         properties.setProperty("tokenEndpoint", "")
         properties.setProperty("loginHint", "")
         
@@ -110,6 +111,7 @@ class ConfigManager {
             For Okta SSO authentication, edit the configuration file with these values:
             
             1. signInUrl - Your organization's Okta SSO URL for Microsoft 365 (ask your IT department)
+               Default: ${SimpleTokenDialog.DEFAULT_GRAPH_URL} (Microsoft Graph developer site)
                Example: https://your-company.okta.com/home/office365/0oa1b2c3d4/aln5b6c7d8
             
             2. loginHint - Your email address (optional but recommended)
@@ -213,7 +215,10 @@ class ConfigManager {
     String getRefreshToken() { return refreshToken }
     
     // SSO specific getters
-    String getSignInUrl() { return signInUrl }
+    String getSignInUrl() { 
+        // Return default URL if no signInUrl is configured
+        return signInUrl && !signInUrl.trim().isEmpty() ? signInUrl : SimpleTokenDialog.DEFAULT_GRAPH_URL 
+    }
     String getTokenEndpoint() { return tokenEndpoint }
     String getLoginHint() { return loginHint }
     

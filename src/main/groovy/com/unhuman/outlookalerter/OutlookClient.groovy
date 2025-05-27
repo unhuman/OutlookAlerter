@@ -293,9 +293,12 @@ class OutlookClient {
         }
         
         try {
+            // Show the token dialog to the user
             def tokens = getTokensFromUser()
-            if (tokens == null || !tokens.accessToken) {
-                println "No access token was provided."
+            
+            // Check if user provided a token
+            if (tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
+                println "No access token was provided or dialog was cancelled."
                 return false
             }
             
@@ -647,12 +650,28 @@ class OutlookClient {
             
             // Get current token
             String accessToken = configManager.accessToken
-
+            
+            // Check if we have any token at all
+            if (accessToken == null || accessToken.isEmpty()) {
+                println "No access token available. Showing token dialog...";
+                if (!performDirectAuthentication()) {
+                    // Just return empty list instead of throwing exception
+                    println "No token provided after showing dialog. Cannot retrieve calendar events.";
+                    return [];
+                }
+                lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
+            }
             // First check if token format is valid
-            if (!isValidTokenFormat(accessToken)) {
+            else if (!isValidTokenFormat(accessToken)) {
                 println "Token format is invalid. Need to authenticate again.";
                 if (!authenticate()) {
-                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token");
+                    // Show direct authentication dialog if regular auth fails
+                    println "Re-authentication failed. Showing token dialog...";
+                    if (!performDirectAuthentication()) {
+                        // Just return empty list instead of throwing exception
+                        println "No valid token provided. Cannot retrieve calendar events.";
+                        return [];
+                    }
                 }
                 lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
             } 
@@ -661,7 +680,13 @@ class OutlookClient {
                 // If we get here, the token is invalid according to the server and we need to authenticate
                 println "Token validation failed. Need to authenticate again.";
                 if (!authenticate()) {
-                    throw new RuntimeException("Failed to re-authenticate to obtain a valid token");
+                    // Show direct authentication dialog if regular auth fails
+                    println "Re-authentication failed. Showing token dialog...";
+                    if (!performDirectAuthentication()) {
+                        // Just return empty list instead of throwing exception
+                        println "No valid token provided. Cannot retrieve calendar events.";
+                        return [];
+                    }
                 }
                 lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
             } 
@@ -1623,9 +1648,13 @@ class OutlookClient {
             // The sign-in URL (either Okta SSO URL or direct Microsoft login)
             String signInUrl = configManager.signInUrl
 
-            if (!signInUrl) {
+            if (signInUrl == null || signInUrl.trim().isEmpty()) {
+                // Default to using Microsoft Graph URL if no sign-in URL is configured
+                signInUrl = SimpleTokenDialog.DEFAULT_GRAPH_URL
                 println """
-                ERROR: No sign-in URL configured. You need to set up either:
+                INFO: Using default Microsoft Graph URL: ${signInUrl}
+                
+                For a better authentication experience, consider setting up either:
 
                 1. For Okta SSO: Configure the 'signInUrl' property with your organization's Okta SSO URL
                    Example: https://your-company.okta.com/home/office365/0oa1b2c3d4/aln5b6c7d8
@@ -1633,13 +1662,20 @@ class OutlookClient {
                 2. For direct Microsoft authentication: Register your own application in Azure Portal
                    and configure the clientId, clientSecret, and redirectUri properties
                 """
-                return null
             }
 
             println "Starting direct authentication flow with sign-in URL: ${signInUrl}"
 
+            // Try showing the dialog up to 2 times
+            int maxAttempts = 2
+            int attempts = 0
             Map<String, String> tokens = null
-            while (tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
+            
+            while ((tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) 
+                  && attempts < maxAttempts) {
+                attempts++
+                println "Token dialog attempt ${attempts} of ${maxAttempts}"
+                
                 // Handle both UI and console mode
                 if (outlookAlerterUI != null) {
                     // UI mode
@@ -1666,12 +1702,14 @@ class OutlookClient {
                     return null
                 }
 
-                if (!tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
-                    println "No access token was provided. Prompting user again."
+                // Check if we have a valid token after the attempts
+                if (!tokens || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
+                    println "No access token was provided after ${attempts} attempts."
+                    return null  // Give up after max attempts
                 }
             }
 
-            println "Token received from user interface."
+            println "Valid token received from user interface."
             return tokens
 
         } catch (Exception e) {

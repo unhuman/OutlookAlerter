@@ -24,6 +24,9 @@ class SimpleTokenDialog {
     // Lock object for thread safety
     private static final Object LOCK = new Object()
     
+    // Default Microsoft Graph URL
+    public static final String DEFAULT_GRAPH_URL = "https://developer.microsoft.com/en-us/graph"
+    
     // Instance variables
     private JDialog frame
     private JFrame parentFrame
@@ -38,7 +41,9 @@ class SimpleTokenDialog {
     static SimpleTokenDialog getInstance(String signInUrl) {
         synchronized(LOCK) {
             if (instance == null) {
-                instance = new SimpleTokenDialog(signInUrl)
+                // Use provided URL or default to Microsoft Graph developer site
+                String url = signInUrl ?: DEFAULT_GRAPH_URL
+                instance = new SimpleTokenDialog(url)
             }
             return instance
         }
@@ -48,7 +53,8 @@ class SimpleTokenDialog {
      * Private constructor to enforce singleton pattern
      */
     private SimpleTokenDialog(String signInUrl) {
-        this.signInUrl = signInUrl
+        // Default to Microsoft Graph developer site if no URL provided
+        this.signInUrl = signInUrl ?: DEFAULT_GRAPH_URL
     }
     
     /**
@@ -220,7 +226,7 @@ class SimpleTokenDialog {
                     void actionPerformed(ActionEvent e) {
                         try {
                             System.out.println("Opening Graph Explorer...")
-                            Desktop.getDesktop().browse(new java.net.URI("https://developer.microsoft.com/en-us/graph/graph-explorer"))
+                            Desktop.getDesktop().browse(new java.net.URI(DEFAULT_GRAPH_URL + "/graph-explorer"))
                         } catch (Exception ex) {
                             System.err.println("Error opening Graph Explorer: " + ex.getMessage())
                             JOptionPane.showMessageDialog(
@@ -238,7 +244,7 @@ class SimpleTokenDialog {
                     @Override
                     void actionPerformed(ActionEvent e) {
                         try {
-                            System.out.println("Opening browser for sign-in...")
+                            System.out.println("Opening browser for sign-in: " + signInUrl)
                             Desktop.getDesktop().browse(new java.net.URI(signInUrl))
                         } catch (Exception ex) {
                             System.err.println("Error opening browser: " + ex.getMessage())
