@@ -82,9 +82,14 @@ class MacScreenFlasher implements ScreenFlasher {
         frame.setAlwaysOnTop(true)
         frame.setType(javax.swing.JFrame.Type.POPUP) // POPUP type may work better than UTILITY
         
-        // Make sure the window is opaque and visible
-        frame.setOpacity(1.0f)
-        frame.setBackground(Color.RED)
+        // Make sure the window is 75% opaque and visible
+        try {
+            frame.setOpacity(0.75f);
+        } catch (Throwable t) {
+            // setOpacity may not be supported on all platforms/Java versions
+        }
+        Color alertColor = new Color(128, 0, 0);
+        frame.setBackground(alertColor)
 
         // Position frame to cover the entire screen before showing
         frame.setBounds(screen.getDefaultConfiguration().getBounds())
@@ -127,60 +132,29 @@ class MacScreenFlasher implements ScreenFlasher {
                 "<h2 style='color: white; font-size: 36px'>${event.subject}</h2>" +
                 "<p style='color: white; font-size: 24px'>Starting in ${event.getMinutesToStart()} minute(s)</p>" +
                 "</center></html>", SwingConstants.CENTER)
-        
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
         label.setForeground(Color.WHITE)
         frame.add(label, gbc)
-        
-        // Force frame to be fully opaque
+        // Force frame to be 75% opaque
+        try {
+            frame.setOpacity(0.75f);
+        } catch (Throwable t) {}
         frame.getRootPane().setOpaque(true)
-        frame.getContentPane().setBackground(Color.RED)
-        
+        frame.getContentPane().setBackground(alertColor)
         // Make sure it's displayed in full screen
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH)
-        
-        // Start flash sequence
-        startFlashSequence(frame)
+        // No flashing, just show the alert for a fixed time
+        Timer timer = new Timer(3000, { frame.dispose() } as java.awt.event.ActionListener)
+        timer.setRepeats(false)
+        timer.start()
     }
     
     /**
      * Starts the flash sequence animation
      */
     private void startFlashSequence(JFrame frame) {
-        final int[] flashesRemaining = [FLASH_COUNT * 2]  // Double the flashes for more visibility
-        final boolean[] isVisible = [true]
-        
-        // Ensure the frame starts visible and on top
-        SwingUtilities.invokeLater({
-            frame.setVisible(true)
-            frame.toFront()
-            
-            // Create timer for flashing
-            Timer timer = new Timer(FLASH_INTERVAL_MS, { event ->
-                if (flashesRemaining[0] <= 0) {
-                    frame.dispose()
-                    ((Timer)event.getSource()).stop()
-                    return
-                }
-                
-                if (isVisible[0]) {
-                    // Keep window visible but change color
-                    frame.getContentPane().setBackground(Color.RED)
-                    frame.toFront()
-                } else {
-                    frame.getContentPane().setBackground(Color.ORANGE)
-                    frame.toFront()
-                }
-                
-                frame.repaint()
-                flashesRemaining[0]--
-                isVisible[0] = !isVisible[0]
-            })
-            
-            // Configure and start timer
-            timer.setInitialDelay(0)
-            timer.start()
-        } as Runnable)
+        // No flashing needed, so just keep the window up for the duration
+        // This method is now a no-op
     }
     
     /**
@@ -204,8 +178,14 @@ class MacScreenFlasher implements ScreenFlasher {
         frame.setUndecorated(true);
         frame.setAlwaysOnTop(true);
         frame.setType(javax.swing.JFrame.Type.POPUP);
-        frame.setOpacity(1.0f);
-        frame.setBackground(Color.RED);
+        // Make sure the window is 75% opaque and visible
+        try {
+            frame.setOpacity(0.75f);
+        } catch (Throwable t) {
+            // setOpacity may not be supported on all platforms/Java versions
+        }
+        Color alertColor = new Color(128, 0, 0);
+        frame.setBackground(alertColor);
         frame.setBounds(screen.getDefaultConfiguration().getBounds());
         frame.setFocusableWindowState(false);
         frame.setAutoRequestFocus(false);
@@ -238,8 +218,10 @@ class MacScreenFlasher implements ScreenFlasher {
         label.setForeground(Color.WHITE);
         frame.add(label, gbc);
         frame.getRootPane().setOpaque(true);
-        frame.getContentPane().setBackground(Color.RED);
+        frame.getContentPane().setBackground(alertColor);
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
-        startFlashSequence(frame);
+        Timer timer = new Timer(3000, { frame.dispose() } as java.awt.event.ActionListener);
+        timer.setRepeats(false);
+        timer.start();
     }
 }
