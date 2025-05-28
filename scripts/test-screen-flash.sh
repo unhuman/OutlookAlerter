@@ -23,21 +23,18 @@ fi
 
 echo -e "${YELLOW}Running screen flash test...${NC}"
 
-# Clean and build first
-mvn clean install
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Build failed!${NC}"
-    exit 1
-fi
-
-# Run the test class directly using java command with proper classpath
+# No need to build again, just ensure package exists
 JAR_NAME="OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar"
 JAR_PATH="target/$JAR_NAME"
 if [ ! -f "$JAR_PATH" ]; then
-    echo -e "${RED}Could not find $JAR_PATH. Build may have failed or jar name may be incorrect.${NC}"
-    exit 1
+    echo -e "${YELLOW}Jar not found, running mvn package...${NC}"
+    mvn package
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Build failed!${NC}"
+        exit 1
+    fi
 fi
+
 java -cp "$JAR_PATH:target/test-classes" \
      com.unhuman.outlookalerter.ScreenFlashTest
 

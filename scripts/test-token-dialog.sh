@@ -49,16 +49,6 @@ fi
 mv "${CONFIG_FILE}.new" "$CONFIG_FILE"
 echo -e "${GREEN}Configuration updated with invalid token${NC}"
 
-# First make sure the project is built
-echo -e "${YELLOW}Building project...${NC}"
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-"$SCRIPT_DIR/build.sh"
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Build failed!${NC}"
-    exit 1
-fi
-
 # Set GUI environment variables
 export JAVA_AWT_HEADLESS=false
 export AWT_TOOLKIT=CToolkit
