@@ -142,7 +142,12 @@ class WindowsScreenFlasher implements ScreenFlasher {
         JFrame frame = new JFrame("Meeting Alert", screen.getDefaultConfiguration())
         frame.setUndecorated(true)
         frame.setAlwaysOnTop(true)
-        
+        frame.setType(javax.swing.JFrame.Type.POPUP)
+        double opacity = getAlertOpacity();
+        try { frame.setOpacity((float)opacity); } catch (Throwable t) {}
+        Color alertColor = getAlertColor();
+        Color textColor = getAlertTextColorWithOpacity();
+        frame.setBackground(alertColor)
         // Set up layout
         frame.setLayout(new GridBagLayout())
         GridBagConstraints gbc = new GridBagConstraints()
@@ -151,23 +156,20 @@ class WindowsScreenFlasher implements ScreenFlasher {
         gbc.weightx = 1.0
         gbc.weighty = 1.0
         gbc.fill = GridBagConstraints.BOTH
-        
-        // Get configured text color and apply opacity
-        Color textColor = getAlertTextColorWithOpacity()
-        // Create label with meeting info
+        // Build HTML with placeholder for text color
+        String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue());
         JLabel label = new JLabel("<html><center>" +
-                "<h1>Meeting Starting Soon!</h1>" +
-                "<h2>${event.subject}</h2>" +
-                "<p>Starts in ${event.getMinutesToStart()} minute(s)</p>" +
+                "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
+                "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
+                "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + event.getMinutesToStart() + " minute(s)</p>" +
                 "</center></html>", SwingConstants.CENTER)
-        
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
         label.setForeground(textColor)
+        label.setBackground(alertColor)
+        label.setOpaque(true)
         frame.add(label, gbc)
-        
         // Position frame to cover the entire screen
         frame.setBounds(screen.getDefaultConfiguration().getBounds())
-        
         // Start flash sequence
         startFlashSequence(frame)
     }
@@ -231,6 +233,12 @@ class WindowsScreenFlasher implements ScreenFlasher {
         JFrame frame = new JFrame("Meeting Alert", screen.getDefaultConfiguration());
         frame.setUndecorated(true);
         frame.setAlwaysOnTop(true);
+        frame.setType(javax.swing.JFrame.Type.POPUP);
+        double opacity = getAlertOpacity();
+        try { frame.setOpacity((float)opacity); } catch (Throwable t) {}
+        Color alertColor = getAlertColor();
+        Color textColor = getAlertTextColorWithOpacity();
+        frame.setBackground(alertColor);
         frame.setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
@@ -239,16 +247,18 @@ class WindowsScreenFlasher implements ScreenFlasher {
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         // Build HTML for all events
-        StringBuilder html = new StringBuilder("<html><center><h1>Meetings Starting Soon!</h1>");
+        String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue());
+        StringBuilder html = new StringBuilder("<html><center><h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>");
         for (CalendarEvent event : events) {
-            html.append("<h2>").append(event.subject).append("</h2>");
-            html.append("<p>Starts in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
+            html.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>").append(event.subject).append("</h2>");
+            html.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
         }
         html.append("</center></html>");
         JLabel label = new JLabel(html.toString(), SwingConstants.CENTER);
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
-        Color textColor = getAlertTextColorWithOpacity();
         label.setForeground(textColor);
+        label.setBackground(alertColor);
+        label.setOpaque(true);
         frame.add(label, gbc);
         frame.setBounds(screen.getDefaultConfiguration().getBounds());
         startFlashSequence(frame);
@@ -272,6 +282,18 @@ class WindowsScreenFlasher implements ScreenFlasher {
             return configManager?.flashOpacity ?: 1.0d
         } catch (Exception e) {
             return 1.0d
+        }
+    }
+    private Color getAlertColor() {
+        try {
+            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            String colorHex = configManager?.flashColor ?: "#800000"
+            double opacity = configManager?.flashOpacity ?: 1.0d
+            Color base = Color.decode(colorHex)
+            int alpha = (int)Math.round(opacity * 255);
+            return new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha)
+        } catch (Exception e) {
+            return new Color(128, 0, 0, Math.round(getAlertOpacity() * 255))
         }
     }
 }
