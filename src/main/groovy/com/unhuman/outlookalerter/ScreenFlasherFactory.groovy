@@ -17,11 +17,11 @@ class ScreenFlasherFactory {
         if (os.contains("mac")) {
             // Use Mac-specific implementation if we're on a Mac
             println "Using Mac-specific screen flasher"
-            return new MacScreenFlasher()
+            return new com.unhuman.outlookalerter.MacScreenFlasher()
         } else {
             // Use cross-platform implementation for Windows, Linux, etc.
             println "Using cross-platform screen flasher for ${os}"
-            return new CrossPlatformScreenFlasher()
+            return new com.unhuman.outlookalerter.CrossPlatformScreenFlasher()
         }
     }
 }

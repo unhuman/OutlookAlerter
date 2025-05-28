@@ -11,6 +11,8 @@ import java.awt.image.BufferedImage
 import javax.swing.*
 import com.sun.jna.*
 import com.unhuman.outlookalerter.MacWindowHelper
+import com.unhuman.outlookalerter.ScreenFlasher
+import com.unhuman.outlookalerter.CalendarEvent
 import java.util.List
 
 /**
@@ -82,13 +84,11 @@ class MacScreenFlasher implements ScreenFlasher {
         frame.setAlwaysOnTop(true)
         frame.setType(javax.swing.JFrame.Type.POPUP) // POPUP type may work better than UTILITY
         
-        // Make sure the window is 75% opaque and visible
-        try {
-            frame.setOpacity(0.75f);
-        } catch (Throwable t) {
-            // setOpacity may not be supported on all platforms/Java versions
-        }
-        Color alertColor = new Color(128, 0, 0);
+        // Use configured color and opacity
+        Color alertColor = getAlertColor();
+        double opacity = getAlertOpacity();
+        Color textColor = getAlertTextColorWithOpacity();
+        try { frame.setOpacity((float)opacity); } catch (Throwable t) {}
         frame.setBackground(alertColor)
 
         // Position frame to cover the entire screen before showing
@@ -125,36 +125,70 @@ class MacScreenFlasher implements ScreenFlasher {
         gbc.weightx = 1.0
         gbc.weighty = 1.0
         gbc.fill = GridBagConstraints.BOTH
-        
-        // Create label with meeting info
+
+        // Build HTML with placeholder for text color
+        String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue());
         JLabel label = new JLabel("<html><center>" +
-                "<h1 style='color: white; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
-                "<h2 style='color: white; font-size: 36px'>${event.subject}</h2>" +
-                "<p style='color: white; font-size: 24px'>Starting in ${event.getMinutesToStart()} minute(s)</p>" +
+                "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
+                "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
+                "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + event.getMinutesToStart() + " minute(s)</p>" +
                 "</center></html>", SwingConstants.CENTER)
+
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
-        label.setForeground(Color.WHITE)
+        label.setForeground(textColor)
+        label.setBackground(alertColor);
+        label.setOpaque(true);
         frame.add(label, gbc)
-        // Force frame to be 75% opaque
-        try {
-            frame.setOpacity(0.75f);
-        } catch (Throwable t) {}
+        
+        // Force frame to be fully opaque
         frame.getRootPane().setOpaque(true)
         frame.getContentPane().setBackground(alertColor)
+        
         // Make sure it's displayed in full screen
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH)
-        // No flashing, just show the alert for a fixed time
-        Timer timer = new Timer(3000, { frame.dispose() } as java.awt.event.ActionListener)
-        timer.setRepeats(false)
-        timer.start()
+        
+        // Start flash sequence
+        startFlashSequence(frame)
     }
-    
+
     /**
      * Starts the flash sequence animation
      */
     private void startFlashSequence(JFrame frame) {
-        // No flashing needed, so just keep the window up for the duration
-        // This method is now a no-op
+        final int[] flashesRemaining = [FLASH_COUNT * 2]  // Double the flashes for more visibility
+        final boolean[] isVisible = [true]
+        
+        // Ensure the frame starts visible and on top
+        SwingUtilities.invokeLater({
+            frame.setVisible(true)
+            frame.toFront()
+            
+            // Create timer for flashing
+            Timer timer = new Timer(FLASH_INTERVAL_MS, { event ->
+                if (flashesRemaining[0] <= 0) {
+                    frame.dispose()
+                    ((Timer)event.getSource()).stop()
+                    return
+                }
+                
+                if (isVisible[0]) {
+                    // Keep window visible but change color
+                    frame.getContentPane().setBackground(Color.RED)
+                    frame.toFront()
+                } else {
+                    frame.getContentPane().setBackground(Color.ORANGE)
+                    frame.toFront()
+                }
+                
+                frame.repaint()
+                flashesRemaining[0]--
+                isVisible[0] = !isVisible[0]
+            })
+            
+            // Configure and start timer
+            timer.setInitialDelay(0)
+            timer.start()
+        } as Runnable)
     }
     
     /**
@@ -178,13 +212,10 @@ class MacScreenFlasher implements ScreenFlasher {
         frame.setUndecorated(true);
         frame.setAlwaysOnTop(true);
         frame.setType(javax.swing.JFrame.Type.POPUP);
-        // Make sure the window is 75% opaque and visible
-        try {
-            frame.setOpacity(0.75f);
-        } catch (Throwable t) {
-            // setOpacity may not be supported on all platforms/Java versions
-        }
-        Color alertColor = new Color(128, 0, 0);
+        double opacity = getAlertOpacity();
+        try { frame.setOpacity((float)opacity); } catch (Throwable t) {}
+        Color alertColor = getAlertColor();
+        Color textColor = getAlertTextColorWithOpacity();
         frame.setBackground(alertColor);
         frame.setBounds(screen.getDefaultConfiguration().getBounds());
         frame.setFocusableWindowState(false);
@@ -207,21 +238,52 @@ class MacScreenFlasher implements ScreenFlasher {
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         // Build HTML for all events
-        StringBuilder html = new StringBuilder("<html><center><h1 style='color: white; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>");
+        String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue());
+        StringBuilder html = new StringBuilder("<html><center><h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>");
         for (CalendarEvent event : events) {
-            html.append("<h2 style='color: white; font-size: 36px'>").append(event.subject).append("</h2>");
-            html.append("<p style='color: white; font-size: 24px'>Starting in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
+            html.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>").append(event.subject).append("</h2>");
+            html.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
         }
         html.append("</center></html>");
         JLabel label = new JLabel(html.toString(), SwingConstants.CENTER);
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
-        label.setForeground(Color.WHITE);
+        label.setForeground(textColor);
+        label.setBackground(alertColor);
+        label.setOpaque(true);
         frame.add(label, gbc);
         frame.getRootPane().setOpaque(true);
         frame.getContentPane().setBackground(alertColor);
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
-        Timer timer = new Timer(3000, { frame.dispose() } as java.awt.event.ActionListener);
-        timer.setRepeats(false);
-        timer.start();
+        startFlashSequence(frame);
+    }
+
+    private Color getAlertColor() {
+        try {
+            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            String colorHex = configManager?.flashColor ?: "#800000"
+            return Color.decode(colorHex)
+        } catch (Exception e) {
+            return new Color(128, 0, 0)
+        }
+    }
+    private double getAlertOpacity() {
+        try {
+            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            return configManager?.flashOpacity ?: 1.0d
+        } catch (Exception e) {
+            return 1.0d
+        }
+    }
+    private Color getAlertTextColorWithOpacity() {
+        try {
+            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            String colorHex = configManager?.flashTextColor ?: "#ffffff"
+            double opacity = configManager?.flashOpacity ?: 1.0d
+            Color base = Color.decode(colorHex)
+            int alpha = (int)Math.round(opacity * 255)
+            return new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha)
+        } catch (Exception e) {
+            return new Color(255, 255, 255, (int)Math.round(getAlertOpacity() * 255))
+        }
     }
 }

@@ -841,8 +841,79 @@ class OutlookAlerterUI extends JFrame {
             gbc.gridy = 2;
             formPanel.add(signInUrlField, gbc);
 
-            // Note: SSL Certificate Validation setting moved to token dialog
-            gbc.gridwidth = 1;
+            // Flash color setting (use a color picker)
+            gbc.gridx = 0;
+            gbc.gridy = 3;
+            formPanel.add(new JLabel("Flash color:"), gbc);
+            Color initialColor = Color.decode(configManager.flashColor ?: "#800000");
+            JButton colorButton = new JButton(" ");
+            colorButton.setBackground(initialColor);
+            colorButton.setOpaque(true);
+            colorButton.setContentAreaFilled(true);
+            colorButton.setBorderPainted(true);
+            colorButton.setFocusPainted(false);
+            colorButton.setPreferredSize(new Dimension(40, 20));
+            colorButton.setMinimumSize(new Dimension(40, 20));
+            colorButton.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+            colorButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    Color chosen = JColorChooser.showDialog(settingsDialog, "Choose Alert Color", colorButton.getBackground());
+                    if (chosen != null) {
+                        colorButton.setBackground(chosen);
+                        colorButton.repaint();
+                        colorButton.revalidate();
+                    }
+                }
+            });
+            gbc.gridx = 1;
+            gbc.gridy = 3;
+            formPanel.add(colorButton, gbc);
+
+            // Flash text color setting (use a color picker)
+            gbc.gridx = 0;
+            gbc.gridy = 4;
+            formPanel.add(new JLabel("Text color:"), gbc);
+            Color initialTextColor = Color.decode(configManager.flashTextColor ?: "#ffffff");
+            JButton textColorButton = new JButton(" ");
+            textColorButton.setBackground(initialTextColor);
+            textColorButton.setOpaque(true);
+            textColorButton.setContentAreaFilled(true);
+            textColorButton.setBorderPainted(true);
+            textColorButton.setFocusPainted(false);
+            textColorButton.setPreferredSize(new Dimension(40, 20));
+            textColorButton.setMinimumSize(new Dimension(40, 20));
+            textColorButton.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+            textColorButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    Color chosen = JColorChooser.showDialog(settingsDialog, "Choose Text Color", textColorButton.getBackground());
+                    if (chosen != null) {
+                        textColorButton.setBackground(chosen);
+                        textColorButton.repaint();
+                        textColorButton.revalidate();
+                    }
+                }
+            });
+            gbc.gridx = 1;
+            gbc.gridy = 4;
+            formPanel.add(textColorButton, gbc);
+
+            // Flash opacity setting (0-100%)
+            gbc.gridx = 0;
+            gbc.gridy = 5;
+            formPanel.add(new JLabel("Flash opacity (%):"), gbc);
+            int initialOpacity = (int) Math.round((configManager.flashOpacity ?: 1.0f) * 100);
+            SpinnerModel opacityModel = new SpinnerNumberModel(
+                initialOpacity,
+                0, // min
+                100, // max
+                1 // step
+            );
+            JSpinner flashOpacitySpinner = new JSpinner(opacityModel);
+            gbc.gridx = 1;
+            gbc.gridy = 5;
+            formPanel.add(flashOpacitySpinner, gbc);
 
             // Button panel
             JPanel buttonPanel = new JPanel();
@@ -854,6 +925,12 @@ class OutlookAlerterUI extends JFrame {
                     String timezone = timezoneField.getText().trim();
                     String signInUrl = signInUrlField.getText().trim();
                     int alertMinutes = (Integer)alertMinutesSpinner.getValue();
+                    Color chosenColor = colorButton.getBackground();
+                    String flashColor = String.format("#%02x%02x%02x", chosenColor.getRed(), chosenColor.getGreen(), chosenColor.getBlue());
+                    Color chosenTextColor = textColorButton.getBackground();
+                    String flashTextColor = String.format("#%02x%02x%02x", chosenTextColor.getRed(), chosenTextColor.getGreen(), chosenTextColor.getBlue());
+                    int opacityPercent = (Integer)flashOpacitySpinner.getValue();
+                    double flashOpacity = ((Integer)flashOpacitySpinner.getValue()) / 100.0d;
 
                     try {
                         if (!timezone.isEmpty()) {
@@ -866,6 +943,9 @@ class OutlookAlerterUI extends JFrame {
                         }
 
                         configManager.updateAlertMinutes(alertMinutes);
+                        configManager.updateFlashColor(flashColor);
+                        configManager.updateFlashTextColor(flashTextColor);
+                        configManager.updateFlashOpacity(flashOpacity);
 
                         settingsDialog.dispose();
                         settingsDialog = null;

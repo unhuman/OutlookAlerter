@@ -35,6 +35,9 @@ class ConfigManager {
     private String preferredTimezone
     private int alertMinutes = 1 // Default to 1 minute
     private boolean ignoreCertValidation = false // Default to validating certificates
+    private String flashColor = "#800000" // Default dark red
+    private String flashTextColor = "#ffffff" // Default white text
+    private double flashOpacity = 1.0d // Default 100%
     
     // SSO related properties
     private String signInUrl
@@ -100,6 +103,9 @@ class ConfigManager {
         properties.setProperty("preferredTimezone", "")
         properties.setProperty("alertMinutes", "1")
         properties.setProperty("ignoreCertValidation", "false")
+        properties.setProperty("flashColor", "#800000")
+        properties.setProperty("flashTextColor", "#ffffff")
+        properties.setProperty("flashOpacity", "1.0")
         
         // Save to file
         try {
@@ -154,6 +160,9 @@ class ConfigManager {
         preferredTimezone = properties.getProperty("preferredTimezone")
         alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"))
         ignoreCertValidation = Boolean.parseBoolean(properties.getProperty("ignoreCertValidation", "false"))
+        flashColor = properties.getProperty("flashColor", "#800000")
+        flashTextColor = properties.getProperty("flashTextColor", "#ffffff")
+        flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"))
         
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")
@@ -179,6 +188,9 @@ class ConfigManager {
             properties.setProperty("preferredTimezone", preferredTimezone ?: "")
             properties.setProperty("alertMinutes", String.valueOf(alertMinutes))
             properties.setProperty("ignoreCertValidation", String.valueOf(ignoreCertValidation))
+            properties.setProperty("flashColor", flashColor ?: "#800000")
+            properties.setProperty("flashTextColor", flashTextColor ?: "#ffffff")
+            properties.setProperty("flashOpacity", String.valueOf(flashOpacity))
             
             if (accessToken) {
                 properties.setProperty("accessToken", accessToken)
@@ -226,6 +238,9 @@ class ConfigManager {
     String getPreferredTimezone() { return preferredTimezone }
     int getAlertMinutes() { return alertMinutes }
     boolean getIgnoreCertValidation() { return ignoreCertValidation }
+    String getFlashColor() { return flashColor }
+    String getFlashTextColor() { return flashTextColor }
+    double getFlashOpacity() { return flashOpacity }
     
     /**
      * Updates the preferred timezone setting
@@ -256,6 +271,30 @@ class ConfigManager {
      */
     void updateSignInUrl(String url) {
         this.signInUrl = url
+        saveConfiguration()
+    }
+    
+    /**
+     * Updates the flash color setting
+     */
+    void updateFlashColor(String color) {
+        this.flashColor = color
+        saveConfiguration()
+    }
+    
+    /**
+     * Updates the flash text color setting
+     */
+    void updateFlashTextColor(String color) {
+        this.flashTextColor = color
+        saveConfiguration()
+    }
+    
+    /**
+     * Updates the flash opacity setting
+     */
+    void updateFlashOpacity(double opacity) {
+        this.flashOpacity = opacity
         saveConfiguration()
     }
 }

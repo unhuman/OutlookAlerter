@@ -1,5 +1,7 @@
 package com.unhuman.outlookalerter
 
+import com.unhuman.outlookalerter.ScreenFlasher
+import com.unhuman.outlookalerter.CalendarEvent
 import groovy.transform.CompileStatic
 import javax.swing.JFrame
 import javax.swing.JLabel
@@ -150,6 +152,8 @@ class WindowsScreenFlasher implements ScreenFlasher {
         gbc.weighty = 1.0
         gbc.fill = GridBagConstraints.BOTH
         
+        // Get configured text color and apply opacity
+        Color textColor = getAlertTextColorWithOpacity()
         // Create label with meeting info
         JLabel label = new JLabel("<html><center>" +
                 "<h1>Meeting Starting Soon!</h1>" +
@@ -158,7 +162,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 "</center></html>", SwingConstants.CENTER)
         
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
-        label.setForeground(Color.WHITE)
+        label.setForeground(textColor)
         frame.add(label, gbc)
         
         // Position frame to cover the entire screen
@@ -243,9 +247,31 @@ class WindowsScreenFlasher implements ScreenFlasher {
         html.append("</center></html>");
         JLabel label = new JLabel(html.toString(), SwingConstants.CENTER);
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
-        label.setForeground(Color.WHITE);
+        Color textColor = getAlertTextColorWithOpacity();
+        label.setForeground(textColor);
         frame.add(label, gbc);
         frame.setBounds(screen.getDefaultConfiguration().getBounds());
         startFlashSequence(frame);
+    }
+
+    private Color getAlertTextColorWithOpacity() {
+        try {
+            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            String colorHex = configManager?.flashTextColor ?: "#ffffff"
+            double opacity = configManager?.flashOpacity ?: 1.0d
+            Color base = Color.decode(colorHex)
+            int alpha = (int)Math.round(opacity * 255);
+            return new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha)
+        } catch (Exception e) {
+            return new Color(255, 255, 255, Math.round(getAlertOpacity() * 255))
+        }
+    }
+    private double getAlertOpacity() {
+        try {
+            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            return configManager?.flashOpacity ?: 1.0d
+        } catch (Exception e) {
+            return 1.0d
+        }
     }
 }
