@@ -275,35 +275,28 @@ class OutlookAlerterConsole {
             println "=============================================\n"
             
             // Check each event for alerts
+            List<CalendarEvent> eventsToAlert = []
             for (CalendarEvent event : combinedEvents) {
                 // Skip events that have already ended
                 if (event.hasEnded()) {
                     continue
                 }
-                
                 int minutesToStart = event.getMinutesToStart()
-                
                 // Skip events we've already alerted for
                 if (alertedEventIds.contains(event.id)) {
                     continue
                 }
-                
                 // Alert for events about to start
                 if (minutesToStart <= configManager.alertMinutes && minutesToStart >= -1) {
-                    println "Alerting for event: ${event.subject}" + 
-                           (event.responseStatus ? " (${event.responseStatus})" : "") + 
-                           " (${minutesToStart >= 0 ? 
-                              "starts in ${minutesToStart} min" : 
-                              "started ${-minutesToStart} min ago"})"
-                    screenFlasher.flash(event)
-                    
-                    // Mark as alerted
+                    eventsToAlert.add(event)
+                }
+            }
+            if (!eventsToAlert.isEmpty()) {
+                println "Alerting for events: " + eventsToAlert.collect { it.subject }.join(", ")
+                screenFlasher.flashMultiple(eventsToAlert)
+                // Mark as alerted
+                for (CalendarEvent event : eventsToAlert) {
                     alertedEventIds.add(event.id)
-                    
-                    // Clean up alerted events list periodically
-                    if (alertedEventIds.size() > 100) {
-                        alertedEventIds.clear()
-                    }
                 }
             }
         } catch (Exception e) {

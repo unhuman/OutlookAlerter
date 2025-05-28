@@ -205,4 +205,47 @@ class WindowsScreenFlasher implements ScreenFlasher {
         // Show window
         frame.setVisible(true)
     }
+    
+    /**
+     * Flashes the screen to alert the user of multiple events in the same time window
+     * @param events List of calendar events starting soon
+     */
+    void flashMultiple(List<CalendarEvent> events) {
+        if (events == null || events.isEmpty()) return;
+        // Get all screens
+        GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        GraphicsDevice[] screens = ge.getScreenDevices();
+        for (GraphicsDevice screen : screens) {
+            createFlashWindowForScreenMultiple(screen, events);
+        }
+    }
+
+    /**
+     * Creates a flashing window for a specific screen for multiple events
+     */
+    private void createFlashWindowForScreenMultiple(GraphicsDevice screen, List<CalendarEvent> events) {
+        JFrame frame = new JFrame("Meeting Alert", screen.getDefaultConfiguration());
+        frame.setUndecorated(true);
+        frame.setAlwaysOnTop(true);
+        frame.setLayout(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 1.0;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        // Build HTML for all events
+        StringBuilder html = new StringBuilder("<html><center><h1>Meetings Starting Soon!</h1>");
+        for (CalendarEvent event : events) {
+            html.append("<h2>").append(event.subject).append("</h2>");
+            html.append("<p>Starts in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
+        }
+        html.append("</center></html>");
+        JLabel label = new JLabel(html.toString(), SwingConstants.CENTER);
+        label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
+        label.setForeground(Color.WHITE);
+        frame.add(label, gbc);
+        frame.setBounds(screen.getDefaultConfiguration().getBounds());
+        startFlashSequence(frame);
+    }
 }

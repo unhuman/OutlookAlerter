@@ -86,6 +86,43 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
         }
     }
     
+    @Override
+    void flashMultiple(List<CalendarEvent> events) {
+        if (events == null || events.isEmpty()) return;
+        try {
+            GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices();
+            List<JFrame> flashWindows = [];
+            for (GraphicsDevice screen : screens) {
+                Rectangle bounds = screen.getDefaultConfiguration().getBounds();
+                JFrame frame = new JFrame(screen.getDefaultConfiguration());
+                frame.setUndecorated(true);
+                frame.setAlwaysOnTop(true);
+                frame.add(new MultipleMeetingsPanel(events));
+                frame.setBounds(bounds);
+                flashWindows.add(frame);
+            }
+            Thread flashThread = new Thread({
+                try {
+                    for (int i = 0; i < FLASH_COUNT; i++) {
+                        SwingUtilities.invokeAndWait({ flashWindows.each { it.setVisible(true) } } as Runnable);
+                        Thread.sleep(FLASH_DURATION_MS);
+                        SwingUtilities.invokeAndWait({ flashWindows.each { it.setVisible(false) } } as Runnable);
+                        if (i < FLASH_COUNT - 1) {
+                            Thread.sleep(FLASH_INTERVAL_MS);
+                        }
+                    }
+                    SwingUtilities.invokeAndWait({ flashWindows.each { it.dispose() } } as Runnable);
+                } catch (Exception e) {
+                    System.err.println("Error during screen flash: ${e.message}");
+                }
+            });
+            flashThread.setDaemon(true);
+            flashThread.start();
+        } catch (Exception e) {
+            System.err.println("Error initializing screen flash: ${e.message}");
+        }
+    }
+
     /**
      * Panel that displays meeting information during the flash
      */
@@ -175,6 +212,44 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 
             } finally {
                 g2d.dispose()
+            }
+        }
+    }
+    
+    /**
+     * Panel that displays multiple meeting information during the flash
+     */
+    private static class MultipleMeetingsPanel extends JPanel {
+        private final List<CalendarEvent> events;
+        MultipleMeetingsPanel(List<CalendarEvent> events) {
+            this.events = events;
+            setBackground(new Color(0, 0, 0, 200));
+        }
+        @Override
+        protected void paintComponent(java.awt.Graphics g) {
+            super.paintComponent(g);
+            java.awt.Graphics2D g2d = (java.awt.Graphics2D) g.create();
+            try {
+                g2d.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+                int width = getWidth();
+                int height = getHeight();
+                g2d.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 48));
+                g2d.setColor(java.awt.Color.WHITE);
+                String title = "MEETINGS STARTING SOON";
+                java.awt.FontMetrics fmTitle = g2d.getFontMetrics();
+                int y = (int) (height / 4);
+                g2d.drawString(title, (width - fmTitle.stringWidth(title)) / 2, y);
+                g2d.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 32));
+                y += fmTitle.getHeight() + 20;
+                for (CalendarEvent event : events) {
+                    String subject = event.getSubject();
+                    if (subject.length() > 60) subject = subject.substring(0, 57) + "...";
+                    String line = subject + " — starts in " + event.getMinutesToStart() + " min";
+                    g2d.drawString(line, (width - g2d.getFontMetrics().stringWidth(line)) / 2, y);
+                    y += g2d.getFontMetrics().getHeight() + 10;
+                }
+            } finally {
+                g2d.dispose();
             }
         }
     }

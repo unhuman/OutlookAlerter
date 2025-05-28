@@ -11,6 +11,7 @@ import java.awt.image.BufferedImage
 import javax.swing.*
 import com.sun.jna.*
 import com.unhuman.outlookalerter.MacWindowHelper
+import java.util.List
 
 /**
  * Mac-specific implementation of ScreenFlasher
@@ -180,5 +181,65 @@ class MacScreenFlasher implements ScreenFlasher {
             timer.setInitialDelay(0)
             timer.start()
         } as Runnable)
+    }
+    
+    /**
+     * Flashes the screen to alert the user of multiple events in the same time window
+     * @param events List of calendar events starting soon
+     */
+    void flashMultiple(List<CalendarEvent> events) {
+        if (events == null || events.isEmpty()) return;
+        GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        GraphicsDevice[] screens = ge.getScreenDevices();
+        for (GraphicsDevice screen : screens) {
+            createFlashWindowForScreenMultiple(screen, events);
+        }
+    }
+
+    /**
+     * Creates a flashing window for a specific screen for multiple events
+     */
+    private void createFlashWindowForScreenMultiple(GraphicsDevice screen, List<CalendarEvent> events) {
+        JFrame frame = new JFrame("⚠️ Meeting Alert ⚠️", screen.getDefaultConfiguration());
+        frame.setUndecorated(true);
+        frame.setAlwaysOnTop(true);
+        frame.setType(javax.swing.JFrame.Type.POPUP);
+        frame.setOpacity(1.0f);
+        frame.setBackground(Color.RED);
+        frame.setBounds(screen.getDefaultConfiguration().getBounds());
+        frame.setFocusableWindowState(false);
+        frame.setAutoRequestFocus(false);
+        frame.setVisible(true);
+        frame.toFront();
+        try {
+            Thread.sleep(100);
+            long windowHandle = Native.getWindowID(frame);
+            MacWindowHelper.setWindowLevel(windowHandle, 2147483647);
+            frame.toFront();
+        } catch (Exception e) {
+            println "Could not set macOS window level: ${e.message}";
+        }
+        frame.setLayout(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 1.0;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        // Build HTML for all events
+        StringBuilder html = new StringBuilder("<html><center><h1 style='color: white; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>");
+        for (CalendarEvent event : events) {
+            html.append("<h2 style='color: white; font-size: 36px'>").append(event.subject).append("</h2>");
+            html.append("<p style='color: white; font-size: 24px'>Starting in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
+        }
+        html.append("</center></html>");
+        JLabel label = new JLabel(html.toString(), SwingConstants.CENTER);
+        label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
+        label.setForeground(Color.WHITE);
+        frame.add(label, gbc);
+        frame.getRootPane().setOpaque(true);
+        frame.getContentPane().setBackground(Color.RED);
+        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
+        startFlashSequence(frame);
     }
 }
