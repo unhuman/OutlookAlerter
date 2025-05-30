@@ -2,14 +2,15 @@
 
 A Groovy application that monitors your Microsoft Outlook/Office 365 calendar and alerts you when meetings are about to start by flashing the screen.
 
-> **Note:** All utility, diagnostic, and test scripts have been organized into the `scripts/` directory for better project organization. Documentation has been updated to reference these new paths.
-
 ## Features
 
 - Connects to Microsoft Graph API to retrieve your calendar events
 - Configurable alert time (1-30 minutes before meetings)
-- Cross-platform screen flashing alerts for upcoming meetings (without menu bar icons on macOS)
+- Cross-platform screen flashing alerts for upcoming meetings (with robust support for macOS, Windows, and Linux)
+- User-configurable alert background color, text color, and opacity (with a simple swatch-based color picker)
+- Alerts appear above full screen apps and on all virtual desktops/displays (macOS/Windows)
 - Supports authentication through Okta SSO or direct Microsoft authentication
+- Automatic token refresh using refresh tokens (no repeated user prompts)
 - Comprehensive calendar event handling:
   - Shows meeting response status (accepted, tentative, declined)
   - Displays online meeting status
@@ -21,24 +22,20 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
   - Real-time calendar updates
   - Status indicators for connection and updates
   - Configurable settings via GUI dialog
-  - Automatic token refresh handling
 - Console mode support for command-line operation
 - Robust timezone handling with configurable preferences
-- Extensive diagnostic and troubleshooting tools
+- Extensive diagnostic and troubleshooting tools (see `scripts/`)
 
-## Documentation
+## Authentication and Token Refresh
 
-Reference documentation for users and developers is available in the `documentation` directory:
+Outlook Alerter uses OAuth2 for authentication. To avoid repeated sign-ins, it requests the `offline_access` scope and stores a refresh token. When your access token expires, the app automatically uses the refresh token to obtain a new one. This process is seamless and requires no user intervention unless the refresh token is revoked or expires (e.g., password change, admin action).
 
-- [Icon Creation Guide](documentation/iconCreation.md) - Instructions for creating and managing application icons:
-  - Icon design specifications
-  - Converting icons to different formats
-  - Integrating icons into the build process
-  - Troubleshooting icon display issues
+- **Initial sign-in**: The app opens your browser for authentication and prompts for the token.
+- **Refresh tokens**: Stored securely and used to renew access tokens as needed.
+- **No indefinite tokens**: Microsoft does not allow truly permanent tokens, but refresh tokens last weeks/months unless revoked.
+- **Manual re-authentication**: Only required if the refresh token is invalidated by Microsoft.
 
 ## User Interface
-
-Outlook Alerter provides a modern, user-friendly graphical interface with these key features:
 
 ### Main Window
 - **Current Meetings**: Shows in-progress meetings with duration and status
@@ -51,13 +48,23 @@ Outlook Alerter provides a modern, user-friendly graphical interface with these 
 - **Alert Configuration**: Set alert time (1-30 minutes before meetings)
 - **Timezone Settings**: Configure preferred timezone
 - **Authentication**: Set up Okta SSO or direct Microsoft authentication
-- **Visual Preferences**: Configure display options
+- **Visual Preferences**:
+  - Choose alert background color (with swatch-only color picker)
+  - Choose alert text color (with swatch-only color picker)
+  - Set alert opacity (0–100%)
+- **All settings are saved to your config file and take effect immediately**
 
 ### System Tray Integration
 - **Background Operation**: Runs minimized while monitoring calendar
 - **Quick Menu**: Right-click for common actions
 - **Status Notifications**: Meeting alerts appear as system notifications
 - **Double-click Restore**: Quickly access the main window
+
+## Platform-Specific Alert Behavior
+
+- **macOS**: Alerts appear above full screen apps and on all virtual desktops/displays using robust window level logic. No menu bar icon flashes during alerts.
+- **Windows**: Alerts use always-on-top windows and system tray notifications. Color and opacity settings are fully respected.
+- **Linux/Cross-Platform**: Alerts use always-on-top windows with color/opacity support (subject to window manager limitations).
 
 ## Running the Application
 
@@ -66,286 +73,33 @@ You can run Outlook Alerter in two modes, either using the JAR directly or using
 ### Using Maven-built JAR
 
 #### GUI Mode (Default)
-```bash
-java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar
+```zsh
+java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar
 ```
 
 #### Console Mode
-```bash
-java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar --console
+```zsh
+java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar --console
 ```
 
 ### Using Shell Scripts
 
 #### GUI Mode (Default)
-```bash
+```zsh
 ./run.sh
 ```
 
 #### Console Mode
-```bash
+```zsh
 ./run.sh --console
 ```
 
-### Features Common to Both Modes
-- **GUI Mode**:
-  - Full graphical interface with system tray integration
-  - Visual alerts and notifications
-  - Settings configurable through dialog
-  - Minimizes to system tray for background operation
-
-- **Console Mode**:
-  - Text-based interface for command-line operation
-  - Same alert functionality without GUI
-  - Suitable for environments without display server
-  - Can run as a background service
-
 ### Command Line Options
-The following options work with both the JAR and shell script:
-```bash
-java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar [options]
-# or
-./run.sh [options]
-```
-
-Options:
 - `--config <path>`: Custom config file location (default: ~/.outlookalerter/config.properties)
 - `--console`: Run in console mode
 - `--debug`: Enable detailed logging
 - `--timezone <zone>`: Override timezone setting
 - `--help`: Show help message
-
-### Authentication
-
-The new UI-based authentication process:
-1. Automatically opens your browser to the sign-in page
-2. Displays a user-friendly dialog for entering the authentication token
-3. Validates token format before submission
-4. Automatically pops up when token updates are required
-
-## Timezone Handling
-
-Outlook Alerter now provides improved timezone handling to ensure your calendar events are displayed accurately regardless of your location or system timezone settings.
-
-### Timezone Configuration Options
-
-1. **Config File**: Set your preferred timezone in the config file (`~/.outlookalerter/config.properties`):
-   ```
-   preferredTimezone=America/New_York
-   ```
-
-2. **Command Line**: Override the timezone setting via command line:
-   ```
-   ./run.sh --timezone America/New_York
-   ```
-
-3. **Convenience Script**: Use the provided convenience script:
-   ```
-   ./run-with-timezone.sh America/New_York
-   ```
-
-### Common Timezone IDs
-
-- **North America**: `America/New_York`, `America/Chicago`, `America/Denver`, `America/Los_Angeles`
-- **Europe**: `Europe/London`, `Europe/Paris`, `Europe/Berlin`, `Europe/Moscow`
-- **Asia**: `Asia/Tokyo`, `Asia/Singapore`, `Asia/Hong_Kong`, `Asia/Dubai`
-- **Australia/Pacific**: `Australia/Sydney`, `Pacific/Auckland`
-
-### Debugging Timezone Issues
-
-If you encounter timezone-related issues, you can run the application with the `--debug` flag to see detailed timezone information:
-
-```
-./run.sh --debug
-```
-
-This will show:
-- Your system's current timezone
-- The timezone of each event from the calendar
-- Detailed time comparisons used for determining upcoming events
-
-## Diagnostic Tools
-
-Outlook Alerter includes several diagnostic tools to help troubleshoot issues with calendar events not appearing or with timezone handling:
-
-### Basic Diagnostic Tools
-
-1. **Debug Mode**: Run with detailed logging
-   ```
-   ./scripts/run-debug.sh
-   ```
-   
-2. **Timezone Test**: Test the application's timezone handling
-   ```
-   ./scripts/test-timezones.sh
-   ```
-
-3. **Timezone Override**: Run with an explicit timezone
-   ```
-   ./scripts/run-with-timezone.sh America/New_York
-   ```
-
-### Advanced Diagnostic Tools
-
-These tools can help diagnose missing calendar events:
-
-1. **Calendar Events Test**: Comprehensive calendar event testing
-   ```
-   ./scripts/test-calendar-events.sh
-   ```
-
-2. **Missing Meetings Diagnostic**: Find meetings that might be missing
-   ```
-   ./scripts/diagnose-missing-meetings.sh
-   ```
-
-3. **Multi-Calendar Diagnostic**: Diagnose issues with events in multiple calendars
-   ```
-   ./scripts/diagnose-multi-calendar.sh
-   ```
-
-4. **Enhanced Calendar Diagnostics**: Deep analysis of calendar retrieval methods
-   ```
-   ./scripts/enhanced-calendar-diagnostics.sh
-   ```
-
-5. **Time Comparison Test**: Verify event timing logic is working correctly
-   ```
-   ./scripts/test-time-comparisons.sh
-   ```
-
-6. **Comprehensive Diagnostics**: Run all diagnostics in one go
-   ```
-   ./scripts/run-all-diagnostics.sh
-   ```
-   
-7. **Debug with Diagnostics**: Run in debug mode with diagnostics
-   ```
-   ./scripts/run-debug.sh --diagnostics
-   ```
-
-### Understanding Diagnostic Results
-
-The diagnostic tools help identify why meetings might be missing by:
-
-1. Testing different calendar retrieval methods:
-   - Standard events endpoint
-   - Calendar view endpoint
-   - Multi-calendar retrieval
-
-2. Comparing events between these methods to find discrepancies
-
-3. Testing timezone handling to ensure events display at correct times
-
-4. Creating detailed reports with recommendations on which retrieval methods to use
-
-## Troubleshooting
-
-### Diagnostic Tools
-OutlookAlerter includes several built-in diagnostic tools:
-
-1. **Debug Mode**: Enable detailed logging
-   ```bash
-   ./run.sh --debug
-   ```
-
-2. **Timezone Diagnostics**: Test timezone configuration
-   ```bash
-   ./scripts/test-timezones.sh
-   ```
-
-3. **Calendar Event Tests**: Validate event retrieval
-   ```bash
-   ./scripts/test-calendar-events.sh
-   ```
-
-4. **Full Diagnostics**: Run all tests
-   ```bash
-   ./scripts/run-all-diagnostics.sh
-   ```
-
-### Common Issues
-
-> Note: All dialog windows and system tray notifications will show "Outlook Alerter" as the application name.
-
-1. **Authentication Problems**
-   - Verify Okta SSO URL in settings
-   - Check token expiration
-   - Run with --debug for detailed auth logs
-
-2. **Missing Calendar Events**
-   - Confirm timezone settings
-   - Check calendar permissions
-   - Run event diagnostics
-
-3. **Alert Issues**
-   - Verify system notification settings
-   - Check alert minutes configuration
-   - Test screen flash functionality
-
-4. **System Tray Problems**
-   - Some systems have limited tray support
-   - Application remains functional in window mode
-   - Check system tray application permissions
-
-## Support
-
-### Log Files
-- Application logs: `~/.outlookalerter/outlookalerter.log`
-- Debug logs: `~/.outlookalerter/outlookalerter-debug.log`
-- Diagnostic reports: `~/.outlookalerter/diagnostics/`
-
-### Getting Help
-- Check the troubleshooting section first
-- Run diagnostic tools for detailed reports
-- Review debug logs for error messages
-- File detailed bug reports with diagnostic output
-
-## Usage
-
-You can run Outlook Alerter directly using Java with the Maven-built JAR:
-
-```bash
-# Run with default options
-java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar
-
-# Run with specific options
-java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar [options]
-```
-
-Or using the convenience shell script (which uses the same JAR internally):
-```bash
-./run.sh [options]
-```
-
-Available options:
-- `--config <path>`: Path to configuration file (default: ~/.outlookalerter/config.properties)
-- `--daemon`: Run in daemon mode (background)
-- `--debug`: Enable debug mode with detailed timezone logging
-- `--timezone <zone>`: Override the timezone for displaying events (e.g., America/New_York)
-- `--help`: Show help message
-
-Note: All diagnostic and test scripts (`scripts/test-*.sh`, `scripts/diagnose-*.sh`) also support running with the Maven-built JAR.
-
-## Installation
-
-There are two ways to build and run Outlook Alerter:
-
-### Using Maven (Recommended)
-1. Clone the repository
-2. Build the application with Maven:
-   ```bash
-   mvn clean package
-   ```
-3. Run the generated JAR:
-   ```bash
-   java -jar target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar
-   ```
-
-### Using Shell Scripts (Alternative)
-1. Clone the repository
-2. Run `./scripts/build.sh` to compile the application (uses Maven internally)
-3. Run `./run.sh` to start the application
 
 ## Configuration
 
@@ -361,6 +115,11 @@ loginHint=your.name@company.com                             # Your email (option
 preferredTimezone=America/New_York                          # Your preferred timezone
 alertMinutes=1                                              # Minutes before meeting to alert (1-30)
 
+# Visual Settings
+flashColor=#800000                                          # Alert background color (hex)
+flashTextColor=#ffffff                                      # Alert text color (hex)
+flashOpacity=1.0                                            # Alert opacity (0.0–1.0)
+
 # Advanced Settings (usually auto-configured)
 clientId=                                                   # OAuth client ID
 clientSecret=                                               # OAuth client secret
@@ -373,19 +132,17 @@ redirectUri=http://localhost:8888/redirect                 # OAuth redirect URI
 - Direct file editing is required only for advanced configuration
 - Changes take effect immediately after saving
 
-## Event Response Status Support
+## Diagnostic Tools
 
-Outlook Alerter now properly displays the response status of each calendar event (accepted, tentative, declined, etc.):
+All diagnostic and troubleshooting scripts are in the `scripts/` directory. See the README and comments in each script for usage details.
 
-- All events are displayed regardless of response status, including tentative meetings
-- Response status is shown in the console output for each event
-- Screen flash notifications include the response status
-- The application does not filter out any meetings that occur at the same time
-
-To test response status support, run the included test script:
-```
-./scripts/test-tentative-meetings.sh
-```
+- `run-debug.sh`: Run with detailed logging
+- `test-calendar-events.sh`: Validate event retrieval
+- `test-timezones.sh`: Test timezone handling
+- `diagnose-missing-meetings.sh`: Find missing meetings
+- `diagnose-multi-calendar.sh`: Diagnose multi-calendar issues
+- `enhanced-calendar-diagnostics.sh`: Deep calendar diagnostics
+- `run-all-diagnostics.sh`: Run all diagnostics
 
 ## Requirements
 
@@ -395,10 +152,11 @@ To test response status support, run the included test script:
 ## Build System
 
 Outlook Alerter uses Maven for dependency management and building. The project's key dependencies are managed through the `pom.xml` file:
-
-### Core Dependencies
-- Groovy 3.0.9 (core, json, and dateutil modules)
+- Groovy 4.x (core, json, and dateutil modules)
 - JNA 5.13.0 for native system access
-- Maven 3.6+ for building
+
+---
+
+For more details, see the `docs/` and `documentation/` directories, and the comments in the `scripts/` folder.
 
 
