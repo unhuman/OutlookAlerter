@@ -234,6 +234,27 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- Remove old app bundle before packaging (fixes jpackage error if .app exists) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.0.0</version>
+                <executions>
+                    <execution>
+                        <id>remove-old-app-bundle</id>
+                        <phase>prepare-package</phase>
+                        <configuration>
+                            <target>
+                                <delete dir="${project.build.directory}/OutlookAlerter.app" failonerror="false"/>
+                            </target>
+                        </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>
