@@ -272,57 +272,7 @@ class SimpleTokenDialog {
                 submitButton.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
-                        // Get token and trim whitespace
-                        String accessToken = tokenField.getText().trim()
-                        
-                        // Strip off "Bearer " prefix if present (case insensitive)
-                        if (accessToken.toLowerCase().startsWith("bearer ")) {
-                            accessToken = accessToken.substring(7).trim()
-                        }
-                        
-                        if (accessToken.isEmpty()) {
-                            JOptionPane.showMessageDialog(frame,
-                                "Please enter an access token.",
-                                "Required Field Missing",
-                                JOptionPane.WARNING_MESSAGE)
-                            return
-                        }
-                        
-                        // Get certificate validation setting
-                        boolean ignoreCertValidation = false
-                        try {
-                            // Find the checkbox in the form
-                            for (Component component : formPanel.getComponents()) {
-                                if (component instanceof JPanel) {
-                                    JPanel innerCertPanel = (JPanel)component
-                                    Component[] certComponents = innerCertPanel.getComponents()
-                                    for (Component certComponent : certComponents) {
-                                        if (certComponent instanceof JCheckBox) {
-                                            JCheckBox checkbox = (JCheckBox)certComponent
-                                            if (checkbox.getText().contains("certificate validation")) {
-                                                ignoreCertValidation = checkbox.isSelected()
-                                                break
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (Exception ex) {
-                            System.err.println("Error getting certificate validation setting: " + ex.getMessage())
-                        }
-                        
-                        // Store token and certificate validation setting
-                        tokens = [
-                            accessToken: accessToken,
-                            ignoreCertValidation: String.valueOf(ignoreCertValidation)
-                        ]
-                        
-                        // Just count down the latch - cancelDialog will handle the rest
-                        latch.countDown()
-                        
-                        // Close the dialog more simply
-                        frame.setVisible(false)
-                        frame.dispose()
+                        submitToken()  // Use consistent validation in submitToken()
                     }
                 })
                 buttonPanel.add(graphExplorerButton)  // Add Graph Explorer button first
