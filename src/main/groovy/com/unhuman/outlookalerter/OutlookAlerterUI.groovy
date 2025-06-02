@@ -425,6 +425,8 @@ class OutlookAlerterUI extends JFrame {
                                 )
                             }
                         } as Runnable)
+                    } catch (OutlookClient.AuthenticationCancelledException ace) {
+                        System.out.println("Authentication was cancelled: " + ace.getMessage() + " (reason: " + ace.getReason() + ")")
                     } catch (Exception e) {
                         System.err.println("Error in authentication thread: " + e.getMessage())
                         e.printStackTrace()
@@ -461,136 +463,112 @@ class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
-        System.out.println("\n=== Refreshing Calendar Events ===")
-        
+        // Update status label
         SwingUtilities.invokeLater({
             statusLabel.setText("Status: Refreshing calendar events...")
             refreshButton.setEnabled(false)
         } as Runnable)
         
-        // Run in background thread
-        new Thread({
+        // Perform the API call in a background thread
+        Thread fetchThread = new Thread({
             try {
-                // First check if the token is already valid to provide better user feedback
-                boolean tokenWasAlreadyValid = outlookClient.isTokenAlreadyValid()
-                boolean tokenValidationNeeded = false
+                // Fetch events and store them
+                List<CalendarEvent> events = outlookClient.getUpcomingEventsUsingCalendarView()
                 
-                System.out.println("Token validation check: " + 
-                    (tokenWasAlreadyValid ? "already valid" : "needs validation"))
+                // Update token status based on refresh result
+                boolean tokenInvalid = false
                 
-                if (tokenWasAlreadyValid) {
-                    // Provide immediate feedback if token is already valid
+                // Check token validator result
+                String tokenResult = outlookClient.getLastTokenValidationResult()
+                if (tokenResult == OutlookClient.TOKEN_REFRESHED) {
+                    tokenInvalid = false
+                } else if (tokenResult == OutlookClient.TOKEN_NEW_AUTHENTICATION) {
+                    tokenInvalid = false
+                } else if (!outlookClient.isTokenAlreadyValid()) {
+                    tokenInvalid = true
+                }
+                
+                // Update icons based on token validity
+                updateIcons(tokenInvalid)
+                
+                // Check if we got any events
+                if (events != null) {
+                    // Update the UI with the results
                     SwingUtilities.invokeLater({
-                        statusLabel.setText("Status: Token already valid, refreshing events...")
-                    } as Runnable)
-                } else {
-                    // Provide immediate feedback that we need to validate the token
-                    SwingUtilities.invokeLater({
-                        statusLabel.setText("Status: Checking token validity...")
-                    } as Runnable)
-                    tokenValidationNeeded = true
-                }
-                
-                // Get events
-                System.out.println("Fetching events from calendar...")
-                List<CalendarEvent> calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView()
-                System.out.println("Retrieved ${calendarViewEvents.size()} events")
-                
-                // Process events
-                Map<String, CalendarEvent> combinedEventsMap = new HashMap<>()
-                calendarViewEvents.each { event ->
-                    combinedEventsMap.put(event.id, event)
-                }
-                
-                // Convert back to list and sort by start time
-                List<CalendarEvent> combinedEvents = new ArrayList<>(combinedEventsMap.values())
-                combinedEvents.sort { event -> event.getMinutesToStart() }
-                
-                // Update cache
-                lastFetchedEvents = combinedEvents
-                
-                // Update UI
-                updateEventsDisplay(combinedEvents)
-                
-                // Check for alerts
-                checkForEventAlerts(combinedEvents)
-                
-                // Restart schedulers only if they're not running
-                if (!schedulersRunning) {
-                    startSchedulers()
-                }
-                
-                // Update UI with success
-                SwingUtilities.invokeLater({
-                    lastUpdateLabel.setText("Last update: " + ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                    
-                    // Provide clear feedback about what happened with token validation
-                    String tokenValidationResult = outlookClient.getLastTokenValidationResult()
-                    
-                    if (tokenWasAlreadyValid) {
-                        statusLabel.setText("Status: Ready (token was already valid)")
-                    } else {
-                        boolean isTokenValid = true
-                        switch (tokenValidationResult) {
-                            case OutlookClient.TOKEN_VALID_AFTER_SERVER_VALIDATION:
-                                statusLabel.setText("Status: Ready (token validated with server)")
-                                JOptionPane.showMessageDialog(
-                                    this,
-                                    "Authentication token was verified with the server successfully.\nNo new token entry was needed.",
-                                    "Token Validation",
-                                    JOptionPane.INFORMATION_MESSAGE
-                                )
-                                // Update icons to show valid state
-                                updateIcons(false)
-                                break
-                                
-                            case OutlookClient.TOKEN_REFRESHED:
-                                statusLabel.setText("Status: Ready (token was refreshed)")
-                                JOptionPane.showMessageDialog(
-                                    this,
-                                    "Authentication token was automatically refreshed.\nNo manual token entry was needed.",
-                                    "Token Refreshed",
-                                    JOptionPane.INFORMATION_MESSAGE
-                                )
-                                // Update icons to show valid state
-                                updateIcons(false)
-                                break
-                                
-                            case OutlookClient.TOKEN_NEW_AUTHENTICATION:
-                                statusLabel.setText("Status: Ready (token was updated)")
-                                // Update icons to show valid state
-                                updateIcons(false)
-                                break
-                                
-                            default:
-                                if (!outlookClient.hasValidToken()) {
-                                    statusLabel.setText("Status: Token Invalid")
-                                    isTokenValid = false
-                                } else {
-                                    statusLabel.setText("Status: Ready")
-                                }
-                                break
+                        try {
+                            updateEventsList(events)
+                            
+                            // Also update our cache for alert checking
+                            lastFetchedEvents = events
+                            
+                            // Update status to successful
+                            String now = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("hh:mm:ss a"))
+                            statusLabel.setText("Status: Ready")
+                            lastUpdateLabel.setText("Last update: " + now)
+                            refreshButton.setEnabled(true)
+                            
+                            // Update window title to indicate number of upcoming events
+                            setTitle("Outlook Alerter - " + events.size() + " upcoming meetings")
+                            
+                        } catch (Exception e) {
+                            System.err.println("Error updating UI after refresh: " + e.getMessage())
+                            e.printStackTrace()
                         }
+                    } as Runnable)
+                    
+                } else {
+                    SwingUtilities.invokeLater(new Runnable() {
+                        void run() {
+                            statusLabel.setText("Status: No events found or error")
+                            refreshButton.setEnabled(true)
+                            setTitle("Outlook Alerter - Meeting Alerts")
+                        }
+                    })
+                }
+            } catch (OutlookClient.AuthenticationCancelledException ace) {
+                System.out.println("Authentication was cancelled: " + ace.getMessage() + " (reason: " + ace.getReason() + ")")
+                final OutlookAlerterUI self = this  // Store reference to outer class
+                SwingUtilities.invokeLater(new Runnable() {
+                    void run() {
+                        statusLabel.setText("Status: Authentication cancelled")
+                        refreshButton.setEnabled(true)
+                        // Never show additional messages for authentication cancellation
+                        // SimpleTokenDialog already shows the appropriate message
                         
-                        // Update both window and tray icons based on token validity
-                        updateIcons(!isTokenValid)
+                        // Update events display with what we have in cache
+                        updateEventsList(lastFetchedEvents ?: [])
                     }
-                    refreshButton.setEnabled(true)
-                } as Runnable)
+                })
             } catch (Exception e) {
+                System.err.println("Error fetching calendar events: " + e.getMessage())
+                e.printStackTrace()
+                
+                // Handle specific network errors more gracefully
+                String errorMsg
+                if (e.message?.contains("Connection refused") || e.message?.contains("UnknownHostException")) {
+                    errorMsg = "Network error: Cannot connect to Microsoft servers.\nPlease check your internet connection."
+                } else if (e.message?.contains("authentication") || e.message?.contains("401")) {
+                    errorMsg = "Authentication error: Token may be invalid.\nPlease click Refresh to re-authenticate."
+                } else {
+                    errorMsg = "Error refreshing calendar: " + e.message
+                }
+                
                 SwingUtilities.invokeLater({
-                    statusLabel.setText("Status: Error refreshing events")
+                    statusLabel.setText("Status: Error - " + e.message)
                     refreshButton.setEnabled(true)
+                    
                     JOptionPane.showMessageDialog(
                         this,
-                        "Error refreshing calendar events: " + e.getMessage(),
-                        "Calendar Error",
+                        errorMsg,
+                        "Calendar Refresh Error",
                         JOptionPane.ERROR_MESSAGE
                     )
                 } as Runnable)
-                e.printStackTrace()
             }
-        }).start()
+        }, "CalendarFetchThread")
+        
+        fetchThread.setDaemon(true)
+        fetchThread.start()
     }
     
     /**
@@ -693,6 +671,100 @@ class OutlookAlerterUI extends JFrame {
         SwingUtilities.invokeLater({
             eventsTextArea.setText(finalText)
         } as Runnable)
+    }
+    
+    /**
+     * Updates the events list in the UI
+     * @param events List of CalendarEvent objects to display
+     */
+    private void updateEventsList(List<CalendarEvent> events) {
+        if (events == null || events.isEmpty()) {
+            eventsTextArea.setText("No upcoming calendar events found.")
+            return
+        }
+        
+        // Clear existing text
+        eventsTextArea.setText("")
+        
+        // Sort events by time
+        events = events.sort { CalendarEvent a, CalendarEvent b ->
+            a.startTime <=> b.startTime
+        }
+        
+        // Format each event
+        StringBuilder sb = new StringBuilder()
+        sb.append("Upcoming meetings (next 24 hours):\n\n")
+        
+        ZoneId preferredZone = null
+        try {
+            if (configManager.preferredTimezone) {
+                preferredZone = ZoneId.of(configManager.preferredTimezone)
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing preferred timezone: " + e.getMessage())
+        }
+        
+        ZoneId displayZone = preferredZone ?: ZoneId.systemDefault()
+        
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("E, MMM d")
+        
+        String currentDate = null
+        
+        for (CalendarEvent event : events) {
+            try {
+                // Convert to preferred timezone if set
+                ZonedDateTime startTime = event.startTime
+                ZonedDateTime endTime = event.endTime
+                
+                if (preferredZone != null) {
+                    startTime = event.startTime.withZoneSameInstant(preferredZone)
+                    endTime = event.endTime.withZoneSameInstant(preferredZone)
+                }
+                
+                // Format date header if this is a new date
+                String eventDate = dateFormatter.format(startTime)
+                if (currentDate == null || !currentDate.equals(eventDate)) {
+                    if (currentDate != null) {
+                        sb.append("\n")
+                    }
+                    sb.append("=== ").append(eventDate).append(" ===\n")
+                    currentDate = eventDate
+                }
+                
+                // Format the event details
+                sb.append(timeFormatter.format(startTime))
+                    .append(" - ")
+                    .append(timeFormatter.format(endTime))
+                    .append(": ")
+                    .append(event.subject)
+                
+                // Add location if available
+                if (event.location && !event.location.isEmpty() && event.location != "null") {
+                    sb.append(" (").append(event.location).append(")")
+                }
+                
+                // Add calendar name if multiple calendars
+                if (event.calendarName && event.calendarName != "Calendar" && event.calendarName != "null") {
+                    sb.append(" [").append(event.calendarName).append("]")
+                }
+                
+                // Add online meeting info
+                if (event.isOnlineMeeting) {
+                    sb.append(" [Online Meeting]")
+                }
+                
+                sb.append("\n")
+            } catch (Exception e) {
+                // If one event has issues, log it but continue with the others
+                System.err.println("Error formatting event: " + e.getMessage())
+                sb.append("[Error formatting event: ").append(event.subject ?: "unknown").append("]\n")
+            }
+        }
+        
+        // Update the text area
+        eventsTextArea.setText(sb.toString())
+        eventsTextArea.setCaretPosition(0) // Scroll to top
     }
     
     /**
@@ -1144,6 +1216,8 @@ class OutlookAlerterUI extends JFrame {
             dialog.show()
             Map<String, String> tokens = dialog.getTokens()
             
+            println "UI mode: Token dialog returned: ${tokens != null ? 'tokens' : 'null (cancelled)'}"
+            
             // If tokens were obtained and certificate validation setting might have changed,
             // ensure the HTTP client is updated
             if (tokens != null && outlookClient != null) {
@@ -1156,9 +1230,28 @@ class OutlookAlerterUI extends JFrame {
                     println "UI mode: No certificate validation setting in tokens, updating HTTP client anyway"
                     outlookClient.updateHttpClient()
                 }
+            } else {
+                // Only update status if dialog was cancelled or failed
+                SwingUtilities.invokeLater({
+                    statusLabel.setText("Status: Authentication cancelled")
+                    refreshButton.setEnabled(true)
+                } as Runnable)
+            }
+            
+            // Ensure the dialog is properly disposed
+            try {
+                if (dialog != null) {
+                    dialog.dispose()
+                }
+            } catch (Exception e) {
+                println "UI mode: Error disposing token dialog: ${e.message}"
             }
             
             return tokens
+        } catch (Exception e) {
+            println "UI mode: Error in promptForTokens: ${e.message}"
+            e.printStackTrace()
+            return null
         } finally {
             isTokenDialogActive = false
         }

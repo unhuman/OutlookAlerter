@@ -295,6 +295,12 @@ class OutlookClient {
         try {
             // Show the token dialog to the user
             def tokens = getTokensFromUser()
+            // If user cancels or closes the dialog, exit immediately and do not retry or show extra popups
+            if (tokens == null) {
+                println "Token dialog was cancelled by the user. Aborting authentication."
+                isAuthenticating = false // Make sure to release lock
+                throw new AuthenticationCancelledException("Authentication was cancelled by the user.", "user_cancelled")
+            }
             
             // Check if user provided a token
             if (tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
@@ -354,7 +360,8 @@ class OutlookClient {
                     // Get new tokens from user by showing the dialog again
                     tokens = getTokensFromUser()
                     if (tokens == null) {
-                        return false
+                        println "User canceled token dialog during validation retry"
+                        throw new AuthenticationCancelledException("Authentication was cancelled during token validation", "validation_cancelled")
                     }
                     // Continue the while loop to validate the new token
                     continue
@@ -369,6 +376,10 @@ class OutlookClient {
             println "Authentication successful! Token validated and saved."
             return true
             
+        } catch (AuthenticationCancelledException ace) {
+            println "Authentication was cancelled by the user"
+            isAuthenticating = false // Make sure to release lock
+            throw ace  // Rethrow to be handled by the caller
         } catch (Exception e) {
             println "Error during authentication: ${e.message}"
             e.printStackTrace()
@@ -654,23 +665,35 @@ class OutlookClient {
             // Check if we have any token at all
             if (accessToken == null || accessToken.isEmpty()) {
                 println "No access token available. Showing token dialog...";
-                if (!performDirectAuthentication()) {
-                    // Just return empty list instead of throwing exception
-                    println "No token provided after showing dialog. Cannot retrieve calendar events.";
-                    return [];
+                try {
+                    if (!performDirectAuthentication()) {
+                        println "No token provided after showing dialog. Cannot retrieve calendar events.";
+                        throw new AuthenticationCancelledException(
+                            "Authentication failed during calendar refresh.",
+                            "validation_cancelled"
+                        )
+                    }
+                    lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
+                } catch (AuthenticationCancelledException ace) {
+                    // Rethrow any authentication cancellation
+                    throw ace;
                 }
-                lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
-            }
-            // First check if token format is valid
+            }                // First check if token format is valid
             else if (!isValidTokenFormat(accessToken)) {
                 println "Token format is invalid. Need to authenticate again.";
                 if (!authenticate()) {
                     // Show direct authentication dialog if regular auth fails
                     println "Re-authentication failed. Showing token dialog...";
-                    if (!performDirectAuthentication()) {
-                        // Just return empty list instead of throwing exception
-                        println "No valid token provided. Cannot retrieve calendar events.";
-                        return [];
+                    try {
+                        if (!performDirectAuthentication()) {
+                            println "User cancelled token dialog. Cannot retrieve calendar events.";
+                            throw new AuthenticationCancelledException(
+                                "Authentication was cancelled by the user.", 
+                                "user_cancelled"
+                            );
+                        }
+                    } catch (AuthenticationCancelledException ace) {
+                        throw ace;
                     }
                 }
                 lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
@@ -682,10 +705,16 @@ class OutlookClient {
                 if (!authenticate()) {
                     // Show direct authentication dialog if regular auth fails
                     println "Re-authentication failed. Showing token dialog...";
-                    if (!performDirectAuthentication()) {
-                        // Just return empty list instead of throwing exception
-                        println "No valid token provided. Cannot retrieve calendar events.";
-                        return [];
+                    try {
+                        if (!performDirectAuthentication()) {
+                            println "User cancelled token dialog. Cannot retrieve calendar events.";
+                            throw new AuthenticationCancelledException(
+                                "Authentication was cancelled by the user.", 
+                                "user_cancelled"
+                            );
+                        }
+                    } catch (AuthenticationCancelledException ace) {
+                        throw ace;
                     }
                 }
                 lastTokenValidationResult = TOKEN_NEW_AUTHENTICATION;
@@ -1232,7 +1261,7 @@ class OutlookClient {
                 
                 ZonedDateTime eventTimeInLocalZone = eventTimeInOriginalZone.withZoneSameInstant(targetZoneId)
                 
-                // println "Parsed to: ${eventTimeInLocalZone} (original zone: ${zoneId}, converted to: ${targetZoneId})"
+                // println "Parsed to: ${eventTimeInLocalZone} (original zone: ${zoneId}, converted to: ${targetId})"
                 
                 return eventTimeInLocalZone
             } catch (Exception e) {
@@ -1643,79 +1672,108 @@ class OutlookClient {
         }
     }
 
+    /**
+     * Get tokens from user through UI or dialog
+     * @return Map containing tokens or null if cancelled
+     */
     private Map<String, String> getTokensFromUser() {
+        // Make sure we're not already showing a dialog
+        int attempts = 0
+        int maxAttempts = 3
+        Map<String, String> resultTokens = null
+        String signInUrl = configManager.getSignInUrl()
+        
         try {
-            // The sign-in URL (either Okta SSO URL or direct Microsoft login)
-            String signInUrl = configManager.signInUrl
-
-            if (signInUrl == null || signInUrl.trim().isEmpty()) {
-                // Default to using Microsoft Graph URL if no sign-in URL is configured
-                signInUrl = SimpleTokenDialog.DEFAULT_GRAPH_URL
-                println """
-                INFO: Using default Microsoft Graph URL: ${signInUrl}
-                
-                For a better authentication experience, consider setting up either:
-
-                1. For Okta SSO: Configure the 'signInUrl' property with your organization's Okta SSO URL
-                   Example: https://your-company.okta.com/home/office365/0oa1b2c3d4/aln5b6c7d8
-
-                2. For direct Microsoft authentication: Register your own application in Azure Portal
-                   and configure the clientId, clientSecret, and redirectUri properties
-                """
-            }
-
-            println "Starting direct authentication flow with sign-in URL: ${signInUrl}"
-
-            // Try showing the dialog up to 2 times
-            int maxAttempts = 2
-            int attempts = 0
-            Map<String, String> tokens = null
-            
-            while ((tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) 
+            // Keep trying until we get a valid token or max attempts is reached
+            while ((resultTokens == null || !resultTokens.containsKey("accessToken") || 
+                   resultTokens.accessToken == null || resultTokens.accessToken.isEmpty()) 
                   && attempts < maxAttempts) {
                 attempts++
-                println "Token dialog attempt ${attempts} of ${maxAttempts}"
+                System.out.println("Token dialog attempt ${attempts} of ${maxAttempts}")
                 
                 // Handle both UI and console mode
                 if (outlookAlerterUI != null) {
                     // UI mode
-                    tokens = outlookAlerterUI.promptForTokens(signInUrl)
+                    resultTokens = outlookAlerterUI.promptForTokens(signInUrl)
                 } else {
                     // Console mode - show dialog directly
                     SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
                     dialog.show()
-                    tokens = dialog.getTokens()
-                    
-                    // In console mode, we need to manually update the HTTP client
-                    if (tokens != null && tokens.containsKey("ignoreCertValidation")) {
-                        boolean ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
-                        println "Console mode: Certificate validation from dialog: " + 
-                               (ignoreCertValidation ? "disabled" : "enabled")
-                        updateCertificateValidation(ignoreCertValidation)
-                    } else {
-                        println "Console mode: No certificate validation setting in tokens"
+                    resultTokens = dialog.getTokens()
+                }
+                
+                // Return null for cancelled dialog without additional messages
+                if (resultTokens == null) {
+                    System.out.println("Token dialog was cancelled or closed. No tokens obtained.")
+                    throw new AuthenticationCancelledException(
+                        "Authentication was cancelled by the user.", 
+                        "user_cancelled"
+                    )
+                }
+                
+                if (resultTokens != null && resultTokens.containsKey("accessToken") && 
+                    resultTokens.accessToken != null && !resultTokens.accessToken.isEmpty()) {
+                    // Handle certificate validation setting in console mode
+                    if (resultTokens.containsKey("ignoreCertValidation")) {
+                        try {
+                            boolean ignoreCertValidation = Boolean.valueOf(resultTokens.get("ignoreCertValidation"))
+                            System.out.println("Certificate validation setting: " + 
+                                          (ignoreCertValidation ? "disabled" : "enabled"))
+                            ConfigManager.getInstance().updateIgnoreCertValidation(ignoreCertValidation)
+                            updateHttpClient()
+                        } catch (Exception e) {
+                            System.err.println("Error applying certificate validation setting: " + e.getMessage())
+                        }
                     }
-                }
-
-                if (tokens == null) {
-                    println "Authentication timed out or was canceled by the user."
-                    return null
-                }
-
-                // Check if we have a valid token after the attempts
-                if (!tokens || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
-                    println "No access token was provided after ${attempts} attempts."
-                    return null  // Give up after max attempts
+                    System.out.println("Valid token received from user interface.")
+                    return resultTokens
                 }
             }
-
-            println "Valid token received from user interface."
-            return tokens
-
+            
+            // If we get here without valid tokens, return null
+            System.out.println("No valid token obtained after ${attempts} attempt(s).")
+            return null
+            
+        } catch (AuthenticationCancelledException ace) {
+            // Let the cancellation exception propagate up - the UI layer will handle any necessary notifications
+            throw ace
         } catch (Exception e) {
-            println "Error during token entry: ${e.message}"
+            System.err.println("Error during token entry: ${e.getMessage()}")
             e.printStackTrace()
             return null
+        }
+    }
+    
+    /**
+     * Exception thrown when authentication is cancelled by the user
+     * This allows us to distinguish between authentication failures and user cancellations
+     */
+    static class AuthenticationCancelledException extends RuntimeException {
+        private final String reason;
+        
+        AuthenticationCancelledException(String message) { 
+            super(message)
+            this.reason = "user_cancelled"
+            println "AuthenticationCancelledException created: " + message
+        }
+        
+        AuthenticationCancelledException(String message, String reason) {
+            super(message)
+            this.reason = reason
+            println "AuthenticationCancelledException created: " + message + " (reason: " + reason + ")"
+        }
+        
+        /**
+         * Get the specific reason for the authentication cancellation
+         * @return One of: "user_cancelled", "window_closed", "validation_failed", etc.
+         */
+        public String getReason() {
+            return reason
+        }
+
+        @Override
+        String toString() {
+            return "AuthenticationCancelledException: " + getMessage() + " (reason: " + reason + ")"
         }
     }
 }
