@@ -568,16 +568,15 @@ class OutlookClient {
             // Get events from the API
             String baseUrl = "${GRAPH_ENDPOINT}/me/calendar/events"
             
-            // Calculate start and end time filters (from earlier today to 1 day ahead)
-            // Start from now to the end of today
+            // Calculate start and end time filters (from now until end of tomorrow)
             ZonedDateTime startOfDay = ZonedDateTime.now()
             String startTime = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
-            // Look ahead to end of day
-            String endTime = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            // Look ahead to end of tomorrow
+            String endTime = ZonedDateTime.now().plusDays(1).withHour(23).withMinute(59).withSecond(59).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
             // println "Start time (raw): ${startTime} (now)"
-            // println "End time (raw): ${endTime} (end of day)"
+            // println "End time (raw): ${endTime} (end of tomorrow)"
             
             // Create a properly encoded URL using URI builder pattern
             URI uri = createCalendarEventsUri(baseUrl, startTime, endTime)
@@ -734,7 +733,7 @@ class OutlookClient {
 
             // Calculate start and end time parameters
             ZonedDateTime startOfDay = ZonedDateTime.now()
-            ZonedDateTime endOfTomorrow = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0)
+            ZonedDateTime endOfTomorrow = ZonedDateTime.now().plusDays(1).withHour(23).withMinute(59).withSecond(59)
 
             String startParam = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             String endParam = endOfTomorrow.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
@@ -893,12 +892,12 @@ class OutlookClient {
             ZonedDateTime startOfDay = ZonedDateTime.now()
             String startTime = startOfDay.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
-            // Look ahead to end of day
-            String endTime = ZonedDateTime.now().plusDays(1).withHour(0).withMinute(0).withSecond(0).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            // Look ahead to end of tomorrow
+            String endTime = ZonedDateTime.now().plusDays(1).withHour(23).withMinute(59).withSecond(59).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             
             println "Getting events from calendar ID: ${calendarId}"
             println "Start time: ${startTime} (now)"
-            println "End time: ${endTime} (end of day)"
+            println "End time: ${endTime} (end of tomorrow)"
             
             // Create a properly encoded URL
             URI uri = createCalendarEventsUri(baseUrl, startTime, endTime)
@@ -1738,7 +1737,7 @@ class OutlookClient {
             // Let the cancellation exception propagate up - the UI layer will handle any necessary notifications
             throw ace
         } catch (Exception e) {
-            System.err.println("Error during token entry: ${e.getMessage()}")
+            System.err.println("Error during token entry: ${e.message}")
             e.printStackTrace()
             return null
         }

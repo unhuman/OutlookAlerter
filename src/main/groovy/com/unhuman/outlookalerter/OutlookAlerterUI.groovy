@@ -11,6 +11,7 @@ import java.awt.event.WindowEvent
 import java.awt.image.BufferedImage
 import java.time.ZonedDateTime
 import java.time.ZoneId
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.List
 import java.util.concurrent.ScheduledExecutorService
@@ -51,7 +52,10 @@ class OutlookAlerterUI extends JFrame {
     
     // Store last fetched events to avoid frequent API calls
     private List<CalendarEvent> lastFetchedEvents = []
-
+    
+    // Track last calendar refresh time
+    private volatile ZonedDateTime lastCalendarRefresh = null
+    
     // Track the current icon state
     private Boolean currentIconInvalidState = null
 
@@ -496,19 +500,24 @@ class OutlookAlerterUI extends JFrame {
                     // Update the UI with the results
                     SwingUtilities.invokeLater({
                         try {
-                            updateEventsList(events)
+                            updateEventsDisplay(events)
                             
-                            // Also update our cache for alert checking
+                            // Also update our cache for alert checking and track refresh time
                             lastFetchedEvents = events
-                            
+                            lastCalendarRefresh = ZonedDateTime.now()
+                        
                             // Update status to successful
-                            String now = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("hh:mm:ss a"))
+                            String now = lastCalendarRefresh.format(DateTimeFormatter.ofPattern("hh:mm:ss a"))
                             statusLabel.setText("Status: Ready")
                             lastUpdateLabel.setText("Last update: " + now)
                             refreshButton.setEnabled(true)
                             
-                            // Update window title to indicate number of upcoming events
-                            setTitle("Outlook Alerter - " + events.size() + " upcoming meetings")
+                            // Count only today's meetings for the window title
+                            LocalDate today = LocalDate.now()
+                            int todayMeetingsCount = events.findAll { event ->
+                                event.startTime.toLocalDate() == today
+                            }.size()
+                            setTitle("Outlook Alerter - " + todayMeetingsCount + " meetings today")
                             
                         } catch (Exception e) {
                             System.err.println("Error updating UI after refresh: " + e.getMessage())
@@ -628,8 +637,14 @@ class OutlookAlerterUI extends JFrame {
                 return (minutesToStart <= 60) || (minutesToStart <= earliestMinutesToStart + 5)
             }
             
+            // Get remaining events
+            List<CalendarEvent> laterEvents = upcomingEvents.findAll { event -> 
+                !nextTimeEvents.contains(event)
+            }
+            
             // Ensure all meetings are properly sorted by start time
             nextTimeEvents.sort { event -> event.getMinutesToStart() }
+            laterEvents.sort { event -> event.getMinutesToStart() }
             
             // Include time information in the header
             ZonedDateTime now = ZonedDateTime.now()
@@ -646,30 +661,71 @@ class OutlookAlerterUI extends JFrame {
                           .append("\n")
             }
             
-            // List subsequent events if there are any
-            List<CalendarEvent> laterEvents = upcomingEvents.findAll { event -> 
-                !nextTimeEvents.contains(event)
-            }
-            
+            // Split later events into today, tomorrow, and beyond
             if (!laterEvents.isEmpty()) {
-                displayText.append("\n-- LATER MEETINGS --\n\n")
-                laterEvents.take(10).each { CalendarEvent event ->
-                    displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}")
-                              .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
-                              .append(" (starts in ${event.getMinutesToStart()} minutes)")
-                              .append("\n")
+                LocalDate today = LocalDate.now()
+                LocalDate tomorrow = today.plusDays(1)
+                
+                // Split events into today, tomorrow and later
+                List<CalendarEvent> todayEvents = laterEvents.findAll { event ->
+                    event.startTime.toLocalDate() == today
                 }
                 
-                if (laterEvents.size() > 10) {
-                    displayText.append("  • ...and ${laterEvents.size() - 10} more later events\n")
+                List<CalendarEvent> tomorrowEvents = laterEvents.findAll { event ->
+                    event.startTime.toLocalDate() == tomorrow
+                }
+                
+                List<CalendarEvent> beyondTomorrowEvents = laterEvents.findAll { event ->
+                    event.startTime.toLocalDate() > tomorrow
+                }
+                
+                // Show today's later events
+                if (!todayEvents.isEmpty()) {
+                    displayText.append("\n-- TODAY'S MEETINGS --\n\n")
+                    todayEvents.each { CalendarEvent event ->
+                        displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
+                                  .append(event.isOnlineMeeting ? " (Online)" : "")
+                                  .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
+                                  .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                                  .append("\n")
+                    }
+                }
+
+                // Show tomorrow's events
+                if (!tomorrowEvents.isEmpty()) {
+                    displayText.append("\n-- TOMORROW'S MEETINGS --\n\n")
+                    tomorrowEvents.each { CalendarEvent event ->
+                        displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
+                                  .append(event.isOnlineMeeting ? " (Online)" : "")
+                                  .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
+                                  .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                                  .append("\n")
+                    }
+                }
+                
+                // Show events beyond tomorrow
+                if (!beyondTomorrowEvents.isEmpty()) {
+                    displayText.append("\n-- LATER MEETINGS --\n\n")
+                    beyondTomorrowEvents.take(10).each { CalendarEvent event ->
+                        displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}")
+                                  .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
+                                  .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                                  .append("\n")
+                    }
+                    
+                    if (beyondTomorrowEvents.size() > 10) {
+                        displayText.append("  • ...and ${beyondTomorrowEvents.size() - 10} more later events\n")
+                    }
                 }
             }
         }
         
-        // Update UI on the EDT
+        // Update UI on the EDT and ensure scroll to top
         final String finalText = displayText.toString()
         SwingUtilities.invokeLater({
             eventsTextArea.setText(finalText)
+            eventsTextArea.setCaretPosition(0) // Scroll back to top
+            eventsTextArea.scrollRectToVisible(new Rectangle(0, 0)) // Double ensure scroll to top
         } as Runnable)
     }
     
@@ -837,6 +893,15 @@ class OutlookAlerterUI extends JFrame {
         // Since this runs on a background thread, wrap everything in try-catch
         try {
             System.out.println("\n=== Checking Alerts (using cached events) ===")
+            
+            // Check if refresh needed (more than 4 hour since last refresh)
+            // this is to capture if device has been asleep for some time (ie weekend)
+            if (lastCalendarRefresh == null || 
+                ZonedDateTime.now().minusHours(4).isAfter(lastCalendarRefresh)) {
+                System.out.println("More than 4 hour since last refresh, triggering calendar update")
+                refreshCalendarEvents()
+                return
+            }
             
             // Make sure cached events exist
             if (lastFetchedEvents == null || lastFetchedEvents.isEmpty()) {
