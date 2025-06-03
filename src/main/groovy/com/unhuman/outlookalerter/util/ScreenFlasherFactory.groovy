@@ -1,6 +1,9 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.util
 
 import groovy.transform.CompileStatic
+import com.unhuman.outlookalerter.util.MacScreenFlasher
+import com.unhuman.outlookalerter.util.WindowsScreenFlasher
+import com.unhuman.outlookalerter.util.CrossPlatformScreenFlasher
 
 /**
  * Factory to create the appropriate ScreenFlasher for the current operating system
@@ -17,15 +20,15 @@ class ScreenFlasherFactory {
         if (os.contains("mac")) {
             // Use Mac-specific implementation if we're on a Mac
             println "Using Mac-specific screen flasher"
-            return new com.unhuman.outlookalerter.MacScreenFlasher()
+            return new MacScreenFlasher()
         } else if (os.contains("win")) {
             // Use Windows-specific implementation if we're on Windows
             println "Using Windows-specific screen flasher"
-            return new com.unhuman.outlookalerter.WindowsScreenFlasher()
+            return new WindowsScreenFlasher()
         } else {
             // Use cross-platform implementation for Linux, etc.
             println "Using cross-platform screen flasher for ${os}"
-            return new com.unhuman.outlookalerter.CrossPlatformScreenFlasher()
+            return new CrossPlatformScreenFlasher()
         }
     }
 }

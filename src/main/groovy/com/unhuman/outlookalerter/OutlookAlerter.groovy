@@ -14,6 +14,10 @@ import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.JOptionPane
 
+import com.unhuman.outlookalerter.core.SingleInstanceManager
+import com.unhuman.outlookalerter.ui.OutlookAlerterUI
+import com.unhuman.outlookalerter.ui.OutlookAlerterConsole
+
 /**
  * Main application class for Outlook Alerter
  * Monitors Outlook calendar events and flashes screen when meetings are about to start

@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.core
 
 import javax.net.ssl.*
 import java.security.KeyStore

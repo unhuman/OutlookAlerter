@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.core
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler

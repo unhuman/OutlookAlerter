@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.util
 
 import groovy.transform.CompileStatic
 import java.awt.Color
@@ -8,6 +8,8 @@ import java.awt.Rectangle
 import javax.swing.JFrame
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
+import com.unhuman.outlookalerter.model.CalendarEvent
+import com.unhuman.outlookalerter.core.ConfigManager
 
 /**
  * Cross-platform implementation of the ScreenFlasher interface using Java Swing

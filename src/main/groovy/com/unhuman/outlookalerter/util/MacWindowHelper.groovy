@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.util
 
 import com.sun.jna.Library
 import com.sun.jna.Native

@@ -2,6 +2,9 @@ package com.unhuman.outlookalerter
 
 import java.time.*
 import groovy.transform.CompileStatic
+import com.unhuman.outlookalerter.model.CalendarEvent
+import com.unhuman.outlookalerter.util.ScreenFlasher
+import com.unhuman.outlookalerter.util.ScreenFlasherFactory
 
 /**
  * Simple test script to verify screen flashing behavior

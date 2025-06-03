@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.ui
 
 import javax.imageio.ImageIO
 import java.io.File

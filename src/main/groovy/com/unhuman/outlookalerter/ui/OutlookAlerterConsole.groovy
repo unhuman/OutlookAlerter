@@ -1,7 +1,6 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.ui
 
 import groovy.transform.CompileStatic
-
 import java.time.ZonedDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -9,6 +8,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import com.unhuman.outlookalerter.core.ConfigManager
+import com.unhuman.outlookalerter.core.OutlookClient
+import com.unhuman.outlookalerter.model.CalendarEvent
+import com.unhuman.outlookalerter.util.ScreenFlasher
+import com.unhuman.outlookalerter.util.ScreenFlasherFactory
 
 /**
  * Console version of OutlookAlerter

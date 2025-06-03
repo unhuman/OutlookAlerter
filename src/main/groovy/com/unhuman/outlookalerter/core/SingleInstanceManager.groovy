@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.core
 
 import groovy.transform.CompileStatic
 import java.nio.channels.FileLock

@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.util
 
 import groovy.transform.CompileStatic
 import javax.swing.JFrame
@@ -9,10 +9,11 @@ import javax.swing.Timer
 import java.awt.*
 import java.awt.image.BufferedImage
 import javax.swing.*
+import com.unhuman.outlookalerter.core.ConfigManager
 import com.sun.jna.*
-import com.unhuman.outlookalerter.MacWindowHelper
-import com.unhuman.outlookalerter.ScreenFlasher
-import com.unhuman.outlookalerter.CalendarEvent
+import com.unhuman.outlookalerter.util.MacWindowHelper
+import com.unhuman.outlookalerter.util.ScreenFlasher
+import com.unhuman.outlookalerter.model.CalendarEvent
 import java.util.List
 
 /**
@@ -259,7 +260,7 @@ class MacScreenFlasher implements ScreenFlasher {
 
     private Color getAlertColor() {
         try {
-            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            def configManager = ConfigManager.getInstance()
             String colorHex = configManager?.flashColor ?: "#800000"
             return Color.decode(colorHex)
         } catch (Exception e) {
@@ -268,7 +269,7 @@ class MacScreenFlasher implements ScreenFlasher {
     }
     private double getAlertOpacity() {
         try {
-            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            def configManager = ConfigManager.getInstance()
             return configManager?.flashOpacity ?: 1.0d
         } catch (Exception e) {
             return 1.0d
@@ -276,7 +277,7 @@ class MacScreenFlasher implements ScreenFlasher {
     }
     private Color getAlertTextColorWithOpacity() {
         try {
-            def configManager = com.unhuman.outlookalerter.ConfigManager.getInstance()
+            def configManager = ConfigManager.getInstance()
             String colorHex = configManager?.flashTextColor ?: "#ffffff"
             double opacity = configManager?.flashOpacity ?: 1.0d
             Color base = Color.decode(colorHex)

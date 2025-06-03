@@ -1,7 +1,7 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.core
 
 import groovy.transform.CompileStatic
-import com.unhuman.outlookalerter.SimpleTokenDialog
+import com.unhuman.outlookalerter.ui.SimpleTokenDialog
 
 /**
  * Manages configuration settings and OAuth credentials for Outlook Alerter

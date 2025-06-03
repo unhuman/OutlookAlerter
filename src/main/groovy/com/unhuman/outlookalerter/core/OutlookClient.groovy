@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.core
 
 import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
@@ -9,6 +9,9 @@ import java.time.ZonedDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.function.Supplier
+import com.unhuman.outlookalerter.model.CalendarEvent
+import com.unhuman.outlookalerter.ui.SimpleTokenDialog
+import com.unhuman.outlookalerter.ui.OutlookAlerterUI
 import javax.swing.JOptionPane
 
 // Additional imports for TokenEntryServer

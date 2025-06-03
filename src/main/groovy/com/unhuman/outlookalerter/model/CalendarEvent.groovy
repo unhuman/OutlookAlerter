@@ -1,4 +1,4 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.model
 
 import groovy.transform.CompileStatic
 import java.time.Duration

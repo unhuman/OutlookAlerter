@@ -1,7 +1,6 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.ui
 
 import groovy.transform.CompileStatic
-
 import javax.swing.*
 import java.awt.*
 import java.awt.event.ActionEvent
@@ -9,6 +8,8 @@ import java.awt.event.ActionListener
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.awt.event.WindowListener
+import com.unhuman.outlookalerter.core.OutlookClient
+import com.unhuman.outlookalerter.core.ConfigManager
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit

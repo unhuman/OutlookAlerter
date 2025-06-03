@@ -1,6 +1,7 @@
-package com.unhuman.outlookalerter
+package com.unhuman.outlookalerter.util
 
 import groovy.transform.CompileStatic
+import com.unhuman.outlookalerter.model.CalendarEvent
 
 /**
  * Interface for components that can flash the screen to alert users
