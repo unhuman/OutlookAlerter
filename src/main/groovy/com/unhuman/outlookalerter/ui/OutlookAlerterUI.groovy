@@ -370,104 +370,78 @@ class OutlookAlerterUI extends JFrame {
     }
     
     /**
-     * Start the UI and begin authentication process
+     * Start the application
+     * @param showWindow Whether to show the main window at startup
      */
-    void start() {
-        SwingUtilities.invokeLater({
-            try {
-                // Set up window and components but don't show it
-                initializeUI()
-                setVisible(false)  // Start hidden
-                
-                // Show initial status
-                statusLabel.setText("Status: Starting up...")
-                
-                // Run authentication in a background thread to avoid blocking UI
-                Thread authThread = new Thread({
-                    try {
-                        System.out.println("Starting authentication process on background thread")
-                        
-                        // Attempt authentication - this will show the token dialog if needed
-                        final boolean authenticated = outlookClient.authenticate()
-                        System.out.println("Authentication process completed, result: " + authenticated)
-
-                        // Apply icon updates
-                        updateIcons(!authenticated)
-                        
-                        // Switch back to EDT for UI updates
-                        SwingUtilities.invokeLater({
-                            try {
-                                // Restore cursor
-                                setCursor(Cursor.getDefaultCursor())
-                                
-                                if (authenticated) {
-                                    statusLabel.setText("Status: Authenticated successfully")
-                                    
-                                    // Stop any existing schedulers
-                                    stopSchedulers()
-                                    
-                                    // Refresh calendar immediately
-                                    refreshCalendarEvents()
-                                    
-                                    // Start periodic tasks
-                                    startSchedulers()
-                                    
-                                    // Keep running in background after successful authentication
-                                    setVisible(false)
-                                } else {
-                                    statusLabel.setText("Status: Authentication Failed")
-                                    JOptionPane.showMessageDialog(
-                                        this,
-                                        "Failed to authenticate with Outlook. Please check your configuration and try again.",
-                                        "Authentication Error",
-                                        JOptionPane.ERROR_MESSAGE
-                                    )
-                                }
-                            } catch (Exception e) {
-                                System.err.println("Error in EDT after authentication: " + e.getMessage())
-                                e.printStackTrace()
-                                JOptionPane.showMessageDialog(
-                                    this,
-                                    "Error during authentication: " + e.getMessage() + "\n\nPlease check your configuration and try again.",
-                                    "Authentication Error",
-                                    JOptionPane.ERROR_MESSAGE
-                                )
-                            }
-                        } as Runnable)
-                    } catch (OutlookClient.AuthenticationCancelledException ace) {
-                        System.out.println("Authentication was cancelled: " + ace.getMessage() + " (reason: " + ace.getReason() + ")")
-                    } catch (Exception e) {
-                        System.err.println("Error in authentication thread: " + e.getMessage())
-                        e.printStackTrace()
-                        SwingUtilities.invokeLater({
-                            JOptionPane.showMessageDialog(
-                                this,
-                                "Error during authentication: " + e.getMessage() + "\n\nPlease check your configuration and try again.",
-                                "Authentication Error",
-                                JOptionPane.ERROR_MESSAGE
-                            )
-                        } as Runnable)
-                    }
-                })
-                
-                // Set thread name for debugging
-                authThread.setName("Outlook-Alerter-Auth-Thread")
-                // Start the authentication thread
-                authThread.start()
-                
-            } catch (Exception e) {
-                System.err.println("Error starting UI: " + e.getMessage())
-                e.printStackTrace()
-                JOptionPane.showMessageDialog(
-                    null,
-                    "Error starting application: " + e.getMessage(),
-                    "Application Error",
-                    JOptionPane.ERROR_MESSAGE
-                )
-            }
-        } as Runnable)
+    void start(boolean showWindow = false) {
+        // Start periodic tasks if not already running
+        if (!schedulersRunning) {
+            // Schedule alert checks (every minute)
+            alertScheduler.scheduleAtFixedRate(
+                { checkAlertsFromCache() } as Runnable,
+                0, // Start immediately
+                POLLING_INTERVAL_MINUTES,
+                TimeUnit.MINUTES
+            )
+            
+            // Schedule calendar refreshes (every hour)
+            calendarScheduler.scheduleAtFixedRate(
+                { refreshCalendarEvents() } as Runnable,
+                0, // Start immediately
+                CALENDAR_REFRESH_INTERVAL_MINUTES,
+                TimeUnit.MINUTES
+            )
+            
+            schedulersRunning = true
+        }
+        
+        // Only show window if explicitly requested
+        if (showWindow) {
+            setVisible(true)
+        } else {
+            minimizeToTray()
+        }
     }
-    
+
+    /**
+     * Minimize the application to the system tray
+     */
+    private void minimizeToTray() {
+        setVisible(false)
+        if (systemTray != null && trayIcon != null) {
+            trayIcon.displayMessage(
+                "Outlook Alerter",
+                "Running in background. Double-click to show window.",
+                TrayIcon.MessageType.INFO
+            )
+        }
+    }
+
+    /**
+     * Clean up resources and shut down schedulers
+     */
+    private void shutdown() {
+        // Stop schedulers
+        if (schedulersRunning) {
+            try {
+                alertScheduler.shutdown()
+                calendarScheduler.shutdown()
+                
+                // Wait a bit for tasks to complete
+                alertScheduler.awaitTermination(5, TimeUnit.SECONDS)
+                calendarScheduler.awaitTermination(5, TimeUnit.SECONDS)
+            } catch (Exception e) {
+                System.err.println("Error shutting down schedulers: " + e.getMessage())
+            }
+            schedulersRunning = false
+        }
+        
+        // Other cleanup...
+        if (systemTray != null && trayIcon != null) {
+            systemTray.remove(trayIcon)
+        }
+    }
+
     /**
      * Refresh calendar events from Outlook
      */
@@ -1172,13 +1146,6 @@ class OutlookAlerterUI extends JFrame {
 
         schedulersRunning = false
         System.out.println("Schedulers stopped")
-    }
-
-    /**
-     * Shutdown the application
-     */
-    void shutdown() {
-        stopSchedulers()
     }
 
     /**

@@ -22,240 +22,241 @@ import java.util.List
  */
 @CompileStatic
 class MacScreenFlasher implements ScreenFlasher {
-    // Flash parameters
+    // Flash parameters - reduced for better stability
     private static final int FLASH_DURATION_MS = 500
-    private static final int FLASH_COUNT = 5
-    private static final int FLASH_INTERVAL_MS = 300
+    private static final int FLASH_COUNT = 3
+    private static final int FLASH_INTERVAL_MS = 400
+    
+    // Track active flash frames for cleanup
+    private final List<JFrame> activeFlashFrames = Collections.synchronizedList([])
     
     /**
-     * Flashes the screen to alert the user of an upcoming event
+     * Constructor
      */
+    MacScreenFlasher() {
+        // Register shutdown hook to ensure cleanup
+        Runtime.runtime.addShutdownHook(new Thread({ cleanup() } as Runnable))
+    }
+    
+    /**
+     * Cleanup method to dispose of any active flash frames
+     */
+    private void cleanup() {
+        synchronized(activeFlashFrames) {
+            activeFlashFrames.each { frame ->
+                try {
+                    if (frame && frame.isDisplayable()) {
+                        frame.dispose()
+                    }
+                } catch (Exception e) {
+                    // Ignore cleanup errors
+                }
+            }
+            activeFlashFrames.clear()
+        }
+    }
+
     @Override
     void flash(CalendarEvent event) {
-        boolean usedMacApi = tryMacSpecificFlash(event)
-        
-        if (!usedMacApi) {
-            // Fall back to cross-platform approach
-            flashScreenCrossPlatform(event)
-        }
+        flashScreenCrossPlatform(event)
     }
     
-    /**
-     * Attempts to use Mac-specific APIs to flash the screen
-     * @return true if successfully used Mac API, false otherwise
-     */
-    private boolean tryMacSpecificFlash(CalendarEvent event) {
-        try {
-            // We don't create a temporary tray icon for notifications on macOS
-            // This avoids the red square appearing in the menu bar during flashing
-            // Notifications will still be shown through the main application's tray icon instead
-            // This was changed to improve the user experience on macOS
-            
-            // Flash all screens using Java's built-in capabilities
-            flashScreenCrossPlatform(event)
-            
-            return true
-        } catch (Exception e) {
-            println "Mac notification API not available, falling back to cross-platform approach: ${e.message}"
-            return false
-        }
-    }
-    
-    /**
-     * Cross-platform screen flashing using Java Swing
-     */
     private void flashScreenCrossPlatform(CalendarEvent event) {
-        // Get all screens
         GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment()
         GraphicsDevice[] screens = ge.getScreenDevices()
         
-        // Create a flash window for each screen
+        // Create flash windows
+        List<JFrame> newFrames = []
         for (GraphicsDevice screen : screens) {
-            createFlashWindowForScreen(screen, event)
+            JFrame frame = createFlashWindowForScreen(screen, event)
+            if (frame) {
+                newFrames.add(frame)
+            }
+        }
+        
+        // Add new frames to tracking list
+        synchronized(activeFlashFrames) {
+            activeFlashFrames.addAll(newFrames)
         }
     }
     
-    /**
-     * Creates a flashing window for a specific screen
-     */
-    private void createFlashWindowForScreen(GraphicsDevice screen, CalendarEvent event) {
-        // Create frame with specific type for better visibility
-        JFrame frame = new JFrame("⚠️ Meeting Alert ⚠️", screen.getDefaultConfiguration())
-        frame.setUndecorated(true)
-        frame.setAlwaysOnTop(true)
-        frame.setType(javax.swing.JFrame.Type.POPUP) // POPUP type may work better than UTILITY
-        
-        // Use configured color and opacity
-        Color alertColor = getAlertColor();
-        double opacity = getAlertOpacity();
-        Color textColor = getAlertTextColorWithOpacity();
-        try { frame.setOpacity((float)opacity); } catch (Throwable t) {}
-        frame.setBackground(alertColor)
-
-        // Position frame to cover the entire screen before showing
-        frame.setBounds(screen.getDefaultConfiguration().getBounds())
-        
-        // Set window to be non-focusable but still visible
-        frame.setFocusableWindowState(false)
-        frame.setAutoRequestFocus(false)
-
-        // Show the frame to create native window
-        frame.setVisible(true)
-        frame.toFront()
-
-        // Set the window level to appear above full screen apps
+    private JFrame createFlashWindowForScreen(GraphicsDevice screen, CalendarEvent event) {
         try {
-            // Wait briefly for the native window to be created
-            Thread.sleep(100)
+            JFrame frame = new JFrame("⚠️ Meeting Alert ⚠️", screen.getDefaultConfiguration())
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
+            frame.setUndecorated(true)
+            frame.setAlwaysOnTop(true)
+            frame.setType(javax.swing.JFrame.Type.POPUP)
             
-            // Get the window handle and set its level with enhanced properties
-            long windowHandle = Native.getWindowID(frame)
-            MacWindowHelper.setWindowLevel(windowHandle, 2147483647) // CGMaximumWindowLevel
+            Color alertColor = getAlertColor()
+            Color textColor = getAlertTextColorWithOpacity()
+            double opacity = getAlertOpacity()
             
-            // Force it to the front again after setting level
-            frame.toFront()
-        } catch (Exception e) {
-            println "Could not set macOS window level: ${e.message}"
-        }
-        
-        // Set up layout
-        frame.setLayout(new GridBagLayout())
-        GridBagConstraints gbc = new GridBagConstraints()
-        gbc.gridx = 0
-        gbc.gridy = 0
-        gbc.weightx = 1.0
-        gbc.weighty = 1.0
-        gbc.fill = GridBagConstraints.BOTH
+            try {
+                frame.setOpacity((float)Math.min(Math.max(opacity, 0.5f), 0.95f))
+            } catch (Throwable t) {
+                println "Could not set opacity: ${t.message}"
+            }
+            frame.setBackground(alertColor)
 
-        // Build HTML with placeholder for text color
-        String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue());
-        JLabel label = new JLabel("<html><center>" +
-                "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
-                "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
-                "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + event.getMinutesToStart() + " minute(s)</p>" +
-                "</center></html>", SwingConstants.CENTER)
+            // Add margins to avoid screen edge conflicts
+            Rectangle bounds = screen.getDefaultConfiguration().getBounds()
+            bounds.x += 2
+            bounds.y += 2
+            bounds.width -= 4
+            bounds.height -= 4
+            frame.setBounds(bounds)
+            
+            frame.setFocusableWindowState(false)
+            frame.setAutoRequestFocus(false)
+            
+            frame.setLayout(new GridBagLayout())
+            GridBagConstraints gbc = new GridBagConstraints()
+            gbc.gridx = 0
+            gbc.gridy = 0
+            gbc.weightx = 1.0
+            gbc.weighty = 1.0
+            gbc.fill = GridBagConstraints.BOTH
 
-        label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
-        label.setForeground(textColor)
-        label.setBackground(alertColor);
-        label.setOpaque(true);
-        frame.add(label, gbc)
-        
-        // Force frame to be fully opaque
-        frame.getRootPane().setOpaque(true)
-        frame.getContentPane().setBackground(alertColor)
-        
-        // Make sure it's displayed in full screen
-        frame.setExtendedState(JFrame.MAXIMIZED_BOTH)
-        
-        // Start flash sequence
-        startFlashSequence(frame)
-    }
+            String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue())
+            String labelContent
+            if (event.subject.startsWith("<html>")) {
+                labelContent = event.subject // Subject already contains formatted HTML
+            } else {
+                labelContent = "<html><center>" +
+                    "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
+                    "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
+                    "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + event.getMinutesToStart() + " minute(s)</p>" +
+                    "</center></html>"
+            }
+            JLabel label = new JLabel(labelContent, SwingConstants.CENTER)
 
-    /**
-     * Starts the flash sequence animation
-     */
-    private void startFlashSequence(JFrame frame) {
-        final int[] flashesRemaining = [FLASH_COUNT * 2]  // Double the flashes for more visibility
-        final boolean[] isVisible = [true]
-        
-        // Ensure the frame starts visible and on top
-        SwingUtilities.invokeLater({
+            label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
+            label.setForeground(textColor)
+            label.setBackground(alertColor)
+            label.setOpaque(true)
+            frame.add(label, gbc)
+            
+            frame.getRootPane().setOpaque(true)
+            frame.getContentPane().setBackground(alertColor)
+            frame.setExtendedState(JFrame.MAXIMIZED_BOTH)
+            
             frame.setVisible(true)
-            frame.toFront()
             
-            // Create timer for flashing
-            Timer timer = new Timer(FLASH_INTERVAL_MS, { event ->
-                if (flashesRemaining[0] <= 0) {
-                    frame.dispose()
-                    ((Timer)event.getSource()).stop()
-                    return
-                }
-                
-                if (isVisible[0]) {
-                    // Keep window visible but change color
-                    frame.getContentPane().setBackground(Color.RED)
+            // Set window level with a more reasonable value
+            SwingUtilities.invokeLater({
+                try {
+                    long windowHandle = Native.getWindowID(frame)
+                    MacWindowHelper.setWindowLevel(windowHandle, 20) // NSFloatingWindowLevel + 1
                     frame.toFront()
-                } else {
-                    frame.getContentPane().setBackground(Color.ORANGE)
-                    frame.toFront()
+                } catch (Exception e) {
+                    println "Could not set macOS window level: ${e.message}"
                 }
-                
-                frame.repaint()
-                flashesRemaining[0]--
-                isVisible[0] = !isVisible[0]
-            })
+            } as Runnable)
             
-            // Configure and start timer
-            timer.setInitialDelay(0)
-            timer.start()
-        } as Runnable)
-    }
-    
-    /**
-     * Flashes the screen to alert the user of multiple events in the same time window
-     * @param events List of calendar events starting soon
-     */
-    void flashMultiple(List<CalendarEvent> events) {
-        if (events == null || events.isEmpty()) return;
-        GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-        GraphicsDevice[] screens = ge.getScreenDevices();
-        for (GraphicsDevice screen : screens) {
-            createFlashWindowForScreenMultiple(screen, events);
+            startFlashSequence(frame)
+            
+            return frame
+        } catch (Exception e) {
+            println "Error creating flash window: ${e.message}"
+            return null
         }
     }
 
-    /**
-     * Creates a flashing window for a specific screen for multiple events
-     */
-    private void createFlashWindowForScreenMultiple(GraphicsDevice screen, List<CalendarEvent> events) {
-        JFrame frame = new JFrame("⚠️ Meeting Alert ⚠️", screen.getDefaultConfiguration());
-        frame.setUndecorated(true);
-        frame.setAlwaysOnTop(true);
-        frame.setType(javax.swing.JFrame.Type.POPUP);
-        double opacity = getAlertOpacity();
-        try { frame.setOpacity((float)opacity); } catch (Throwable t) {}
-        Color alertColor = getAlertColor();
-        Color textColor = getAlertTextColorWithOpacity();
-        frame.setBackground(alertColor);
-        frame.setBounds(screen.getDefaultConfiguration().getBounds());
-        frame.setFocusableWindowState(false);
-        frame.setAutoRequestFocus(false);
-        frame.setVisible(true);
-        frame.toFront();
-        try {
-            Thread.sleep(100);
-            long windowHandle = Native.getWindowID(frame);
-            MacWindowHelper.setWindowLevel(windowHandle, 2147483647);
-            frame.toFront();
-        } catch (Exception e) {
-            println "Could not set macOS window level: ${e.message}";
+    private void startFlashSequence(frame) {
+        def flashFrame = frame as JFrame
+        def flashesRemaining = FLASH_COUNT * 2
+        def isVisible = true
+        Timer timer
+        
+        // Safety cleanup timer
+        def safetyTimer = new Timer(FLASH_INTERVAL_MS * (FLASH_COUNT * 2 + 2), { safetyEvent ->
+            SwingUtilities.invokeLater {
+                try {
+                    if (timer) {
+                        timer.stop()
+                    }
+                    if (flashFrame && flashFrame.isDisplayable()) {
+                        flashFrame.dispose()
+                    }
+                    synchronized(activeFlashFrames) {
+                        activeFlashFrames.remove(flashFrame)
+                    }
+                } catch (Exception e) {
+                    println "Error in safety cleanup: ${e.message}"
+                }
+                (safetyEvent.source as Timer).stop()
+            }
+        })
+        safetyTimer.repeats = false
+        safetyTimer.start()
+        
+        // Main flash timer
+        timer = new Timer(FLASH_INTERVAL_MS, { event ->
+            SwingUtilities.invokeLater {
+                try {
+                    if (flashesRemaining <= 0 || !flashFrame.isDisplayable()) {
+                        (event.source as Timer).stop()
+                        safetyTimer.stop()
+                        if (flashFrame.isDisplayable()) {
+                            flashFrame.dispose()
+                        }
+                        synchronized(activeFlashFrames) {
+                            activeFlashFrames.remove(flashFrame)
+                        }
+                        return
+                    }
+                    
+                    def color = isVisible ? getAlertColor() : getAlertColor().brighter()
+                    flashFrame.contentPane.background = color
+                    
+                    // Only bring to front occasionally to reduce window manager conflicts
+                    if (flashesRemaining % 4 == 0) {
+                        flashFrame.toFront()
+                    }
+                    
+                    flashFrame.repaint()
+                    flashesRemaining--
+                    isVisible = !isVisible
+                } catch (Exception e) {
+                    println "Error in flash sequence: ${e.message}"
+                    (event.source as Timer).stop()
+                    safetyTimer.stop()
+                    flashFrame.dispose()
+                    synchronized(activeFlashFrames) {
+                        activeFlashFrames.remove(flashFrame)
+                    }
+                }
+            }
+        })
+        
+        timer.initialDelay = 0
+        timer.start()
+    }
+
+    @Override
+    void flashMultiple(List<CalendarEvent> events) {
+        if (!events) return
+        
+        if (events.size() == 1) {
+            flash(events[0])
+            return
         }
-        frame.setLayout(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.weightx = 1.0;
-        gbc.weighty = 1.0;
-        gbc.fill = GridBagConstraints.BOTH;
-        // Build HTML for all events
-        String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue());
-        StringBuilder html = new StringBuilder("<html><center><h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>");
-        for (CalendarEvent event : events) {
-            html.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>").append(event.subject).append("</h2>");
-            html.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
+        
+        StringBuilder subjectBuilder = new StringBuilder("<html><center>")
+        subjectBuilder.append("<h1>Multiple Meetings:</h1>")
+        events.each { event ->
+            subjectBuilder.append("<h3>• ${event.subject}</h3>")
         }
-        html.append("</center></html>");
-        JLabel label = new JLabel(html.toString(), SwingConstants.CENTER);
-        label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
-        label.setForeground(textColor);
-        label.setBackground(alertColor);
-        label.setOpaque(true);
-        frame.add(label, gbc);
-        frame.getRootPane().setOpaque(true);
-        frame.getContentPane().setBackground(alertColor);
-        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
-        startFlashSequence(frame);
+        subjectBuilder.append("</center></html>")
+        
+        def combinedEvent = new CalendarEvent(
+            subject: subjectBuilder.toString(),
+            startTime: events.min { it.startTime }?.startTime,
+            endTime: events.max { it.endTime }?.endTime
+        )
+        
+        flash(combinedEvent)
     }
 
     private Color getAlertColor() {
@@ -267,19 +268,21 @@ class MacScreenFlasher implements ScreenFlasher {
             return new Color(128, 0, 0)
         }
     }
+
     private double getAlertOpacity() {
         try {
             def configManager = ConfigManager.getInstance()
-            return configManager?.flashOpacity ?: 1.0d
+            return configManager?.flashOpacity ?: 0.85d  // Reduced default opacity
         } catch (Exception e) {
-            return 1.0d
+            return 0.85d
         }
     }
+
     private Color getAlertTextColorWithOpacity() {
         try {
             def configManager = ConfigManager.getInstance()
             String colorHex = configManager?.flashTextColor ?: "#ffffff"
-            double opacity = configManager?.flashOpacity ?: 1.0d
+            double opacity = configManager?.flashOpacity ?: 0.85d
             Color base = Color.decode(colorHex)
             int alpha = (int)Math.round(opacity * 255)
             return new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha)

@@ -103,7 +103,8 @@ class OutlookAlerter {
                     app.setTimezone(timezoneOverride)
                 }
                 
-                app.start()
+                // Initialize and start monitoring (don't show window)
+                app.start(false)
             } as Runnable)
         }
     }
