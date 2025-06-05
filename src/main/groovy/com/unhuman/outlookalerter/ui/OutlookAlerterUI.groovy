@@ -451,24 +451,41 @@ class OutlookAlerterUI extends JFrame {
             statusLabel.setText("Status: Refreshing calendar events...")
             refreshButton.setEnabled(false)
         } as Runnable)
-        
+
         // Perform the API call in a background thread
         Thread fetchThread = new Thread({
             try {
-                // Fetch events and store them
-                List<CalendarEvent> events = outlookClient.getUpcomingEventsUsingCalendarView()
-                
+                // Try to fetch new events
+                List<CalendarEvent> events = null;
+                try {
+                    events = outlookClient.getUpcomingEventsUsingCalendarView()
+                } catch (AuthenticationCancelledException ace) {
+                    // User cancelled authentication, use cached events
+                    System.out.println("User cancelled authentication during refresh, using cached events");
+                    events = lastFetchedEvents;
+                } catch (Exception e) {
+                    // Handle any other errors (network, API, etc) by preserving existing events
+                    System.err.println("Error fetching calendar events: " + e.getMessage());
+                    e.printStackTrace();
+                    events = lastFetchedEvents;
+                    SwingUtilities.invokeLater({
+                        statusLabel.setText("Status: Error refreshing events, using cached data")
+                    } as Runnable);
+                }
+
                 // Update token status based on refresh result
                 boolean tokenInvalid = false
                 
-                // Check token validator result
-                String tokenResult = outlookClient.getLastTokenValidationResult()
-                if (tokenResult == OutlookClient.TOKEN_REFRESHED) {
-                    tokenInvalid = false
-                } else if (tokenResult == OutlookClient.TOKEN_NEW_AUTHENTICATION) {
-                    tokenInvalid = false
-                } else if (!outlookClient.isTokenAlreadyValid()) {
-                    tokenInvalid = true
+                // Check token validator result only if we successfully got new events
+                if (events != lastFetchedEvents) {
+                    String tokenResult = outlookClient.getLastTokenValidationResult()
+                    if (tokenResult == OutlookClient.TOKEN_REFRESHED) {
+                        tokenInvalid = false
+                    } else if (tokenResult == OutlookClient.TOKEN_NEW_AUTHENTICATION) {
+                        tokenInvalid = false
+                    } else if (!outlookClient.isTokenAlreadyValid()) {
+                        tokenInvalid = true
+                    }
                 }
                 
                 // Update icons based on token validity
@@ -806,20 +823,14 @@ class OutlookAlerterUI extends JFrame {
      * Check for events that need alerts
      */
     private void checkForEventAlerts(List<CalendarEvent> events) {
-        // Debug log
-        System.out.println("Checking ${events.size()} events for alerts...")
-
-        // Check token validity before alerting
-        if (!outlookClient.hasValidToken()) {
-            System.out.println("Token is invalid or expired. Prompting for new token and aborting alert.");
-            // Only show the token dialog if not already active
-            if (!isTokenDialogActive) {
-                SwingUtilities.invokeLater({
-                    promptForTokens(configManager.getSignInUrl())
-                } as Runnable)
-            }
-            return;
+        // If passed events are null or empty but we have cached events, use those
+        if ((events == null || events.isEmpty()) && !lastFetchedEvents.isEmpty()) {
+            System.out.println("Using ${lastFetchedEvents.size()} cached events for alerts...")
+            events = lastFetchedEvents
         }
+
+        // Debug log
+        System.out.println("Checking ${events?.size() ?: 0} events for alerts...")
 
         // Check each event for alerts
         List<CalendarEvent> eventsToAlert = []
