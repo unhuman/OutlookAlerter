@@ -104,8 +104,8 @@ class SimpleTokenDialog {
                             frame.toFront()
                             frame.requestFocus()
                             
-                            // Clear any previous text
-                            if (tokenField != null) tokenField.setText("")
+                            // Reset UI components
+                            resetDialogUI()
                             
                             System.out.println("SimpleTokenDialog: Frame state - visible: " + frame.isVisible() + 
                                              ", showing: " + frame.isShowing())
@@ -752,6 +752,43 @@ class SimpleTokenDialog {
             e.printStackTrace()
             cleanup()
             return null
+        }
+    }
+
+    /**
+     * Reset the dialog UI components
+     */
+    private void resetDialogUI() {
+        if (frame != null) {
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    System.out.println("SimpleTokenDialog: Resetting UI components");
+
+                    // Clear previous text and reset font sizes
+                    if (tokenField != null) {
+                        tokenField.setText("");
+                        tokenField.setFont(new Font("Arial", Font.PLAIN, 12));
+                    }
+
+                    // Reset other UI components if necessary
+                    Container contentPane = frame.getContentPane();
+                    if (contentPane instanceof JPanel) {
+                        JPanel panel = (JPanel) contentPane;
+                        for (Component component : panel.getComponents()) {
+                            if (component instanceof JLabel) {
+                                ((JLabel) component).setFont(new Font("Arial", Font.PLAIN, 12));
+                            } else if (component instanceof JButton) {
+                                ((JButton) component).setFont(new Font("Arial", Font.PLAIN, 12));
+                            }
+                        }
+                    }
+
+                    System.out.println("SimpleTokenDialog: UI components reset successfully");
+                } catch (Exception e) {
+                    System.err.println("SimpleTokenDialog: Error resetting UI components: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            });
         }
     }
 }

@@ -12,6 +12,8 @@ import java.util.function.Supplier
 import com.unhuman.outlookalerter.model.CalendarEvent
 import com.unhuman.outlookalerter.ui.SimpleTokenDialog
 import com.unhuman.outlookalerter.ui.OutlookAlerterUI
+import com.unhuman.outlookalerter.util.ScreenFlasher
+import com.unhuman.outlookalerter.util.ScreenFlasherFactory
 import javax.swing.JOptionPane
 
 // Additional imports for TokenEntryServer
@@ -1684,7 +1686,7 @@ class OutlookClient {
         int maxAttempts = 3
         Map<String, String> resultTokens = null
         String signInUrl = configManager.getSignInUrl()
-        
+
         try {
             // Keep trying until we get a valid token or max attempts is reached
             while ((resultTokens == null || !resultTokens.containsKey("accessToken") || 
@@ -1693,6 +1695,25 @@ class OutlookClient {
                 attempts++
                 System.out.println("Token dialog attempt ${attempts} of ${maxAttempts}")
                 
+                // Flash the screen independently in a separate thread
+                if (attempts == 1) {
+                    new Thread(() -> {
+                        try {
+                            ScreenFlasher screenFlasher = ScreenFlasherFactory.createScreenFlasher()
+                            screenFlasher.flash(new CalendarEvent(
+                                subject: "⚠️ TOKEN ENTRY REQUIRED ⚠️\nPlease enter your OAuth tokens in the dialog that will appear.",
+                                startTime: ZonedDateTime.now(),
+                                endTime: ZonedDateTime.now().plusMinutes(1),
+                                isOnlineMeeting: false,
+                                organizer: "Token Entry",
+                                responseStatus: "Flash",
+                                calendarName: "Token Entry"));
+                        } catch (Exception e) {
+                            System.err.println("[ERROR] showTokenDialogWithFlash: Error during screen flash: " + e.getMessage());
+                        }
+                    }).start();
+                }
+
                 // Handle both UI and console mode
                 if (outlookAlerterUI != null) {
                     // UI mode
