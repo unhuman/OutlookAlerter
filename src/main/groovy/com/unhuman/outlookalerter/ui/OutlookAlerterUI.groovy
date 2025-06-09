@@ -31,8 +31,8 @@ import java.awt.Taskbar;
 @CompileStatic
 class OutlookAlerterUI extends JFrame {
     // Time constants
-    private static final int POLLING_INTERVAL_MINUTES = 1
-    private static final int CALENDAR_REFRESH_INTERVAL_MINUTES = 60  // Hourly calendar refresh
+    private static final int POLLING_INTERVAL_SECONDS = 60
+    private static final int CALENDAR_REFRESH_INTERVAL_SECONDS = 3600  // Hourly calendar refresh
     
     // Components
     private final ConfigManager configManager
@@ -377,19 +377,23 @@ class OutlookAlerterUI extends JFrame {
         // Start periodic tasks if not already running
         if (!schedulersRunning) {
             // Schedule alert checks (every minute)
-            alertScheduler.scheduleAtFixedRate(
-                { checkAlertsFromCache() } as Runnable,
-                0, // Start immediately
-                POLLING_INTERVAL_MINUTES,
-                TimeUnit.MINUTES
-            )
-            
+            // we need to calcualte the next alert based on the current time difference to the next minute
+            long initialDelay = (60 - ZonedDateTime.now().getSecond()) % 60 // Delay until next minute
+
             // Schedule calendar refreshes (every hour)
             calendarScheduler.scheduleAtFixedRate(
                 { refreshCalendarEvents() } as Runnable,
                 0, // Start immediately
-                CALENDAR_REFRESH_INTERVAL_MINUTES,
-                TimeUnit.MINUTES
+                CALENDAR_REFRESH_INTERVAL_SECONDS,
+                TimeUnit.SECONDS
+            )
+            
+            // Schedule alert checks (every minute)
+            alertScheduler.scheduleAtFixedRate(
+                { checkAlertsFromCache() } as Runnable,
+                initialDelay, // Start immediately
+                POLLING_INTERVAL_SECONDS,
+                TimeUnit.SECONDS
             )
             
             schedulersRunning = true
@@ -636,7 +640,7 @@ class OutlookAlerterUI extends JFrame {
                           .append(event.isOnlineMeeting ? " (Online)" : "")
                           .append(event.organizer ? " - Organized by: ${event.organizer}" : "")
                           .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
-                          .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                          .append(" (starts in ${event.getMinutesToStart() + 1} minutes)") // + 1 minute to account for current time
                           .append("\n")
             }
             
@@ -665,7 +669,7 @@ class OutlookAlerterUI extends JFrame {
                         displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
                                   .append(event.isOnlineMeeting ? " (Online)" : "")
                                   .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
-                                  .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                                  .append(" (starts in ${event.getMinutesToStart() + 1} minutes)") // + 1 minute to account for current time
                                   .append("\n")
                     }
                 }
@@ -677,7 +681,7 @@ class OutlookAlerterUI extends JFrame {
                         displayText.append("  • ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
                                   .append(event.isOnlineMeeting ? " (Online)" : "")
                                   .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
-                                  .append(" (starts in ${event.getMinutesToStart()} minutes)")
+                                  .append(" (starts in ${event.getMinutesToStart() + 1} minutes)") // + 1 minute to account for current time
                                   .append("\n")
                     }
                 }
@@ -1099,17 +1103,17 @@ class OutlookAlerterUI extends JFrame {
         // Schedule periodic calendar data refresh (hourly)
         calendarScheduler.scheduleAtFixedRate(
             { refreshCalendarEvents() } as Runnable,
-            CALENDAR_REFRESH_INTERVAL_MINUTES,
-            CALENDAR_REFRESH_INTERVAL_MINUTES,
-            TimeUnit.MINUTES
+            CALENDAR_REFRESH_INTERVAL_SECONDS,
+            CALENDAR_REFRESH_INTERVAL_SECONDS,
+            TimeUnit.SECONDS
         )
 
         // Schedule frequent alert checks using cached events
         alertScheduler.scheduleAtFixedRate(
             { checkAlertsFromCache() } as Runnable,
-            POLLING_INTERVAL_MINUTES,
-            POLLING_INTERVAL_MINUTES,
-            TimeUnit.MINUTES
+            POLLING_INTERVAL_SECONDS,
+            POLLING_INTERVAL_SECONDS,
+            TimeUnit.SECONDS
         )
 
         schedulersRunning = true

@@ -179,7 +179,7 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 g2d.drawString(subject, ((width - subjectWidth) / 2) as int, (height / 2) as int)
                 
                 // Draw time info
-                String timeInfo = "Starting in " + event.getMinutesToStart() + " minute" + 
+                String timeInfo = "Starting in " + (event.getMinutesToStart() + 1) + " minute" + 
                     (event.getMinutesToStart() == 1 ? "" : "s")
                 
                 java.awt.FontMetrics fmTime = g2d.getFontMetrics()

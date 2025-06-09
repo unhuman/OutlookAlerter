@@ -126,7 +126,7 @@ class MacScreenFlasher implements ScreenFlasher {
                 labelContent = "<html><center>" +
                     "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
                     "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
-                    "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + event.getMinutesToStart() + " minute(s)</p>" +
+                    "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (event.getMinutesToStart() + 1) + " minute(s)</p>" +
                     "</center></html>"
             }
             JLabel label = new JLabel(labelContent, SwingConstants.CENTER)
