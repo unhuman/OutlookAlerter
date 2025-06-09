@@ -243,15 +243,21 @@ class MacScreenFlasher implements ScreenFlasher {
             return
         }
         
-        StringBuilder subjectBuilder = new StringBuilder("<html><center>")
-        subjectBuilder.append("<h1>Multiple Meetings:</h1>")
+        // Create a combined subject for multiple events
+        Color textColor = getAlertTextColorWithOpacity()
+        String textColorHex = String.format("#%02x%02x%02x", textColor.getRed(), textColor.getGreen(), textColor.getBlue())
+        
+        StringBuilder stringBuilder = new StringBuilder(512)
+        stringBuilder.append("<html><center>")
+        stringBuilder.append("<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MULTIPLE MEETING ALERT ⚠️</h1>")                
         events.each { event ->
-            subjectBuilder.append("<h3>• ${event.subject}</h3>")
+            stringBuilder.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>")
         }
-        subjectBuilder.append("</center></html>")
+        stringBuilder.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (events[0].getMinutesToStart() + 1) + " minute(s)</p>")
+        stringBuilder.append("</center></html>")
         
         def combinedEvent = new CalendarEvent(
-            subject: subjectBuilder.toString(),
+            subject: stringBuilder.toString(),
             startTime: events.min { it.startTime }?.startTime,
             endTime: events.max { it.endTime }?.endTime
         )
