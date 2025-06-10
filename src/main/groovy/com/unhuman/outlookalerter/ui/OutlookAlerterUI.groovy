@@ -828,23 +828,22 @@ class OutlookAlerterUI extends JFrame {
         // Check each event for alerts
         List<CalendarEvent> eventsToAlert = []
         for (CalendarEvent event : events) {
-            // Debug log
-            System.out.println("Checking event: ${event.subject}")
             // Skip / cleanup events that have already ended
             if (event.hasEnded()) {
-                System.out.println("  Skipping: Event has ended")
-                eventsToAlert.remove(event) // Remove from list if already ended
+                System.out.println("${event.subject} Skipping: Event has ended")
+                alertedEventIds.remove(event.id) // Remove from list if already ended
                 continue
             }
             int minutesToStart = event.getMinutesToStart()
-            System.out.println("  Minutes to start: ${minutesToStart}")
+            System.out.println("${event.subject} Minutes to start: ${minutesToStart}")
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.id)) {
-                System.out.println("  Skipping: Already alerted for this event")
+                System.out.println("${event.subject} Skipping: Already alerted for this event")
                 continue
             }
             // Alert for events about to start
             if (minutesToStart <= configManager.alertMinutes && minutesToStart >= -1) {
+                System.out.println("${event.subject} Alerting")
                 eventsToAlert.add(event)
             }
         }
