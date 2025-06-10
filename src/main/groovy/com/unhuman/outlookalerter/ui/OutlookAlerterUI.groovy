@@ -170,6 +170,7 @@ class OutlookAlerterUI extends JFrame {
                 refreshItem.addActionListener(new ActionListener() {
                     @Override
                     void actionPerformed(ActionEvent e) {
+                        alertedEventIds.clear() // Clear alerted events cache
                         refreshCalendarEvents()
                     }
                 })
@@ -310,6 +311,7 @@ class OutlookAlerterUI extends JFrame {
         refreshButton.addActionListener(new ActionListener() {
             @Override
             void actionPerformed(ActionEvent e) {
+                alertedEventIds.clear() // Clear alerted events cache
                 refreshCalendarEvents()
             }
         })
