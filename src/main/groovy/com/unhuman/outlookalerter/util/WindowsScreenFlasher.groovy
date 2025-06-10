@@ -162,7 +162,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
         JLabel label = new JLabel("<html><center>" +
                 "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
                 "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
-                "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (event.getMinutesToStart() + 1) + " minute(s)</p>" +
+                "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + event.getMinutesToStart() + " minute(s)</p>" +
                 "</center></html>", SwingConstants.CENTER)
         label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
         label.setForeground(textColor)
@@ -252,7 +252,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
         StringBuilder html = new StringBuilder("<html><center><h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>");
         for (CalendarEvent event : events) {
             html.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>").append(event.subject).append("</h2>");
-            html.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in ").append(event.getMinutesToStart() + 1).append(" minute(s)</p>");
+            html.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in ").append(event.getMinutesToStart()).append(" minute(s)</p>");
         }
         html.append("</center></html>");
         JLabel label = new JLabel(html.toString(), SwingConstants.CENTER);

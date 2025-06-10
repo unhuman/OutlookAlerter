@@ -126,7 +126,7 @@ class MacScreenFlasher implements ScreenFlasher {
                 labelContent = "<html><center>" +
                     "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
                     "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
-                    "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (event.getMinutesToStart() + 1) + " minute(s)</p>" +
+                    "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + event.getMinutesToStart() + " minute(s)</p>" +
                     "</center></html>"
             }
             JLabel label = new JLabel(labelContent, SwingConstants.CENTER)
@@ -253,7 +253,7 @@ class MacScreenFlasher implements ScreenFlasher {
         events.each { event ->
             stringBuilder.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>")
         }
-        stringBuilder.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (events[0].getMinutesToStart() + 1) + " minute(s)</p>")
+        stringBuilder.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + events[0].getMinutesToStart() + " minute(s)</p>")
         stringBuilder.append("</center></html>")
         
         def combinedEvent = new CalendarEvent(
