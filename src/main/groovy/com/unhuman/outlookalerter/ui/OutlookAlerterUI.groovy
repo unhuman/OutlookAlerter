@@ -834,7 +834,7 @@ class OutlookAlerterUI extends JFrame {
                 alertedEventIds.remove(event.id) // Remove from list if already ended
                 continue
             }
-            int minutesToStart = event.getMinutesToStart()
+            int minutesToStart = event.getMinutesToStart() + 1 // +1 to account for current time
             System.out.println("${event.subject} Minutes to start: ${minutesToStart}")
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.id)) {
