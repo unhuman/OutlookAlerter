@@ -830,9 +830,10 @@ class OutlookAlerterUI extends JFrame {
         for (CalendarEvent event : events) {
             // Debug log
             System.out.println("Checking event: ${event.subject}")
-            // Skip events that have already ended
+            // Skip / cleanup events that have already ended
             if (event.hasEnded()) {
                 System.out.println("  Skipping: Event has ended")
+                eventsToAlert.remove(event) // Remove from list if already ended
                 continue
             }
             int minutesToStart = event.getMinutesToStart()
