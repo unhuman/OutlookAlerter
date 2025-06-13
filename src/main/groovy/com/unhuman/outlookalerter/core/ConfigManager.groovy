@@ -38,7 +38,8 @@ class ConfigManager {
     private String flashColor = "#800000" // Default dark red
     private String flashTextColor = "#ffffff" // Default white text
     private double flashOpacity = 1.0d // Default 100%
-    
+    private int resyncIntervalMinutes = 240; // Default to 4 hours
+
     // SSO related properties
     private String signInUrl
     private String tokenEndpoint
@@ -163,6 +164,7 @@ class ConfigManager {
         flashColor = properties.getProperty("flashColor", "#800000")
         flashTextColor = properties.getProperty("flashTextColor", "#ffffff")
         flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"))
+        resyncIntervalMinutes = Integer.parseInt(properties.getProperty("resyncIntervalMinutes", "240"))
         
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")
@@ -191,6 +193,7 @@ class ConfigManager {
             properties.setProperty("flashColor", flashColor ?: "#800000")
             properties.setProperty("flashTextColor", flashTextColor ?: "#ffffff")
             properties.setProperty("flashOpacity", String.valueOf(flashOpacity))
+            properties.setProperty("resyncIntervalMinutes", String.valueOf(resyncIntervalMinutes))
             
             if (accessToken) {
                 properties.setProperty("accessToken", accessToken)
@@ -241,6 +244,7 @@ class ConfigManager {
     String getFlashColor() { return flashColor }
     String getFlashTextColor() { return flashTextColor }
     double getFlashOpacity() { return flashOpacity }
+    int getResyncIntervalMinutes() { return resyncIntervalMinutes; }
     
     /**
      * Updates the preferred timezone setting
@@ -296,5 +300,13 @@ class ConfigManager {
     void updateFlashOpacity(double opacity) {
         this.flashOpacity = opacity
         saveConfiguration()
+    }
+
+    /**
+     * Updates the re-sync interval setting
+     */
+    void updateResyncIntervalMinutes(int minutes) {
+        this.resyncIntervalMinutes = minutes;
+        saveConfiguration();
     }
 }

@@ -32,7 +32,6 @@ import java.awt.Taskbar;
 class OutlookAlerterUI extends JFrame {
     // Time constants
     private static final int POLLING_INTERVAL_SECONDS = 60
-    private static final int CALENDAR_REFRESH_INTERVAL_SECONDS = 3600  // Hourly calendar refresh
     
     // Components
     private final ConfigManager configManager
@@ -48,8 +47,8 @@ class OutlookAlerterUI extends JFrame {
     private SystemTray systemTray
 
     // Schedulers for periodic tasks
-    private final ScheduledExecutorService alertScheduler
-    private final ScheduledExecutorService calendarScheduler
+    private ScheduledExecutorService alertScheduler
+    private ScheduledExecutorService calendarScheduler
     private volatile boolean schedulersRunning = false
     
     // Track which events we've already alerted for
@@ -379,14 +378,15 @@ class OutlookAlerterUI extends JFrame {
         // Start periodic tasks if not already running
         if (!schedulersRunning) {
             // Schedule alert checks (every minute)
-            // we need to calcualte the next alert based on the current time difference to the next minute
+            // we need to calculate the next alert based on the current time difference to the next minute
             long initialDelay = (60 - ZonedDateTime.now().getSecond()) % 60 // Delay until next minute
 
-            // Schedule calendar refreshes (every hour)
+            // Schedule calendar refreshes using the configured interval
+            int resyncIntervalSeconds = configManager.getResyncIntervalMinutes() * 60;
             calendarScheduler.scheduleAtFixedRate(
                 { refreshCalendarEvents() } as Runnable,
                 0, // Start immediately
-                CALENDAR_REFRESH_INTERVAL_SECONDS,
+                resyncIntervalSeconds,
                 TimeUnit.SECONDS
             )
             
@@ -975,6 +975,22 @@ class OutlookAlerterUI extends JFrame {
             gbc.gridy = 2;
             formPanel.add(signInUrlField, gbc);
 
+            // Re-sync interval setting
+            gbc.gridx = 0;
+            gbc.gridy = 3;
+            formPanel.add(new JLabel("Re-sync interval (minutes):"), gbc);
+
+            SpinnerModel resyncSpinnerModel = new SpinnerNumberModel(
+                configManager.getResyncIntervalMinutes(), // current
+                1,  // min
+                1440, // max (24 hours)
+                1   // step
+            );
+            JSpinner resyncIntervalSpinner = new JSpinner(resyncSpinnerModel);
+            gbc.gridx = 1;
+            gbc.gridy = 3;
+            formPanel.add(resyncIntervalSpinner, gbc);
+
             // Note: SSL Certificate Validation setting moved to token dialog
             gbc.gridwidth = 1;
 
@@ -988,6 +1004,7 @@ class OutlookAlerterUI extends JFrame {
                     String timezone = timezoneField.getText().trim();
                     String signInUrl = signInUrlField.getText().trim();
                     int alertMinutes = (Integer)alertMinutesSpinner.getValue();
+                    int resyncInterval = (Integer) resyncIntervalSpinner.getValue();
 
                     try {
                         if (!timezone.isEmpty()) {
@@ -1000,12 +1017,18 @@ class OutlookAlerterUI extends JFrame {
                         }
 
                         configManager.updateAlertMinutes(alertMinutes);
+                        configManager.updateResyncIntervalMinutes(resyncInterval);
+
+                        // Restart schedulers with the new interval
+                        restartSchedulers();
 
                         settingsDialog.dispose();
                         settingsDialog = null;
                         JOptionPane.showMessageDialog(OutlookAlerterUI.this, "Settings saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
                     } catch (Exception ex) {
-                        JOptionPane.showMessageDialog(settingsDialog, "Invalid settings: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        String errorMessage = "Invalid settings: " + ex.getMessage();
+                        System.err.println(errorMessage); // Log the error to the console
+                        JOptionPane.showMessageDialog(settingsDialog, errorMessage, "Error", JOptionPane.ERROR_MESSAGE);
                     }
                 }
             });
@@ -1087,8 +1110,13 @@ class OutlookAlerterUI extends JFrame {
      * Stop and restart all schedulers
      */
     private void restartSchedulers() {
-        stopSchedulers()
-        startSchedulers()
+        stopSchedulers();
+
+        // Reinitialize schedulers to avoid using terminated executors
+        alertScheduler = Executors.newScheduledThreadPool(1);
+        calendarScheduler = Executors.newScheduledThreadPool(1);
+
+        startSchedulers();
     }
 
     /**
@@ -1096,62 +1124,67 @@ class OutlookAlerterUI extends JFrame {
      */
     private void startSchedulers() {
         if (schedulersRunning) {
-            System.out.println("Schedulers already running")
-            return
+            System.out.println("Schedulers already running");
+            return;
         }
 
-        System.out.println("Starting schedulers...")
+        int resyncIntervalSeconds = configManager.getResyncIntervalMinutes() * 60;
 
-        // Schedule periodic calendar data refresh (hourly)
+        System.out.println("Starting schedulers... Resync interval: ${resyncIntervalSeconds} seconds");
+
+        // Schedule periodic calendar data refresh
         calendarScheduler.scheduleAtFixedRate(
             { refreshCalendarEvents() } as Runnable,
-            CALENDAR_REFRESH_INTERVAL_SECONDS,
-            CALENDAR_REFRESH_INTERVAL_SECONDS,
+            resyncIntervalSeconds,
+            resyncIntervalSeconds,
             TimeUnit.SECONDS
-        )
+        );
 
-        // Schedule frequent alert checks using cached events
+        // Schedule alert checks (every minute)
         alertScheduler.scheduleAtFixedRate(
             { checkAlertsFromCache() } as Runnable,
             POLLING_INTERVAL_SECONDS,
             POLLING_INTERVAL_SECONDS,
             TimeUnit.SECONDS
-        )
+        );
 
-        schedulersRunning = true
-        System.out.println("Schedulers started")
+        schedulersRunning = true;
     }
 
     /**
      * Stop all schedulers
      */
     private void stopSchedulers() {
-        System.out.println("Stopping schedulers...")
+        System.out.println("Stopping schedulers...");
 
         if (!schedulersRunning) {
-            System.out.println("Schedulers not running")
-            return
+            System.out.println("Schedulers not running");
+            return;
         }
-
-        calendarScheduler.shutdown()
-        alertScheduler.shutdown()
 
         try {
+            // Attempt to shut down gracefully
+            calendarScheduler.shutdown();
+            alertScheduler.shutdown();
+
             // Wait for schedulers to finish their current tasks
             if (!calendarScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                calendarScheduler.shutdownNow()
+                System.out.println("Forcing shutdown of calendar scheduler");
+                calendarScheduler.shutdownNow();
             }
             if (!alertScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                alertScheduler.shutdownNow()
+                System.out.println("Forcing shutdown of alert scheduler");
+                alertScheduler.shutdownNow();
             }
         } catch (InterruptedException e) {
-            calendarScheduler.shutdownNow()
-            alertScheduler.shutdownNow()
-            Thread.currentThread().interrupt()
+            System.err.println("Schedulers interrupted during shutdown: " + e.getMessage());
+            calendarScheduler.shutdownNow();
+            alertScheduler.shutdownNow();
+            Thread.currentThread().interrupt();
         }
 
-        schedulersRunning = false
-        System.out.println("Schedulers stopped")
+        schedulersRunning = false;
+        System.out.println("Schedulers stopped");
     }
 
     /**
