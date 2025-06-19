@@ -217,7 +217,7 @@ class SimpleTokenDialog {
                 
                 // Add certificate validation option (always initially unchecked)
                 JPanel certPanel = new JPanel(new FlowLayout(FlowLayout.LEFT))
-                JCheckBox ignoreCertValidationCheckbox = new JCheckBox("Ignore SSL certificate validation (security risk)", false)
+                JCheckBox ignoreCertValidationCheckbox = new JCheckBox("Ignore SSL certificate validation", ConfigManager.getInstance().getDefaultIgnoreCertValidation());
                 certPanel.add(ignoreCertValidationCheckbox)
                 formPanel.add(certPanel)
                 
@@ -479,6 +479,7 @@ class SimpleTokenDialog {
                 }
                 
                 // Get certificate validation setting
+                System.out.println("SimpleTokenDialog: Checking certificate validation setting")
                 Container contentPane = frame.getContentPane()
                 if (contentPane instanceof JPanel) {
                     JPanel panel = (JPanel)contentPane
@@ -495,6 +496,8 @@ class SimpleTokenDialog {
                                         if (certComponent instanceof JCheckBox) {
                                             JCheckBox checkbox = (JCheckBox)certComponent
                                             if (checkbox.getText().contains("certificate validation")) {
+                                                System.out.println("SimpleTokenDialog: Certificate validation checkbox found: " + checkbox.isSelected())
+                                        
                                                 ignoreCertValidation = checkbox.isSelected()
                                                 break
                                             }
@@ -542,24 +545,22 @@ class SimpleTokenDialog {
             }
 
             // Store token data and mark as successfully submitted
+            // Log the exact boolean value before converting to string
+            System.out.println("SimpleTokenDialog: ignoreCertValidation raw boolean value: " + ignoreCertValidation)
+            
             tokens = [
                 accessToken: token,
-                ignoreCertValidation: String.valueOf(ignoreCertValidation) // Convert boolean to String to match Map<String, String>
+                ignoreCertValidation: ignoreCertValidation ? "true" : "false" // Explicitly convert to "true"/"false" string
             ]
             isTokenSubmitted = true // Mark that we have a valid token submission
             
             // Update the certificate validation setting in ConfigManager
             ConfigManager configManager = ConfigManager.getInstance()
             if (configManager != null) {
-                boolean certSettingChanged = configManager.ignoreCertValidation != ignoreCertValidation
-                if (certSettingChanged) {
-                    System.out.println("SimpleTokenDialog: Certificate validation setting changed to: " +
-                            (ignoreCertValidation ? "disabled" : "enabled"))
-                    configManager.updateIgnoreCertValidation(ignoreCertValidation)
-                } else {
-                    System.out.println("SimpleTokenDialog: Certificate validation setting unchanged: " +
-                            (ignoreCertValidation ? "disabled" : "enabled"))
-                }
+                // Note: We don't update the config directly here anymore. 
+                // The value will be passed through the tokens map and handled by OutlookAlerterUI
+                System.out.println("SimpleTokenDialog: Certificate validation value will be set to: " +
+                        (ignoreCertValidation ? "disabled" : "enabled"))
             }
             
             System.out.println("SimpleTokenDialog: Token submitted (first 10 chars): " + 

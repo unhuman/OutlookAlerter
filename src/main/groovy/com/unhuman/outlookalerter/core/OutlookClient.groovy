@@ -88,7 +88,7 @@ class OutlookClient {
      * Creates an HttpClient with or without certificate validation based on settings
      */
     private HttpClient createHttpClient() {
-        boolean ignoreCertValidation = configManager.ignoreCertValidation
+        boolean ignoreCertValidation = configManager.getIgnoreCertValidation()
         println "Creating HTTP client with certificate validation: " + (ignoreCertValidation ? "disabled" : "enabled") 
         if (ignoreCertValidation) {
             return createHttpClientWithoutCertValidation();
@@ -149,12 +149,11 @@ class OutlookClient {
      * @param ignoreCertValidation Whether to ignore SSL certificate validation
      */
     void updateCertificateValidation(boolean ignoreCertValidation) {
-        boolean settingChanged = configManager.ignoreCertValidation != ignoreCertValidation
-        if (settingChanged) {
-            println "Certificate validation setting changed to: " + (ignoreCertValidation ? "disabled" : "enabled")
-            configManager.updateIgnoreCertValidation(ignoreCertValidation)
-            updateHttpClient()
-        }
+        // Always update the setting and HTTP client regardless of current value
+        // This ensures the value provided is always properly saved
+        println "Certificate validation setting set to: " + (ignoreCertValidation ? "disabled" : "enabled")
+        configManager.updateDefaultIgnoreCertValidation(ignoreCertValidation)
+        updateHttpClient()
     }
     
     /**
@@ -266,7 +265,7 @@ class OutlookClient {
                 String accessToken = json['access_token'] as String
                 String refreshToken = json['refresh_token'] as String
                 
-                configManager.updateTokens(accessToken, refreshToken)
+                configManager.updateTokens(accessToken, refreshToken, configManager.getIgnoreCertValidation())
                 lastTokenValidationResult = TOKEN_REFRESHED
                 println "Token refreshed successfully!"
                 return true
@@ -316,9 +315,13 @@ class OutlookClient {
             println "Token received from user interface."
             
             // Check if certificate validation setting was provided and update if needed
+            boolean ignoreCertValidation = configManager.getIgnoreCertValidation()
             if (tokens.containsKey("ignoreCertValidation")) {
-                boolean ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
-                boolean currentSetting = configManager.ignoreCertValidation
+                System.out.println "*** Certificate validation setting provided in tokens: " + tokens.ignoreCertValidation + " exists " + tokens.containsKey("ignoreCertValidation")
+                ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
+                System.out.println "*** Certificate validation setting from token dialog: " + ignoreCertValidation
+
+                boolean currentSetting = configManager.getIgnoreCertValidation()
                 
                 // Always log the certificate validation setting
                 println "Certificate validation setting from token dialog: " + 
@@ -377,7 +380,7 @@ class OutlookClient {
             }
             
             // Refresh token is not collected anymore, pass null as refresh token
-            configManager.updateTokens(accessToken, null)
+            configManager.updateTokens(accessToken, null, ignoreCertValidation)
             println "Authentication successful! Token validated and saved."
             return true
             
@@ -408,7 +411,7 @@ class OutlookClient {
         println "Access token was rejected (${errorType}). Attempting to re-authenticate..."
 
         // Clear the existing token's expiry time to force validation
-        configManager.updateTokens(configManager.accessToken, configManager.refreshToken);
+        configManager.updateTokens(configManager.accessToken, configManager.refreshToken, configManager.getDefaultIgnoreCertValidation());
 
         // Try to refresh the token first if we have one
         if (configManager.refreshToken && refreshToken()) {
@@ -534,7 +537,7 @@ class OutlookClient {
                     boolean isValid = validateTokenWithServer(accessToken);                
                     if (isValid) {
                         // Token is valid according to server validation
-                        configManager.updateTokens(accessToken, configManager.refreshToken);
+                        configManager.updateTokens(accessToken, configManager.refreshToken, configManager.getDefaultIgnoreCertValidation());
                         println "Token validated with server successfully."
                     } else if (!authenticate()) {
                         throw new RuntimeException("Failed to authenticate with Outlook")
@@ -796,7 +799,7 @@ class OutlookClient {
 
                     if (isValid) {
                         // Token is valid according to server
-                        configManager.updateTokens(accessToken, configManager.refreshToken);
+                        configManager.updateTokens(accessToken, configManager.refreshToken, configManager.getDefaultIgnoreCertValidation());
                         println "Token validated with server successfully."
                     } else if (!authenticate()) {
                         throw new RuntimeException("Failed to re-authenticate to obtain a valid token")
@@ -880,7 +883,7 @@ class OutlookClient {
 
                     if (isValid) {
                         // Token is valid according to server validation
-                        configManager.updateTokens(accessToken, configManager.refreshToken);
+                        configManager.updateTokens(accessToken, configManager.refreshToken, configManager.getDefaultIgnoreCertValidation());
                         println "Token validated with server successfully."
                     } else if (!authenticate()) {
                         throw new RuntimeException("Failed to re-authenticate to obtain a valid token")

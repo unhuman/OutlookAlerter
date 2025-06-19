@@ -64,7 +64,7 @@ class OutlookAlerterUI extends JFrame {
     private Boolean currentIconInvalidState = null
 
     // Track settings dialog instance
-    private JDialog settingsDialog = null;
+    private SettingsDialog settingsDialog = null;
 
     // Added a flag to track if the token dialog is active
     private boolean isTokenDialogActive = false;
@@ -930,126 +930,10 @@ class OutlookAlerterUI extends JFrame {
         }
 
         if (settingsDialog == null || !settingsDialog.isShowing()) {
-            settingsDialog = new JDialog(this, "Settings", true);
-            settingsDialog.setLayout(new BorderLayout());
-
-            JPanel formPanel = new JPanel(new GridBagLayout());
-            GridBagConstraints gbc = new GridBagConstraints();
-            gbc.fill = GridBagConstraints.HORIZONTAL;
-            gbc.insets = new Insets(5, 5, 5, 5);
-
-            // Timezone setting
-            gbc.gridx = 0;
-            gbc.gridy = 0;
-            formPanel.add(new JLabel("Timezone:"), gbc);
-
-            String currentTimezone = configManager.preferredTimezone ?: ZonedDateTime.now().getZone().toString();
-            JTextField timezoneField = new JTextField(currentTimezone, 20);
-            gbc.gridx = 1;
-            gbc.gridy = 0;
-            formPanel.add(timezoneField, gbc);
-
-            // Alert minutes setting
-            gbc.gridx = 0;
-            gbc.gridy = 1;
-            formPanel.add(new JLabel("Alert minutes before meeting:"), gbc);
-
-            SpinnerModel spinnerModel = new SpinnerNumberModel(
-                configManager.alertMinutes, // current
-                1,  // min
-                30, // max
-                1   // step
-            );
-            JSpinner alertMinutesSpinner = new JSpinner(spinnerModel);
-            gbc.gridx = 1;
-            gbc.gridy = 1;
-            formPanel.add(alertMinutesSpinner, gbc);
-
-            // Okta SSO URL
-            gbc.gridx = 0;
-            gbc.gridy = 2;
-            formPanel.add(new JLabel("Sign-in URL:"), gbc);
-
-            JTextField signInUrlField = new JTextField(configManager.signInUrl ?: "", 20);
-            gbc.gridx = 1;
-            gbc.gridy = 2;
-            formPanel.add(signInUrlField, gbc);
-
-            // Re-sync interval setting
-            gbc.gridx = 0;
-            gbc.gridy = 3;
-            formPanel.add(new JLabel("Re-sync interval (minutes):"), gbc);
-
-            SpinnerModel resyncSpinnerModel = new SpinnerNumberModel(
-                configManager.getResyncIntervalMinutes(), // current
-                1,  // min
-                1440, // max (24 hours)
-                1   // step
-            );
-            JSpinner resyncIntervalSpinner = new JSpinner(resyncSpinnerModel);
-            gbc.gridx = 1;
-            gbc.gridy = 3;
-            formPanel.add(resyncIntervalSpinner, gbc);
-
-            // Note: SSL Certificate Validation setting moved to token dialog
-            gbc.gridwidth = 1;
-
-            // Button panel
-            JPanel buttonPanel = new JPanel();
-            JButton saveButton = new JButton("Save");
-            saveButton.addActionListener(new ActionListener() {
-                @Override
-                void actionPerformed(ActionEvent e) {
-                    // Save settings
-                    String timezone = timezoneField.getText().trim();
-                    String signInUrl = signInUrlField.getText().trim();
-                    int alertMinutes = (Integer)alertMinutesSpinner.getValue();
-                    int resyncInterval = (Integer) resyncIntervalSpinner.getValue();
-
-                    try {
-                        if (!timezone.isEmpty()) {
-                            java.time.ZoneId.of(timezone); // Validate timezone
-                            configManager.updatePreferredTimezone(timezone);
-                        }
-
-                        if (!signInUrl.isEmpty()) {
-                            configManager.updateSignInUrl(signInUrl);
-                        }
-
-                        configManager.updateAlertMinutes(alertMinutes);
-                        configManager.updateResyncIntervalMinutes(resyncInterval);
-
-                        // Restart schedulers with the new interval
-                        restartSchedulers();
-
-                        settingsDialog.dispose();
-                        settingsDialog = null;
-                        JOptionPane.showMessageDialog(OutlookAlerterUI.this, "Settings saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE);
-                    } catch (Exception ex) {
-                        String errorMessage = "Invalid settings: " + ex.getMessage();
-                        System.err.println(errorMessage); // Log the error to the console
-                        JOptionPane.showMessageDialog(settingsDialog, errorMessage, "Error", JOptionPane.ERROR_MESSAGE);
-                    }
-                }
-            });
-
-            JButton cancelButton = new JButton("Cancel");
-            cancelButton.addActionListener(new ActionListener() {
-                @Override
-                void actionPerformed(ActionEvent e) {
-                    settingsDialog.dispose();
-                    settingsDialog = null;
-                }
-            });
-
-            buttonPanel.add(saveButton);
-            buttonPanel.add(cancelButton);
-
-            settingsDialog.add(formPanel, BorderLayout.CENTER);
-            settingsDialog.add(buttonPanel, BorderLayout.SOUTH);
-
-            settingsDialog.pack();
-            settingsDialog.setLocationRelativeTo(this);
+            // Create and show the new settings dialog
+            settingsDialog = new SettingsDialog(this, configManager, outlookClient);
+            
+            // Clean up the reference when closed
             settingsDialog.addWindowListener(new WindowAdapter() {
                 @Override
                 public void windowClosing(WindowEvent e) {
@@ -1066,9 +950,7 @@ class OutlookAlerterUI extends JFrame {
                 } catch (UnsupportedOperationException | SecurityException ex) {
                     System.err.println("Unable to request user attention: " + ex.getMessage());
                 }
-            }
 
-            if (System.getProperty("os.name").toLowerCase().contains("mac")) {
                 // Set window always-on-top temporarily to help with focus
                 settingsDialog.setAlwaysOnTop(true)
                 
@@ -1109,7 +991,11 @@ class OutlookAlerterUI extends JFrame {
     /**
      * Stop and restart all schedulers
      */
-    private void restartSchedulers() {
+    /**
+     * Restart all schedulers with the current configuration settings
+     * This method is called by the SettingsDialog when settings are saved
+     */
+    void restartSchedulers() {
         stopSchedulers();
 
         // Reinitialize schedulers to avoid using terminated executors
@@ -1298,9 +1184,11 @@ class OutlookAlerterUI extends JFrame {
             // ensure the HTTP client is updated
             if (tokens != null && outlookClient != null) {
                 if (tokens.containsKey("ignoreCertValidation")) {
-                    boolean ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
+                    // Parse the string value explicitly by comparing to "true"
+                    boolean ignoreCertValidation = "true".equalsIgnoreCase(tokens.ignoreCertValidation)
                     println "UI mode: Certificate validation from dialog: " + 
-                           (ignoreCertValidation ? "disabled" : "enabled")
+                           (ignoreCertValidation ? "disabled" : "enabled") + 
+                           " (Raw value: '" + tokens.ignoreCertValidation + "')"
                     outlookClient.updateCertificateValidation(ignoreCertValidation)
                 } else {
                     println "UI mode: No certificate validation setting in tokens, updating HTTP client anyway"

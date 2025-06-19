@@ -34,7 +34,8 @@ class ConfigManager {
     // Application-specific properties
     private String preferredTimezone
     private int alertMinutes = 1 // Default to 1 minute
-    private boolean ignoreCertValidation = false // Default to validating certificates
+    private boolean defaultIgnoreCertValidation = false; // Default to validating certificates
+    private boolean ignoreCertValidation; // Actual property used in the application for certificate validation
     private String flashColor = "#800000" // Default dark red
     private String flashTextColor = "#ffffff" // Default white text
     private double flashOpacity = 1.0d // Default 100%
@@ -103,6 +104,7 @@ class ConfigManager {
         // Application-specific properties
         properties.setProperty("preferredTimezone", "")
         properties.setProperty("alertMinutes", "1")
+        properties.setProperty("defaultIgnoreCertValidation", "false")
         properties.setProperty("ignoreCertValidation", "false")
         properties.setProperty("flashColor", "#800000")
         properties.setProperty("flashTextColor", "#ffffff")
@@ -160,6 +162,7 @@ class ConfigManager {
         // Application-specific properties
         preferredTimezone = properties.getProperty("preferredTimezone")
         alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"))
+        defaultIgnoreCertValidation = Boolean.parseBoolean(properties.getProperty("defaultIgnoreCertValidation", "false"))
         ignoreCertValidation = Boolean.parseBoolean(properties.getProperty("ignoreCertValidation", "false"))
         flashColor = properties.getProperty("flashColor", "#800000")
         flashTextColor = properties.getProperty("flashTextColor", "#ffffff")
@@ -189,6 +192,7 @@ class ConfigManager {
             // Application-specific properties
             properties.setProperty("preferredTimezone", preferredTimezone ?: "")
             properties.setProperty("alertMinutes", String.valueOf(alertMinutes))
+            properties.setProperty("defaultIgnoreCertValidation", String.valueOf(defaultIgnoreCertValidation))
             properties.setProperty("ignoreCertValidation", String.valueOf(ignoreCertValidation))
             properties.setProperty("flashColor", flashColor ?: "#800000")
             properties.setProperty("flashTextColor", flashTextColor ?: "#ffffff")
@@ -215,9 +219,12 @@ class ConfigManager {
     /**
      * Updates OAuth tokens and saves the configuration
      */
-    void updateTokens(String accessToken, String refreshToken) {
+    void updateTokens(String accessToken, String refreshToken, boolean ignoreCertValidation) {
         this.accessToken = accessToken
         this.refreshToken = refreshToken
+        this.ignoreCertValidation = ignoreCertValidation
+        // Note: We don't update defaultIgnoreCertValidation here anymore - it should be 
+        // handled by the dedicated updateDefaultIgnoreCertValidation method
         saveConfiguration()
     }
     
@@ -240,7 +247,9 @@ class ConfigManager {
     // Application-specific getters
     String getPreferredTimezone() { return preferredTimezone }
     int getAlertMinutes() { return alertMinutes }
+    boolean getDefaultIgnoreCertValidation() { return defaultIgnoreCertValidation }
     boolean getIgnoreCertValidation() { return ignoreCertValidation }
+
     String getFlashColor() { return flashColor }
     String getFlashTextColor() { return flashTextColor }
     double getFlashOpacity() { return flashOpacity }
@@ -263,14 +272,22 @@ class ConfigManager {
     }
 
     /**
-     * Updates the certificate validation setting
+     * Updates the default certificate validation setting
      */
+    void updateDefaultIgnoreCertValidation(boolean ignore) {
+        this.defaultIgnoreCertValidation = ignore
+        saveConfiguration()
+    }
+
+    /**
+     * Updates the actual ignore certificate validation setting
+     */    
     void updateIgnoreCertValidation(boolean ignore) {
         this.ignoreCertValidation = ignore
         saveConfiguration()
     }
-    
-    /**
+
+    /**t
      * Updates the sign-in URL setting
      */
     void updateSignInUrl(String url) {
@@ -308,5 +325,5 @@ class ConfigManager {
     void updateResyncIntervalMinutes(int minutes) {
         this.resyncIntervalMinutes = minutes;
         saveConfiguration();
-    }
+    }        
 }

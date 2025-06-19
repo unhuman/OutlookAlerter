@@ -43,7 +43,7 @@ class OutlookAlerterConsole {
         this.configManager.loadConfiguration()
         
         // Load certificate validation setting from config
-        boolean ignoreCertValidation = this.configManager.ignoreCertValidation
+        boolean ignoreCertValidation = this.configManager.getDefaultIgnoreCertValidation()
         println "Loaded certificate validation setting: " + (ignoreCertValidation ? "disabled" : "enabled")
         
         this.outlookClient = new OutlookClient(configManager)
