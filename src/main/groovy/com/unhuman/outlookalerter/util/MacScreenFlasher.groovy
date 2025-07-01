@@ -28,7 +28,7 @@ class MacScreenFlasher implements ScreenFlasher {
     private static final int FLASH_INTERVAL_MS = 400
     
     // Track active flash frames for cleanup
-    private final List<JFrame> activeFlashFrames = Collections.synchronizedList([])
+    private final List<JFrame> activeFlashFrames = Collections.synchronizedList(new ArrayList<JFrame>())
     
     /**
      * Constructor

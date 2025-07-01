@@ -240,14 +240,14 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 String title = "MEETINGS STARTING SOON";
                 java.awt.FontMetrics fmTitle = g2d.getFontMetrics();
                 int y = (int) (height / 4);
-                g2d.drawString(title, (width - fmTitle.stringWidth(title)) / 2, y);
+                g2d.drawString(title, ((width - fmTitle.stringWidth(title)) / 2).toInteger(), y);
                 g2d.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 32));
                 y += fmTitle.getHeight() + 20;
                 for (CalendarEvent event : events) {
                     String subject = event.getSubject();
                     if (subject.length() > 60) subject = subject.substring(0, 57) + "...";
                     String line = subject + " — starts in " + event.getMinutesToStart() + " min";
-                    g2d.drawString(line, (width - g2d.getFontMetrics().stringWidth(line)) / 2, y);
+                    g2d.drawString(line, ((width - g2d.getFontMetrics().stringWidth(line)) / 2).toInteger(), y);
                     y += g2d.getFontMetrics().getHeight() + 10;
                 }
             } finally {

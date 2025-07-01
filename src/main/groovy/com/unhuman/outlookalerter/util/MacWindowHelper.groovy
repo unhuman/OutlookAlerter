@@ -42,7 +42,7 @@ class MacWindowHelper {
     static final int NSWindowCollectionBehaviorFullScreenAllowsTiling = (1 << 11)
     static final int NSWindowCollectionBehaviorFullScreenDisallowsTiling = (1 << 12)
 
-    interface FoundationLib extends Library {
+    static interface FoundationLib extends Library {
         FoundationLib INSTANCE = Native.load("Foundation", FoundationLib.class)
         Pointer objc_getClass(String className)
         Pointer sel_registerName(String selectorName)

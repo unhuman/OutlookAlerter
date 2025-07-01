@@ -854,8 +854,17 @@ class OutlookAlerterUI extends JFrame {
             SwingUtilities.invokeLater({
                 statusLabel.setText("Status: Alerting for ${eventsToAlert.size()} event(s)")
             } as Runnable)
-            // Flash the screen for all events at once
-            screenFlasher.flashMultiple(eventsToAlert)
+            // Flash the screen for all events at once, but do it off the EDT to avoid UI freeze
+            new Thread({
+                try {
+                    System.out.println("ScreenFlasher: Starting flashMultiple for ${eventsToAlert.size()} events")
+                    screenFlasher.flashMultiple(eventsToAlert)
+                    System.out.println("ScreenFlasher: Finished flashMultiple")
+                } catch (Exception ex) {
+                    System.err.println("ScreenFlasher: Exception during flashMultiple: " + ex.getMessage())
+                    ex.printStackTrace()
+                }
+            }, "ScreenFlasherThread").start()
             // Show system tray notification if available (optional: keep per-event or aggregate)
             for (CalendarEvent event : eventsToAlert) {
                 alertedEventIds.add(event.id)
