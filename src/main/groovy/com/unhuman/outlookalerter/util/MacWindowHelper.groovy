@@ -79,6 +79,72 @@ class MacWindowHelper {
             System.err.println("Failed to set window level: " + e.getMessage())
         }
     }
+    
+    /**
+     * Enhanced method to set additional macOS window properties to maximize visibility
+     * @param windowHandle The native window handle
+     * @param level The window level to set
+     */
+    static void setEnhancedWindowProperties(long windowHandle, int level) {
+        if (!Platform.isMac()) return
+
+        try {
+            System.out.println("Setting enhanced window properties with level: " + level)
+            FoundationLib foundation = FoundationLib.INSTANCE
+            Pointer windowPtr = new Pointer(windowHandle)
+            
+            // 1. Set window level - this determines z-ordering
+            Pointer setLevelSelector = foundation.sel_registerName("setLevel:")
+            foundation.objc_msgSend(windowPtr, setLevelSelector, level)
+            
+            // 2. Prevent window from being hidden when app is deactivated
+            Pointer setHidesOnDeactivateSelector = foundation.sel_registerName("setHidesOnDeactivate:")
+            foundation.objc_msgSend(windowPtr, setHidesOnDeactivateSelector, 0) // 0 = NO
+            
+            // 3. Set to ignore mouse events (to prevent accidental dismissal)
+            Pointer setIgnoresMouseEventsSelector = foundation.sel_registerName("setIgnoresMouseEvents:")
+            foundation.objc_msgSend(windowPtr, setIgnoresMouseEventsSelector, 1) // 1 = YES
+            
+            // 4. Set collection behavior to be visible on all spaces and over full screen apps
+            Pointer setCollectionBehaviorSelector = foundation.sel_registerName("setCollectionBehavior:")
+            int behavior = NSWindowCollectionBehaviorCanJoinAllSpaces | 
+                           NSWindowCollectionBehaviorFullScreenAuxiliary |
+                           NSWindowCollectionBehaviorStationary |
+                           NSWindowCollectionBehaviorIgnoresCycle
+            foundation.objc_msgSend(windowPtr, setCollectionBehaviorSelector, behavior)
+            
+            // 5. Prevent window from auto-hiding
+            Pointer setCanHideSelector = foundation.sel_registerName("setCanHide:")
+            foundation.objc_msgSend(windowPtr, setCanHideSelector, 0) // 0 = NO
+            
+            // 6. Make window float above other windows
+            Pointer setFloatingSelector = foundation.sel_registerName("setFloatingPanel:")
+            foundation.objc_msgSend(windowPtr, setFloatingSelector, 1) // 1 = YES
+            
+            // 7. Set window opacity (if not already set)
+            Pointer setOpacitySelector = foundation.sel_registerName("setAlphaValue:")
+            foundation.objc_msgSend(windowPtr, setOpacitySelector, 0.95f)
+            
+            // 8. Make window non-activating (won't steal focus)
+            // but still visible
+            Pointer setStyleMaskSelector = foundation.sel_registerName("setStyleMask:")
+            int styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+            foundation.objc_msgSend(windowPtr, setStyleMaskSelector, styleMask)
+            
+            // 9. Bring window to front regardless of key status
+            Pointer orderFrontSelector = foundation.sel_registerName("orderFrontRegardless")
+            foundation.objc_msgSend(windowPtr, orderFrontSelector)
+            
+            // 10. Make the window one that can't be minimized
+            Pointer setCanMinimizeSelector = foundation.sel_registerName("setCanBecomeVisibleWithoutLogin:")
+            foundation.objc_msgSend(windowPtr, setCanMinimizeSelector, 1) // 1 = YES
+            
+            System.out.println("Successfully set enhanced window properties")
+        } catch (Exception e) {
+            System.err.println("Failed to set enhanced window properties: " + e.getMessage())
+            e.printStackTrace()
+        }
+    }
 
     /**
      * Returns the maximum window level value on macOS

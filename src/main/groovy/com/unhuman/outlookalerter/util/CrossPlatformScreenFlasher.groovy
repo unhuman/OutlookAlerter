@@ -18,8 +18,29 @@ import com.unhuman.outlookalerter.core.ConfigManager
 class CrossPlatformScreenFlasher implements ScreenFlasher {
     // Flash settings
     private static final int FLASH_COUNT = 3
-    private static final int FLASH_DURATION_MS = 500
     private static final int FLASH_INTERVAL_MS = 200
+    
+    // Configurable flash duration, will be set from ConfigManager
+    private int flashDurationMs = 5000 // Default 5 seconds
+    
+    /**
+     * Constructor that initializes the flash duration from ConfigManager
+     */
+    CrossPlatformScreenFlasher() {
+        try {
+            // Try to get ConfigManager instance
+            ConfigManager configManager = ConfigManager.getInstance()
+            if (configManager != null) {
+                // Convert seconds to milliseconds
+                flashDurationMs = configManager.getFlashDurationSeconds() * 1000
+                System.out.println("Screen flasher initialized with duration: " + 
+                                 configManager.getFlashDurationSeconds() + " seconds")
+            }
+        } catch (Exception e) {
+            System.err.println("Error initializing flash duration from config: " + e.getMessage())
+            // Use default duration if there's an error
+        }
+    }
     
     @Override
     void flash(CalendarEvent event) {
@@ -50,31 +71,67 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
             // Start flashing in a separate thread
             Thread flashThread = new Thread({
                 try {
-                    // Flash multiple times
-                    for (int i = 0; i < FLASH_COUNT; i++) {
-                        // Show flash
-                        SwingUtilities.invokeAndWait({
-                            flashWindows.each { window -> window.setVisible(true) }
-                        } as Runnable)
-                        
-                        // Wait for duration
-                        Thread.sleep(FLASH_DURATION_MS)
-                        
-                        // Hide flash
-                        SwingUtilities.invokeAndWait({
-                            flashWindows.each { window -> window.setVisible(false) }
-                        } as Runnable)
-                        
-                        // Wait for interval if not the last flash
-                        if (i < FLASH_COUNT - 1) {
-                            Thread.sleep(FLASH_INTERVAL_MS)
-                        }
-                    }
+                    // Record start time for proper duration tracking
+                    long startTimeMs = System.currentTimeMillis()
+                    println "Cross-platform flash starting at: ${startTimeMs}, configured duration: ${flashDurationMs} ms"
                     
-                    // Dispose all windows
+                    // Show flash windows
+                    SwingUtilities.invokeAndWait({
+                        flashWindows.each { window -> 
+                            window.setAlwaysOnTop(true)
+                            window.setVisible(true)
+                            window.toFront()
+                        }
+                    } as Runnable)
+                    
+                    // Create a timer to keep windows visible
+                    javax.swing.Timer keepAliveTimer = new javax.swing.Timer(200, { e ->
+                        SwingUtilities.invokeLater({
+                            flashWindows.each { window ->
+                                if (window.isDisplayable() && !window.isVisible()) {
+                                    window.setVisible(true)
+                                    window.toFront()
+                                }
+                            }
+                        } as Runnable)
+                    })
+                    keepAliveTimer.setRepeats(true)
+                    keepAliveTimer.start()
+                    
+                    // Create color animation timer
+                    javax.swing.Timer colorTimer = new javax.swing.Timer(500, { e ->
+                        SwingUtilities.invokeLater({
+                            flashWindows.each { window ->
+                                if (window.isDisplayable()) {
+                                    Color currentColor = window.getContentPane().getBackground()
+                                    if (currentColor == Color.RED) {
+                                        window.getContentPane().setBackground(Color.ORANGE)
+                                    } else {
+                                        window.getContentPane().setBackground(Color.RED)
+                                    }
+                                    window.repaint()
+                                }
+                            }
+                        } as Runnable)
+                    })
+                    colorTimer.setRepeats(true)
+                    colorTimer.start()
+                    
+                    // Wait exactly for the configured duration
+                    Thread.sleep(flashDurationMs)
+                    
+                    // Stop timers
+                    keepAliveTimer.stop()
+                    colorTimer.stop()
+                    
+                    // Dispose all windows after exact duration
                     SwingUtilities.invokeAndWait({
                         flashWindows.each { window -> window.dispose() }
                     } as Runnable)
+                    
+                    long endTimeMs = System.currentTimeMillis()
+                    println "Flash completed after ${(endTimeMs - startTimeMs)/1000.0} seconds"
+                    
                 } catch (Exception e) {
                     System.err.println("Error during screen flash: ${e.message}")
                 }
@@ -105,15 +162,65 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
             }
             Thread flashThread = new Thread({
                 try {
-                    for (int i = 0; i < FLASH_COUNT; i++) {
-                        SwingUtilities.invokeAndWait({ flashWindows.each { it.setVisible(true) } } as Runnable);
-                        Thread.sleep(FLASH_DURATION_MS);
-                        SwingUtilities.invokeAndWait({ flashWindows.each { it.setVisible(false) } } as Runnable);
-                        if (i < FLASH_COUNT - 1) {
-                            Thread.sleep(FLASH_INTERVAL_MS);
-                        }
-                    }
+                    // Record start time for proper duration tracking
+                    long startTimeMs = System.currentTimeMillis()
+                    println "Cross-platform flash (multiple) starting at: ${startTimeMs}, configured duration: ${flashDurationMs} ms"
+                    
+                    // Show all flash windows
+                    SwingUtilities.invokeAndWait({ 
+                        flashWindows.each { window -> 
+                            window.setAlwaysOnTop(true)
+                            window.setVisible(true)
+                            window.toFront()
+                        } 
+                    } as Runnable);
+                    
+                    // Create a timer to keep windows visible
+                    javax.swing.Timer keepAliveTimer = new javax.swing.Timer(200, { e ->
+                        SwingUtilities.invokeLater({
+                            flashWindows.each { window ->
+                                if (window.isDisplayable() && !window.isVisible()) {
+                                    window.setVisible(true)
+                                    window.toFront()
+                                }
+                            }
+                        } as Runnable)
+                    })
+                    keepAliveTimer.setRepeats(true)
+                    keepAliveTimer.start()
+                    
+                    // Create color animation timer
+                    javax.swing.Timer colorTimer = new javax.swing.Timer(500, { e ->
+                        SwingUtilities.invokeLater({
+                            flashWindows.each { window ->
+                                if (window.isDisplayable()) {
+                                    Color currentColor = window.getContentPane().getBackground()
+                                    if (currentColor == Color.RED) {
+                                        window.getContentPane().setBackground(Color.ORANGE)
+                                    } else {
+                                        window.getContentPane().setBackground(Color.RED)
+                                    }
+                                    window.repaint()
+                                }
+                            }
+                        } as Runnable)
+                    })
+                    colorTimer.setRepeats(true)
+                    colorTimer.start()
+                    
+                    // Wait exactly for the configured duration
+                    Thread.sleep(flashDurationMs);
+                    
+                    // Stop timers
+                    keepAliveTimer.stop()
+                    colorTimer.stop()
+                    
+                    // Dispose all windows after exact duration
                     SwingUtilities.invokeAndWait({ flashWindows.each { it.dispose() } } as Runnable);
+                    
+                    long endTimeMs = System.currentTimeMillis()
+                    println "Flash (multiple) completed after ${(endTimeMs - startTimeMs)/1000.0} seconds"
+                    
                 } catch (Exception e) {
                     System.err.println("Error during screen flash: ${e.message}");
                 }

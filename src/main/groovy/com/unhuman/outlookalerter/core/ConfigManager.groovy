@@ -39,6 +39,7 @@ class ConfigManager {
     private String flashColor = "#800000" // Default dark red
     private String flashTextColor = "#ffffff" // Default white text
     private double flashOpacity = 1.0d // Default 100%
+    private int flashDurationSeconds = 5 // Default to 5 seconds
     private int resyncIntervalMinutes = 240; // Default to 4 hours
 
     // SSO related properties
@@ -109,6 +110,7 @@ class ConfigManager {
         properties.setProperty("flashColor", "#800000")
         properties.setProperty("flashTextColor", "#ffffff")
         properties.setProperty("flashOpacity", "1.0")
+        properties.setProperty("flashDurationSeconds", "5")
         
         // Save to file
         try {
@@ -167,6 +169,7 @@ class ConfigManager {
         flashColor = properties.getProperty("flashColor", "#800000")
         flashTextColor = properties.getProperty("flashTextColor", "#ffffff")
         flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"))
+        flashDurationSeconds = Integer.parseInt(properties.getProperty("flashDurationSeconds", "5"))
         resyncIntervalMinutes = Integer.parseInt(properties.getProperty("resyncIntervalMinutes", "240"))
         
         accessToken = properties.getProperty("accessToken")
@@ -197,6 +200,7 @@ class ConfigManager {
             properties.setProperty("flashColor", flashColor ?: "#800000")
             properties.setProperty("flashTextColor", flashTextColor ?: "#ffffff")
             properties.setProperty("flashOpacity", String.valueOf(flashOpacity))
+            properties.setProperty("flashDurationSeconds", String.valueOf(flashDurationSeconds))
             properties.setProperty("resyncIntervalMinutes", String.valueOf(resyncIntervalMinutes))
             
             if (accessToken) {
@@ -253,6 +257,7 @@ class ConfigManager {
     String getFlashColor() { return flashColor }
     String getFlashTextColor() { return flashTextColor }
     double getFlashOpacity() { return flashOpacity }
+    int getFlashDurationSeconds() { return flashDurationSeconds }
     int getResyncIntervalMinutes() { return resyncIntervalMinutes; }
     
     /**
@@ -287,7 +292,15 @@ class ConfigManager {
         saveConfiguration()
     }
 
-    /**t
+    /**
+     * Updates the flash duration setting
+     */
+    void updateFlashDurationSeconds(int seconds) {
+        this.flashDurationSeconds = seconds
+        saveConfiguration()
+    }
+    
+    /**
      * Updates the sign-in URL setting
      */
     void updateSignInUrl(String url) {

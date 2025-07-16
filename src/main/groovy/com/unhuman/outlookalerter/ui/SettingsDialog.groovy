@@ -25,6 +25,7 @@ class SettingsDialog extends JDialog {
     private JTextField timezoneField
     private JSpinner alertMinutesSpinner
     private JSpinner resyncIntervalSpinner
+    private JSpinner flashDurationSpinner
     private JTextField signInUrlField
     private JCheckBox defaultIgnoreCertValidationCheckbox
 
@@ -102,25 +103,41 @@ class SettingsDialog extends JDialog {
         gbc.gridy = 2
         formPanel.add(resyncIntervalSpinner, gbc)
         
-        // Sign-in URL setting
+        // Flash duration setting
         gbc.gridx = 0
         gbc.gridy = 3
+        formPanel.add(new JLabel("Screen Flash Duration (seconds):"), gbc)
+        
+        SpinnerNumberModel flashDurationModel = new SpinnerNumberModel(
+            configManager.getFlashDurationSeconds(),  // initial value
+            1,                                       // min
+            30,                                      // max (30 seconds)
+            1                                        // step
+        )
+        flashDurationSpinner = new JSpinner(flashDurationModel)
+        gbc.gridx = 1
+        gbc.gridy = 3
+        formPanel.add(flashDurationSpinner, gbc)
+        
+        // Sign-in URL setting
+        gbc.gridx = 0
+        gbc.gridy = 4
         formPanel.add(new JLabel("Sign-in URL:"), gbc)
         
         signInUrlField = new JTextField(configManager.getSignInUrl() ?: "", 20)
         gbc.gridx = 1
-        gbc.gridy = 3
+        gbc.gridy = 4
         formPanel.add(signInUrlField, gbc)
         
         // Default Ignore SSL certificate validation setting
         gbc.gridx = 0
-        gbc.gridy = 4
+        gbc.gridy = 5
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc)
         
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation())
         // No longer update immediately when checkbox changes
         gbc.gridx = 1
-        gbc.gridy = 4
+        gbc.gridy = 5
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc)
         
         // Button panel
@@ -184,6 +201,10 @@ class SettingsDialog extends JDialog {
             // Save resync interval
             int resyncInterval = (Integer)resyncIntervalSpinner.getValue()
             configManager.updateResyncIntervalMinutes(resyncInterval)
+            
+            // Save flash duration
+            int flashDuration = (Integer)flashDurationSpinner.getValue()
+            configManager.updateFlashDurationSeconds(flashDuration)
             
             // Save the SSL certificate validation setting
             boolean defaultIgnoreCertVal = defaultIgnoreCertValidationCheckbox.isSelected()

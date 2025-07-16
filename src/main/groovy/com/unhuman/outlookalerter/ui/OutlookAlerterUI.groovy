@@ -36,7 +36,7 @@ class OutlookAlerterUI extends JFrame {
     // Components
     private final ConfigManager configManager
     private final OutlookClient outlookClient
-    private final ScreenFlasher screenFlasher
+    private ScreenFlasher screenFlasher
     
     // UI Components
     private JTextArea eventsTextArea
@@ -1010,7 +1010,10 @@ class OutlookAlerterUI extends JFrame {
         // Reinitialize schedulers to avoid using terminated executors
         alertScheduler = Executors.newScheduledThreadPool(1);
         calendarScheduler = Executors.newScheduledThreadPool(1);
-
+        
+        // Recreate the screen flasher to pick up new configuration
+        screenFlasher = ScreenFlasherFactory.createScreenFlasher();
+        
         startSchedulers();
     }
 
