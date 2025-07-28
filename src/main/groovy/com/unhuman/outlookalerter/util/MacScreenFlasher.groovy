@@ -37,6 +37,12 @@ class MacScreenFlasher implements ScreenFlasher {
     // Track active flash frames for cleanup
     private final List<JFrame> activeFlashFrames = Collections.synchronizedList(new ArrayList<JFrame>())
     
+    // Track countdown timers for each flash window
+    private final Map<JFrame, Timer> countdownTimers = Collections.synchronizedMap(new HashMap<JFrame, Timer>())
+    
+    // Track labels for each frame for countdown updates
+    private final Map<JFrame, JLabel> countdownLabels = Collections.synchronizedMap(new HashMap<JFrame, JLabel>())
+    
     /**
      * Constructor
      */
@@ -69,6 +75,19 @@ class MacScreenFlasher implements ScreenFlasher {
      */
     private void cleanup() {
         System.out.println("MacScreenFlasher: Cleaning up " + activeFlashFrames.size() + " flash frames")
+        
+        // Stop all countdown timers
+        synchronized(countdownTimers) {
+            countdownTimers.each { frame, timer ->
+                try {
+                    timer.stop()
+                    System.out.println("Stopped countdown timer for frame: " + frame)
+                } catch (Exception e) {
+                    System.err.println("Error stopping countdown timer: " + e.getMessage())
+                }
+            }
+            countdownTimers.clear()
+        }
         
         synchronized(activeFlashFrames) {
             // Make a copy of the frames to avoid concurrent modification issues
@@ -267,6 +286,62 @@ class MacScreenFlasher implements ScreenFlasher {
         });
     }
     
+    /**
+     * Creates and starts a countdown timer for a flash frame
+     * @param frame The flash frame to create a countdown for
+     * @param label The label containing the countdown text
+     * @param startTimeMs The time when the flash started
+     */
+    private void startCountdownTimer(JFrame frame, JLabel label, long startTimeMs) {
+        // Calculate initial seconds remaining
+        int totalDurationSeconds = (int)(flashDurationMs / 1000);
+        final int[] secondsRemaining = [totalDurationSeconds];
+        
+        // Create a timer that fires every second
+        Timer countdownTimer = new Timer(1000, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Decrement seconds
+                secondsRemaining[0]--;
+                
+                // Update the label text
+                if (secondsRemaining[0] >= 0) {
+                    try {
+                        // Get the current label content
+                        String labelText = label.getText();
+                        
+                        // Update only the countdown part
+                        String newLabelText = labelText.replaceFirst(
+                            "This alert will close in \\d+ seconds", 
+                            "This alert will close in " + secondsRemaining[0] + " seconds"
+                        );
+                        
+                        // Set the updated text
+                        label.setText(newLabelText);
+                    } catch (Exception ex) {
+                        System.err.println("Error updating countdown: " + ex.getMessage());
+                    }
+                }
+                
+                // Stop when reaching zero
+                if (secondsRemaining[0] <= 0) {
+                    ((Timer)e.getSource()).stop();
+                }
+            }
+        });
+        
+        // Start the timer
+        countdownTimer.setRepeats(true);
+        countdownTimer.start();
+        
+        // Store the timer for cleanup
+        synchronized(countdownTimers) {
+            countdownTimers.put(frame, countdownTimer);
+        }
+        
+        System.out.println("Started countdown timer for frame: " + frame);
+    }
+    
     private void flashScreenCrossPlatform(CalendarEvent event) {
         GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment()
         GraphicsDevice[] screens = ge.getScreenDevices()
@@ -379,7 +454,7 @@ class MacScreenFlasher implements ScreenFlasher {
                     "<h2 style='color: " + textColorHex + "; font-size: 48px; margin-bottom: 20px'>" + event.subject + "</h2>" +
                     "<p style='color: " + textColorHex + "; font-size: 36px; margin-bottom: 40px'>Starting in " + 
                     (event.getMinutesToStart() + 1) + " minute(s)</p>" +
-                    "<p></p><p></p><p style='color: " + textColorHex + "; font-size: 12px'>This alert will remain visible for " + 
+                    "<p></p><p></p><p id='countdownText' style='color: " + textColorHex + "; font-size: 12px'>This alert will close in " + 
                     (flashDurationMs / 1000) + " seconds</p>" +
                     "</center></html>"
             }
@@ -393,6 +468,9 @@ class MacScreenFlasher implements ScreenFlasher {
             
             // Add the label to the panel
             customPanel.add(label, gbc)
+            
+            // Store the label in the map for access in the countdown timer
+            countdownLabels.put(frame, label)
             
             // Ensure all components have the right background
             frame.getRootPane().setOpaque(true)
@@ -447,6 +525,13 @@ class MacScreenFlasher implements ScreenFlasher {
         // Record the start time of the flash
         long startTimeMs = System.currentTimeMillis()
         println "Flash starting at: ${startTimeMs} ms, configured duration: ${flashDurationMs} ms"
+        
+        // Get the countdown label from the map
+        JLabel countdownLabel = countdownLabels.get(flashFrame)
+        if (countdownLabel != null) {
+            // Start the countdown timer
+            startCountdownTimer(flashFrame, countdownLabel, startTimeMs)
+        }
         
         // Create a countdown latch that will be released when the duration is complete
         final CountDownLatch durationLatch = new CountDownLatch(1)
@@ -728,6 +813,8 @@ class MacScreenFlasher implements ScreenFlasher {
             stringBuilder.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>")
         }
         stringBuilder.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (events[0].getMinutesToStart() + 1) + " minute(s)</p>")
+        stringBuilder.append("<p></p><p id='countdownText' style='color: " + textColorHex + "; font-size: 12px'>This alert will close in " + 
+                    (flashDurationMs / 1000) + " seconds</p>")
         stringBuilder.append("</center></html>")
         
         def combinedEvent = new CalendarEvent(

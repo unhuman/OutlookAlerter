@@ -38,6 +38,12 @@ class WindowsScreenFlasher implements ScreenFlasher {
     private int flashCount = DEFAULT_FLASH_COUNT
     private int flashIntervalMs = DEFAULT_FLASH_INTERVAL_MS
     
+    // Map to store countdown timers for each frame
+    private final Map<JFrame, Timer> countdownTimers = new HashMap<>()
+    
+    // Map to store labels for each frame for countdown updates
+    private final Map<JFrame, JLabel> countdownLabels = new HashMap<>()
+    
     /**
      * Constructor
      */
@@ -201,12 +207,17 @@ class WindowsScreenFlasher implements ScreenFlasher {
                         "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
                         "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
                         "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (event.getMinutesToStart() + 1) + " minute(s)</p>" +
+                        "<p></p><p id='countdownText' style='color: " + textColorHex + "; font-size: 18px'>This alert will close in " + 
+                        (flashDurationMs / 1000) + " seconds</p>" +
                         "</center></html>", SwingConstants.CENTER)
                 label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 36))
                 label.setForeground(textColor)
                 label.setBackground(alertColor)
                 label.setOpaque(true)
                 frame.add(label, gbc)
+                
+                // Store the label in the map for access by timer
+                countdownLabels.put(frame, label)
             } catch (Exception e) {
                 System.err.println("Error creating JLabel for flash overlay: " + e.getMessage())
                 e.printStackTrace()
@@ -226,6 +237,13 @@ class WindowsScreenFlasher implements ScreenFlasher {
         // Record the start time of the flash
         long startTimeMs = System.currentTimeMillis()
         println "Windows Flash starting at: ${startTimeMs} ms, configured duration: ${flashDurationMs} ms"
+        
+        // Get the countdown label from the map
+        JLabel countdownLabel = countdownLabels.get(frame)
+        if (countdownLabel != null) {
+            // Start the countdown timer
+            startCountdownTimer(frame, countdownLabel, startTimeMs)
+        }
         
         // CRITICAL: Ensure the window is visible and on top initially
         frame.setVisible(true)
@@ -314,6 +332,13 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 // Dispose the window after duration
                 SwingUtilities.invokeAndWait({
                     try {
+                        // Stop and remove the countdown timer
+                        Timer timer = countdownTimers.get(frame)
+                        if (timer != null) {
+                            timer.stop()
+                            countdownTimers.remove(frame)
+                        }
+                        
                         if (frame.isDisplayable()) {
                             frame.dispose()
                         }
@@ -330,6 +355,13 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 // Safety cleanup
                 try {
                     SwingUtilities.invokeAndWait({
+                        // Stop and remove the countdown timer
+                        Timer timer = countdownTimers.get(frame)
+                        if (timer != null) {
+                            timer.stop()
+                            countdownTimers.remove(frame)
+                        }
+                        
                         if (frame.isDisplayable()) {
                             frame.dispose()
                         }
@@ -348,6 +380,13 @@ class WindowsScreenFlasher implements ScreenFlasher {
         Timer safetyTimer = new Timer(flashDurationMs + 5000, { safetyEvent ->
             SwingUtilities.invokeLater {
                 try {
+                    // Stop and remove the countdown timer
+                    Timer timer = countdownTimers.get(frame)
+                    if (timer != null) {
+                        timer.stop()
+                        countdownTimers.remove(frame)
+                    }
+                    
                     if (frame.isDisplayable()) {
                         frame.dispose()
                         println "Safety timer triggered cleanup after ${(System.currentTimeMillis() - startTimeMs)/1000.0} seconds"
@@ -360,6 +399,73 @@ class WindowsScreenFlasher implements ScreenFlasher {
         })
         safetyTimer.setRepeats(false)
         safetyTimer.start()
+        
+        // The countdown timer is already started through the countdownLabel retrieved earlier
+    }
+    
+    /**
+     * Starts a countdown timer that updates the label with remaining seconds
+     * @param frame The JFrame containing the label
+     * @param label The JLabel to update with countdown
+     * @param startTimeMs The time when the flash started
+     */
+    private void startCountdownTimer(JFrame frame, JLabel label, long startTimeMs) {
+        // Calculate initial seconds remaining
+        int totalSeconds = (int)(flashDurationMs / 1000)
+        int secondsRemaining = totalSeconds
+        
+        // Create a timer that fires every second
+        Timer timer = new Timer(1000, { actionEvent ->
+            // Calculate remaining time
+            long elapsedMs = System.currentTimeMillis() - startTimeMs
+            secondsRemaining = totalSeconds - (int)(elapsedMs / 1000)
+            
+            if (secondsRemaining <= 0) {
+                // Stop the timer when countdown reaches zero
+                Timer t = (Timer)actionEvent.getSource()
+                t.stop()
+                
+                // Remove from the map
+                countdownTimers.remove(frame)
+                return
+            }
+            
+            // Update the label HTML
+            SwingUtilities.invokeLater {
+                try {
+                    if (frame.isDisplayable() && label != null) {
+                        // Use regular expression to replace the countdown text
+                        String text = label.getText()
+                        // Check if it's the multiple events version or single event version
+                        if (text.contains("This alert will close in")) {
+                            String newText = text.replaceFirst(
+                                "This alert will close in \\d+ seconds", 
+                                "This alert will close in " + secondsRemaining + " seconds"
+                            )
+                            label.setText(newText)
+                        } else if (text.contains("<p id='countdownText'")) {
+                            String newText = text.replaceFirst(
+                                "<p id='countdownText' style='color: [^>]+>This alert will close in \\d+ seconds</p>",
+                                "<p id='countdownText' style='color: " + 
+                                text.find("(style='color: [^;]+;)") + " font-size: 18px'>This alert will close in " + 
+                                secondsRemaining + " seconds</p>"
+                            )
+                            label.setText(newText)
+                        }
+                    }
+                } catch (Exception e) {
+                    println "Error updating countdown: ${e.message}"
+                }
+            }
+        })
+        
+        timer.setRepeats(true)
+        timer.start()
+        
+        // Store the timer in the map
+        countdownTimers.put(frame, timer)
+        
+        println "Started countdown timer for flash window"
     }
     
     /**
@@ -407,6 +513,10 @@ class WindowsScreenFlasher implements ScreenFlasher {
                     html.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>").append(event.subject).append("</h2>");
                     html.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in ").append(event.getMinutesToStart() + 1).append(" minute(s)</p>");
                 }
+                // Add countdown text for multiple events
+                html.append("<p></p><p id='countdownText' style='color: " + textColorHex + 
+                            "; font-size: 18px'>This alert will close in " + 
+                            (flashDurationMs / 1000) + " seconds</p>");
                 html.append("</center></html>");
                 label = new JLabel(html.toString(), SwingConstants.CENTER);
                 label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 28));
@@ -414,6 +524,9 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 label.setBackground(alertColor);
                 label.setOpaque(true);
                 frame.add(label, gbc);
+                
+                // Store the label in the map for access by timer
+                countdownLabels.put(frame, label);
             } catch (Exception e) {
                 System.err.println("Error creating JLabel for flash overlay (multiple): " + e.getMessage())
                 e.printStackTrace()
