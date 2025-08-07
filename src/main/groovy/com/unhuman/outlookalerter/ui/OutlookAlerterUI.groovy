@@ -22,7 +22,12 @@ import java.util.List
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.io.OutputStream
+import java.io.PrintStream
+import java.io.StringWriter
+import java.io.PrintWriter
 import java.awt.Taskbar;
+import com.unhuman.outlookalerter.util.LogManager;
 
 /**
  * Main application window for Outlook Alerter
@@ -30,6 +35,62 @@ import java.awt.Taskbar;
  */
 @CompileStatic
 class OutlookAlerterUI extends JFrame {
+    // Initialize logging interceptor
+    static {
+        // First store the original streams in LogManager
+        final PrintStream originalOut = System.out
+        final PrintStream originalErr = System.err
+        LogManager.setOriginalOutStream(originalOut)
+        LogManager.setOriginalErrStream(originalErr)
+        
+        // Replace System.out with our intercepting PrintStream
+        System.setOut(new PrintStream(new OutputStream() {
+            private StringBuilder buffer = new StringBuilder()
+            
+            @Override
+            public void write(int b) {
+                // Write to original stream
+                originalOut.write(b)
+                
+                // Add to buffer
+                char c = (char) b
+                buffer.append(c)
+                
+                // Process buffer when we get a newline
+                if (c == '\n') {
+                    String message = buffer.toString().trim()
+                    if (!message.isEmpty()) {
+                        LogManager.getInstance().info(message)
+                    }
+                    buffer.setLength(0)
+                }
+            }
+        }))
+        
+        // Replace System.err with our intercepting PrintStream
+        System.setErr(new PrintStream(new OutputStream() {
+            private StringBuilder buffer = new StringBuilder()
+            
+            @Override
+            public void write(int b) {
+                // Write to original stream
+                originalErr.write(b)
+                
+                // Add to buffer
+                char c = (char) b
+                buffer.append(c)
+                
+                // Process buffer when we get a newline
+                if (c == '\n') {
+                    String message = buffer.toString().trim()
+                    if (!message.isEmpty()) {
+                        LogManager.getInstance().error(message)
+                    }
+                    buffer.setLength(0)
+                }
+            }
+        }))
+    }
     // Time constants
     private static final int POLLING_INTERVAL_SECONDS = 60
     
@@ -65,6 +126,9 @@ class OutlookAlerterUI extends JFrame {
 
     // Track settings dialog instance
     private SettingsDialog settingsDialog = null;
+
+    // Track logs dialog instance
+    private LogViewer logViewer = null;
 
     // Added a flag to track if the token dialog is active
     private boolean isTokenDialogActive = false;
@@ -325,6 +389,15 @@ class OutlookAlerterUI extends JFrame {
             }
         })
         buttonPanel.add(settingsButton)
+        
+        JButton logsButton = new JButton("Logs")
+        logsButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                showLogsDialog()
+            }
+        })
+        buttonPanel.add(logsButton)
         
         JButton exitButton = new JButton("Exit")
         exitButton.addActionListener(new ActionListener() {
@@ -1230,6 +1303,42 @@ class OutlookAlerterUI extends JFrame {
             return null
         } finally {
             isTokenDialogActive = false
+        }
+    }
+    
+    /**
+     * Show the log viewer dialog
+     * Creates a new one if none exists or reuses the existing one
+     */
+    private synchronized void showLogsDialog() {
+        if (logViewer == null || !logViewer.isDisplayable()) {
+            // Create and show the new log viewer dialog
+            logViewer = new LogViewer(this)
+            
+            // Clean up the reference when closed
+            logViewer.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosed(WindowEvent e) {
+                    logViewer = null
+                }
+            })
+            
+            // Display the dialog
+            logViewer.setVisible(true)
+            
+            // Request user attention on macOS
+            if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+                try {
+                    Taskbar taskbar = Taskbar.getTaskbar()
+                    taskbar.requestUserAttention(true, false)
+                } catch (Exception e) {
+                    System.out.println("Could not request user attention: " + e.getMessage())
+                }
+            }
+        } else {
+            // Bring to front if it already exists
+            logViewer.toFront()
+            logViewer.repaint()
         }
     }
 }
