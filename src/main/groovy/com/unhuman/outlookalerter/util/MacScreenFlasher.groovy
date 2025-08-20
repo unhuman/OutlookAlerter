@@ -163,8 +163,15 @@ class MacScreenFlasher implements ScreenFlasher {
 
     @Override
     void flash(CalendarEvent event) {
-        System.out.println("MacScreenFlasher: Flash requested for duration: " + flashDurationMs/1000 + " seconds")
-        
+        flashMultiple([event])
+    }
+
+    @Override
+    void flashMultiple(List<CalendarEvent> events) {
+        if (!events) return
+
+        System.out.println("MacScreenFlasher: Flash requested for " + events.size() + " event(s), duration: " + flashDurationMs/1000 + " seconds")
+
         // Clean up any existing windows first
         forceCleanup()
 
@@ -174,7 +181,7 @@ class MacScreenFlasher implements ScreenFlasher {
         
         List<JFrame> newFrames = []
         for (GraphicsDevice screen : screens) {
-            JFrame frame = createFlashWindowForScreen(screen, event)
+            JFrame frame = createFlashWindowForScreen(screen, events)
             if (frame != null) {
                 newFrames.add(frame)
             }
@@ -244,7 +251,7 @@ class MacScreenFlasher implements ScreenFlasher {
         System.out.println("Cleanup timers started - primary: " + flashDurationMs + "ms, backup: " + (flashDurationMs + 1000) + "ms")
     }
     
-    private JFrame createFlashWindowForScreen(GraphicsDevice screen, CalendarEvent event) {
+    private JFrame createFlashWindowForScreen(GraphicsDevice screen, List<CalendarEvent> events) {
         try {
             // Create frame with proper macOS settings
             JFrame frame = new JFrame("⚠️ Meeting Alert ⚠️", screen.getDefaultConfiguration())
@@ -283,16 +290,29 @@ class MacScreenFlasher implements ScreenFlasher {
             String textColorHex = String.format("#%02x%02x%02x",
                 textColor.getRed(), textColor.getGreen(), textColor.getBlue())
             
-            String labelContent = "<html><center>" +
+            StringBuilder labelContent = new StringBuilder("<html><center>" +
                 "<h1 style='color: " + textColorHex + "; font-size: 64px; margin-bottom: 30px'>⚠️ MEETING ALERT ⚠️</h1>" +
-                "<h2 style='color: " + textColorHex + "; font-size: 48px; margin-bottom: 20px'>" + event.subject + "</h2>" +
+                "<h2 style='color: " + textColorHex + "; font-size: 48px; margin-bottom: 20px'>")
+
+            // Add event subjects
+            for (int i = 0; i < events.size(); i++) {
+                CalendarEvent event = events.get(i)
+                labelContent.append(event.subject)
+
+                // Add separator for multiple events
+                if (i < events.size() - 1) {
+                    labelContent.append("<br>")
+                }
+            }
+
+            labelContent.append("</h2>" +
                 "<p style='color: " + textColorHex + "; font-size: 36px; margin-bottom: 40px'>Starting in " +
-                (event.getMinutesToStart() + 1) + " minute(s)</p>" +
+                (events.get(0).getMinutesToStart() + 1) + " minute(s)</p>" +
                 "<p style='color: " + textColorHex + "; font-size: 24px'>This alert will close in " +
                 (flashDurationMs / 1000) + " seconds</p>" +
-                "</center></html>"
+                "</center></html>")
 
-            JLabel label = new JLabel(labelContent, SwingConstants.CENTER)
+            JLabel label = new JLabel(labelContent.toString(), SwingConstants.CENTER)
             label.setForeground(textColor)
             label.setBackground(alertColor)
             label.setOpaque(true)
@@ -334,18 +354,6 @@ class MacScreenFlasher implements ScreenFlasher {
             System.err.println("Error creating flash window: " + e.getMessage())
             e.printStackTrace()
             return null
-        }
-    }
-
-    @Override
-    void flashMultiple(List<CalendarEvent> events) {
-        if (!events) return
-        
-        if (events.size() == 1) {
-            flash(events[0])
-        } else {
-            // For multiple events, show the first one (simplified approach)
-            flash(events[0])
         }
     }
 
