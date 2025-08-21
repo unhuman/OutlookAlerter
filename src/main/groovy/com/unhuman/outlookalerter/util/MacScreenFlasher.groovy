@@ -1,19 +1,13 @@
 package com.unhuman.outlookalerter.util
 
 import groovy.transform.CompileStatic
-import javax.swing.JFrame
-import javax.swing.JLabel
-import javax.swing.SwingConstants
-import javax.swing.SwingUtilities
-import javax.swing.Timer
+
 import java.awt.*
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import javax.swing.*
 import com.unhuman.outlookalerter.core.ConfigManager
 import com.sun.jna.*
-import com.unhuman.outlookalerter.util.MacWindowHelper
-import com.unhuman.outlookalerter.util.ScreenFlasher
 import com.unhuman.outlookalerter.model.CalendarEvent
 import java.util.List
 import java.util.concurrent.atomic.AtomicBoolean
@@ -290,27 +284,42 @@ class MacScreenFlasher implements ScreenFlasher {
             String textColorHex = String.format("#%02x%02x%02x",
                 textColor.getRed(), textColor.getGreen(), textColor.getBlue())
             
-            StringBuilder labelContent = new StringBuilder("<html><center>" +
-                "<h1 style='color: " + textColorHex + "; font-size: 64px; margin-bottom: 30px'>⚠️ MEETING ALERT ⚠️</h1>" +
-                "<h2 style='color: " + textColorHex + "; font-size: 48px; margin-bottom: 20px'>")
+            StringBuilder labelContent = new StringBuilder("<html><div style='text-align: center; width: 100%;'>" +
+                "<h1 style='color: " + textColorHex + "; font-size: 48px; margin-bottom: 30px; white-space: nowrap;'>⚠️ MEETING ALERT ⚠️</h1>" +
+                "<div style='color: " + textColorHex + "; font-size: 36px; margin-bottom: 10px;'>")
 
             // Add event subjects
             for (int i = 0; i < events.size(); i++) {
                 CalendarEvent event = events.get(i)
-                labelContent.append(event.subject)
+                labelContent.append("<div style='margin-bottom: 10px;'>")
+                    .append(event.subject)
+
+                // Add location if it exists - show domain for URLs, full text for physical locations
+                if (event.location) {
+                    String displayLocations = getMeetingLocations(event.location)
+                    if (displayLocations) {
+                        labelContent.append("<br/><span style='font-size: 20px; font-weight: normal; color: ")
+                            .append(textColorHex)
+                            .append(";'>📍 ")
+                            .append(displayLocations)
+                            .append("</span>")
+                    }
+                }
+
+                labelContent.append("</div>")
 
                 // Add separator for multiple events
                 if (i < events.size() - 1) {
-                    labelContent.append("<br>")
+                    labelContent.append("<br/>")
                 }
             }
 
-            labelContent.append("</h2>" +
-                "<p style='color: " + textColorHex + "; font-size: 36px; margin-bottom: 40px'>Starting in " +
+            labelContent.append("</div>" +
+                "<p style='color: " + textColorHex + "; font-size: 28px; margin-bottom: 40px;'>Starting in " +
                 (events.get(0).getMinutesToStart() + 1) + " minute(s)</p>" +
-                "<p style='color: " + textColorHex + "; font-size: 24px'>This alert will close in " +
+                "<p style='color: " + textColorHex + "; font-size: 16px;'>This alert will close in " +
                 (flashDurationMs / 1000) + " seconds</p>" +
-                "</center></html>")
+                "</div></html>")
 
             JLabel label = new JLabel(labelContent.toString(), SwingConstants.CENTER)
             label.setForeground(textColor)
@@ -473,5 +482,120 @@ class MacScreenFlasher implements ScreenFlasher {
         }
 
         System.out.println("Countdown timer started for frame: " + frame)
+    }
+
+    /**
+     * Processes a meeting location to return a displayable version.
+     * Handles multiple locations separated by semicolons.
+     * For URLs, extracts just the domain name (e.g., "zoom" from "https://zoom.us/j/123456").
+     * For physical locations, returns the location as-is.
+     * @param location The raw location string from the calendar event (may contain multiple locations separated by semicolons)
+     * @return A processed location string suitable for display with all locations semicolon-separated, or null if no displayable locations
+     */
+    private String getMeetingLocations(String location) {
+        if (!location) return null
+
+        String trimmedLocation = location.trim()
+        if (!trimmedLocation) return null
+
+        // Split by semicolons to handle multiple locations
+        String[] locations = trimmedLocation.split(";")
+        List<String> processedLocations = new ArrayList<>()
+
+        for (String singleLocation : locations) {
+            String processedLocation = processSingleLocation(singleLocation.trim())
+            if (processedLocation) {
+                processedLocations.add(processedLocation)
+            }
+        }
+
+        // Return semicolon-separated string of processed locations
+        if (processedLocations.isEmpty()) {
+            return null
+        }
+
+        return processedLocations.join("; ")
+    }
+
+    /**
+     * Processes a single location string
+     * @param location A single location (not semicolon-separated)
+     * @return Processed location string or null if not displayable
+     */
+    private String processSingleLocation(String location) {
+        if (!location) return null
+
+        // Check if this looks like a URL
+        String lowerLocation = location.toLowerCase()
+
+        // Handle URLs with protocols
+        if (lowerLocation.matches("^(https?|ftp)://.*")) {
+            return extractDomainFromUrl(location)
+        }
+
+        // Handle URLs without protocols but with common patterns
+        if (lowerLocation.startsWith("www.") ||
+            lowerLocation.contains(".com/") ||
+            lowerLocation.contains(".net/") ||
+            lowerLocation.contains(".org/") ||
+            lowerLocation.contains("zoom.us") ||
+            lowerLocation.contains("teams.microsoft.com") ||
+            lowerLocation.contains("meet.google.com") ||
+            lowerLocation.contains("webex.com") ||
+            lowerLocation.contains("gotomeeting.com")) {
+            return extractDomainFromUrl(location)
+        }
+
+        // If it doesn't look like a URL, treat it as a physical location
+        return location
+    }
+
+    /**
+     * Extracts the domain name from a URL, returning just the main part before the TLD.
+     * Examples:
+     *   "https://zoom.us/j/123456" -> "Zoom"
+     *   "teams.microsoft.com/l/meetup" -> "Teams"
+     *   "meet.google.com/abc-defg" -> "Google Meet"
+     * @param url The URL to extract the domain from
+     * @return The extracted domain name, capitalized appropriately
+     */
+    private String extractDomainFromUrl(String url) {
+        try {
+            // Remove protocol if present
+            String cleanUrl = url.replaceFirst("^(https?|ftp)://", "")
+
+            // Extract the domain part (everything before the first slash or question mark)
+            String domain = cleanUrl.split("[/?#]")[0].toLowerCase()
+
+            // Handle specific known domains with custom formatting
+            if (domain.contains("zoom.us") || domain.equals("zoom.us")) {
+                return "Zoom"
+            } else if (domain.contains("teams.microsoft.com")) {
+                return "Teams"
+            } else if (domain.contains("meet.google.com")) {
+                return "Google Meet"
+            } else if (domain.contains("webex.com")) {
+                return "WebEx"
+            } else if (domain.contains("gotomeeting.com")) {
+                return "GoToMeeting"
+            } else if (domain.startsWith("www.")) {
+                // Remove www. prefix
+                domain = domain.substring(4)
+            }
+
+            // For other domains, extract the main part before the TLD
+            String[] parts = domain.split("\\.")
+            if (parts.length >= 2) {
+                String mainDomain = parts[0]
+                // Capitalize first letter
+                return mainDomain.substring(0, 1).toUpperCase() + mainDomain.substring(1)
+            }
+
+            return domain.substring(0, 1).toUpperCase() + domain.substring(1)
+
+        } catch (Exception e) {
+            System.err.println("Error extracting domain from URL: " + url + " - " + e.getMessage())
+            return "Online Meeting"
+        }
     }
 }
