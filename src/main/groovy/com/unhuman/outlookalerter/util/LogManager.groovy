@@ -19,7 +19,7 @@ class LogManager {
     private static LogManager instance
 
     // Maximum number of log lines to keep in memory
-    private static final int MAX_LOG_LINES = 500
+    private static final int MAX_LOG_LINES = 2000
     
     // Date format for log timestamps
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS")

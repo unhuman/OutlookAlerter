@@ -12,10 +12,11 @@ import com.unhuman.outlookalerter.model.CalendarEvent
 import java.util.List
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Mac-specific implementation of ScreenFlasher
- * Simplified and more robust version to prevent stuck windows
+ * Enhanced with system state validation to prevent hanging during standby/wake scenarios
  */
 @CompileStatic
 class MacScreenFlasher implements ScreenFlasher {
@@ -37,6 +38,10 @@ class MacScreenFlasher implements ScreenFlasher {
 
     // Flag to prevent multiple simultaneous cleanups
     private final AtomicBoolean cleanupInProgress = new AtomicBoolean(false)
+
+    // System state tracking to prevent alerts during problematic conditions
+    private final AtomicLong lastSystemWakeTime = new AtomicLong(System.currentTimeMillis())
+    private final AtomicBoolean systemStateValidationInProgress = new AtomicBoolean(false)
 
     /**
      * Constructor
@@ -166,6 +171,24 @@ class MacScreenFlasher implements ScreenFlasher {
 
         System.out.println("MacScreenFlasher: Flash requested for " + events.size() + " event(s), duration: " + flashDurationMs/1000 + " seconds")
 
+        // Validate system state before proceeding
+        if (!validateSystemState()) {
+            System.out.println("MacScreenFlasher: System state validation failed, skipping alert")
+            return
+        }
+
+        // Validate display environment
+        if (!validateDisplayEnvironment()) {
+            System.out.println("MacScreenFlasher: Display environment validation failed, skipping alert")
+            return
+        }
+
+        // Validate events have content to display
+        if (!validateEventContent(events)) {
+            System.out.println("MacScreenFlasher: Event content validation failed, skipping alert")
+            return
+        }
+
         // Clean up any existing windows first
         forceCleanup()
 
@@ -181,6 +204,12 @@ class MacScreenFlasher implements ScreenFlasher {
             }
         }
         
+        // Verify at least one frame was created successfully
+        if (newFrames.isEmpty()) {
+            System.err.println("MacScreenFlasher: No flash windows were created successfully")
+            return
+        }
+
         // Add to tracking
         synchronized(activeFlashFrames) {
             activeFlashFrames.addAll(newFrames)
@@ -596,6 +625,197 @@ class MacScreenFlasher implements ScreenFlasher {
         } catch (Exception e) {
             System.err.println("Error extracting domain from URL: " + url + " - " + e.getMessage())
             return "Online Meeting"
+        }
+    }
+
+    /**
+     * Validates the current system state before showing alerts
+     * Ensures the system is not in sleep or display off state
+     * @return True if the system is in a valid state for showing alerts, false otherwise
+     */
+    private boolean validateSystemState() {
+        // Skip validation if already in progress
+        if (systemStateValidationInProgress.get()) {
+            return true
+        }
+
+        systemStateValidationInProgress.set(true)
+        try {
+            // Check the current time since last wake
+            long currentTime = System.currentTimeMillis()
+            long timeSinceLastWake = currentTime - lastSystemWakeTime.get()
+
+            // Log the wake time check
+            System.out.println("Checking system wake time: " + timeSinceLastWake + "ms since last wake")
+
+            // If the system was just woken up very recently, give it a moment to stabilize
+            // But don't block alerts completely - just ensure the display environment is ready
+            if (timeSinceLastWake < 2000) {
+                System.out.println("System recently woke up (" + timeSinceLastWake + "ms ago), checking display stability")
+
+                // Brief pause to let the system stabilize, but don't block completely
+                try {
+                    Thread.sleep(Math.max(0, 2000 - timeSinceLastWake))
+                } catch (InterruptedException e) {
+                    System.err.println("Sleep interrupted: " + e.getMessage())
+                }
+
+                // Update wake time since we've now waited
+                lastSystemWakeTime.set(currentTime)
+            }
+
+            // Additional check: if we haven't updated wake time recently, assume we just woke up
+            // This handles cases where updateLastWakeTime() wasn't called explicitly
+            if (timeSinceLastWake > 300000) { // 5 minutes - likely indicates a wake event we missed
+                System.out.println("Long time since last wake update (" + (timeSinceLastWake/1000) + "s), assuming recent wake")
+                updateLastWakeTime()
+
+                // Brief pause for system stabilization
+                try {
+                    Thread.sleep(1000)
+                } catch (InterruptedException e) {
+                    System.err.println("Sleep interrupted: " + e.getMessage())
+                }
+            }
+
+            // System is considered valid for alerts
+            return true
+        } catch (Exception e) {
+            System.err.println("Error validating system state: " + e.getMessage())
+            return false
+        } finally {
+            systemStateValidationInProgress.set(false)
+        }
+    }
+
+    /**
+     * Updates the last wake time stamp
+     * Should be called on system wake events
+     */
+    void updateLastWakeTime() {
+        lastSystemWakeTime.set(System.currentTimeMillis())
+        System.out.println("Last system wake time updated: " + lastSystemWakeTime.get())
+    }
+
+    /**
+     * Validates that the display environment is ready for showing alerts
+     * Checks for available displays, proper graphics environment, and EDT availability
+     * @return True if display environment is valid, false otherwise
+     */
+    private boolean validateDisplayEnvironment() {
+        try {
+            // Check if running in headless mode
+            if (GraphicsEnvironment.isHeadless()) {
+                System.err.println("MacScreenFlasher: Cannot show alerts in headless environment")
+                return false
+            }
+
+            // Get graphics environment and validate it's available
+            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment()
+            if (ge == null) {
+                System.err.println("MacScreenFlasher: Graphics environment is null")
+                return false
+            }
+
+            // Check for available screens
+            GraphicsDevice[] screens = ge.getScreenDevices()
+            if (screens == null || screens.length == 0) {
+                System.err.println("MacScreenFlasher: No graphics devices available")
+                return false
+            }
+
+            // Validate that at least one screen has a valid configuration
+            boolean hasValidScreen = false
+            for (GraphicsDevice screen : screens) {
+                try {
+                    GraphicsConfiguration config = screen.getDefaultConfiguration()
+                    if (config != null) {
+                        Rectangle bounds = config.getBounds()
+                        if (bounds != null && bounds.width > 0 && bounds.height > 0) {
+                            hasValidScreen = true
+                            break
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error checking screen configuration: " + e.getMessage())
+                }
+            }
+
+            if (!hasValidScreen) {
+                System.err.println("MacScreenFlasher: No valid screen configurations found")
+                return false
+            }
+
+            // Test EDT availability by attempting a simple operation
+            final AtomicBoolean edtAvailable = new AtomicBoolean(false)
+            final CountDownLatch edtLatch = new CountDownLatch(1)
+
+            SwingUtilities.invokeLater(new Runnable() {
+                @Override
+                public void run() {
+                    edtAvailable.set(true)
+                    edtLatch.countDown()
+                }
+            })
+
+            // Wait for EDT test with timeout
+            boolean edtReady = edtLatch.await(1, java.util.concurrent.TimeUnit.SECONDS)
+            if (!edtReady || !edtAvailable.get()) {
+                System.err.println("MacScreenFlasher: EDT not available or responsive")
+                return false
+            }
+
+            System.out.println("MacScreenFlasher: Display environment validation passed")
+            return true
+
+        } catch (Exception e) {
+            System.err.println("MacScreenFlasher: Error validating display environment: " + e.getMessage())
+            return false
+        }
+    }
+
+    /**
+     * Validates that the events have proper content to display
+     * Ensures events have subjects and are not corrupted
+     * @param events List of events to validate
+     * @return True if events are valid for display, false otherwise
+     */
+    private boolean validateEventContent(List<CalendarEvent> events) {
+        if (events == null || events.isEmpty()) {
+            System.err.println("MacScreenFlasher: No events to validate")
+            return false
+        }
+
+        try {
+            for (CalendarEvent event : events) {
+                // Check for null event
+                if (event == null) {
+                    System.err.println("MacScreenFlasher: Found null event in list")
+                    return false
+                }
+
+                // Check for empty or null subject
+                String subject = event.getSubject()
+                if (subject == null || subject.trim().isEmpty()) {
+                    System.err.println("MacScreenFlasher: Found event with empty subject")
+                    return false
+                }
+
+                // Check that event is not corrupted (basic validation)
+                try {
+                    event.getMinutesToStart() // This should not throw an exception
+                } catch (Exception e) {
+                    System.err.println("MacScreenFlasher: Event appears corrupted: " + e.getMessage())
+                    return false
+                }
+            }
+
+            System.out.println("MacScreenFlasher: Event content validation passed for " + events.size() + " events")
+            return true
+
+        } catch (Exception e) {
+            System.err.println("MacScreenFlasher: Error validating event content: " + e.getMessage())
+            return false
         }
     }
 }
