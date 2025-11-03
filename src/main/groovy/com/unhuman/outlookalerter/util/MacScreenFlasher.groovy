@@ -13,6 +13,7 @@ import java.util.List
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Mac-specific implementation of ScreenFlasher
@@ -24,11 +25,11 @@ class MacScreenFlasher implements ScreenFlasher {
     // Instance variables for flash settings
     private int flashDurationMs
 
-    // Track active flash frames for cleanup
-    private final List<JFrame> activeFlashFrames = Collections.synchronizedList(new ArrayList<JFrame>())
-    
-    // Track active timers for cleanup
-    private final List<javax.swing.Timer> activeTimers = Collections.synchronizedList(new ArrayList<javax.swing.Timer>())
+    // Track active flash frames for cleanup - using CopyOnWriteArrayList for thread safety
+    private final List<JFrame> activeFlashFrames = new CopyOnWriteArrayList<JFrame>()
+
+    // Track active timers for cleanup - using CopyOnWriteArrayList for thread safety
+    private final List<javax.swing.Timer> activeTimers = new CopyOnWriteArrayList<javax.swing.Timer>()
 
     // Track countdown timers separately (these are managed independently)
     private final Map<JFrame, Timer> countdownTimers = Collections.synchronizedMap(new HashMap<JFrame, Timer>())
@@ -80,19 +81,17 @@ class MacScreenFlasher implements ScreenFlasher {
         try {
             System.out.println("MacScreenFlasher: Starting cleanup of " + activeFlashFrames.size() + " frames and " + activeTimers.size() + " timers")
 
-            // Stop all active timers first
-            synchronized(activeTimers) {
-                for (javax.swing.Timer timer : new ArrayList<javax.swing.Timer>(activeTimers)) {
-                    try {
-                        if (timer != null && timer.isRunning()) {
-                            timer.stop()
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Error stopping timer: " + e.getMessage())
+            // Stop all active timers first (CopyOnWriteArrayList is already thread-safe)
+            for (javax.swing.Timer timer : new ArrayList<javax.swing.Timer>(activeTimers)) {
+                try {
+                    if (timer != null && timer.isRunning()) {
+                        timer.stop()
                     }
+                } catch (Exception e) {
+                    System.err.println("Error stopping timer: " + e.getMessage())
                 }
-                activeTimers.clear()
             }
+            activeTimers.clear()
 
             // Stop all countdown timers
             synchronized(countdownTimers) {
@@ -120,23 +119,22 @@ class MacScreenFlasher implements ScreenFlasher {
                 @Override
                 public void run() {
                     try {
-                        synchronized(activeFlashFrames) {
-                            List<JFrame> framesToDispose = new ArrayList<>(activeFlashFrames)
+                        // CopyOnWriteArrayList is already thread-safe, no need for synchronized block
+                        List<JFrame> framesToDispose = new ArrayList<>(activeFlashFrames)
 
-                            for (JFrame frame : framesToDispose) {
-                                try {
-                                    if (frame != null) {
-                                        System.out.println("Disposing flash frame: " + frame)
-                                        frame.setVisible(false)
-                                        frame.dispose()
-                                    }
-                                } catch (Exception e) {
-                                    System.err.println("Error disposing frame: " + e.getMessage())
+                        for (JFrame frame : framesToDispose) {
+                            try {
+                                if (frame != null) {
+                                    System.out.println("Disposing flash frame: " + frame)
+                                    frame.setVisible(false)
+                                    frame.dispose()
                                 }
+                            } catch (Exception e) {
+                                System.err.println("Error disposing frame: " + e.getMessage())
                             }
-
-                            activeFlashFrames.clear()
                         }
+
+                        activeFlashFrames.clear()
                     } finally {
                         cleanupLatch.countDown()
                     }
@@ -210,17 +208,15 @@ class MacScreenFlasher implements ScreenFlasher {
             return
         }
 
-        // Add to tracking
-        synchronized(activeFlashFrames) {
-            activeFlashFrames.addAll(newFrames)
-        }
-        
+        // Add to tracking (CopyOnWriteArrayList is already thread-safe)
+        activeFlashFrames.addAll(newFrames)
+
         // Set up cleanup timer
         setupCleanupTimer()
     }
 
     /**
-     * Sets up a single, reliable cleanup timer with backup
+     * Sets up a single, reliable cleanup timer with backup and final failsafe
      */
     private void setupCleanupTimer() {
         long startTime = System.currentTimeMillis()
@@ -234,9 +230,7 @@ class MacScreenFlasher implements ScreenFlasher {
                 forceCleanup()
 
                 Timer source = (Timer)e.getSource()
-                synchronized(activeTimers) {
-                    activeTimers.remove(source)
-                }
+                activeTimers.remove(source)
             }
         })
         primaryTimer.setRepeats(false)
@@ -247,31 +241,53 @@ class MacScreenFlasher implements ScreenFlasher {
             public void actionPerformed(ActionEvent e) {
                 System.out.println("Backup cleanup timer fired - checking for stuck windows")
 
-                synchronized(activeFlashFrames) {
-                    if (!activeFlashFrames.isEmpty()) {
-                        System.out.println("Found " + activeFlashFrames.size() + " stuck windows, forcing cleanup")
-                        forceCleanup()
-                    }
+                if (!activeFlashFrames.isEmpty()) {
+                    System.out.println("Found " + activeFlashFrames.size() + " stuck windows, forcing cleanup")
+                    forceCleanup()
                 }
                 
                 Timer source = (Timer)e.getSource()
-                synchronized(activeTimers) {
-                    activeTimers.remove(source)
-                }
+                activeTimers.remove(source)
             }
         })
         backupTimer.setRepeats(false)
 
-        // Track timers and start them
-        synchronized(activeTimers) {
-            activeTimers.add(primaryTimer)
-            activeTimers.add(backupTimer)
-        }
+        // Final failsafe timer (runs 2 seconds after backup to guarantee cleanup)
+        Timer finalFailsafeTimer = new Timer(flashDurationMs + 2000, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                SwingUtilities.invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            if (!activeFlashFrames.isEmpty()) {
+                                System.out.println("FINAL FAILSAFE: Forcing cleanup of " + activeFlashFrames.size() + " remaining flash frames")
+                                forceCleanup()
+                            } else {
+                                System.out.println("FINAL FAILSAFE: No frames remaining, cleanup successful")
+                            }
+                        } catch (Exception ex) {
+                            System.err.println("FINAL FAILSAFE: Cleanup failed: " + ex.getMessage())
+                        }
+                    }
+                })
+
+                Timer source = (Timer)e.getSource()
+                activeTimers.remove(source)
+            }
+        })
+        finalFailsafeTimer.setRepeats(false)
+
+        // Track timers and start them (CopyOnWriteArrayList is already thread-safe)
+        activeTimers.add(primaryTimer)
+        activeTimers.add(backupTimer)
+        activeTimers.add(finalFailsafeTimer)
 
         primaryTimer.start()
         backupTimer.start()
+        finalFailsafeTimer.start()
 
-        System.out.println("Cleanup timers started - primary: " + flashDurationMs + "ms, backup: " + (flashDurationMs + 1000) + "ms")
+        System.out.println("Cleanup timers started - primary: " + flashDurationMs + "ms, backup: " + (flashDurationMs + 1000) + "ms, failsafe: " + (flashDurationMs + 2000) + "ms")
     }
     
     private JFrame createFlashWindowForScreen(GraphicsDevice screen, List<CalendarEvent> events) {
@@ -366,23 +382,44 @@ class MacScreenFlasher implements ScreenFlasher {
             // Store the label for countdown updates
             countdownLabels.put(frame, label)
 
-            // Show frame
+            // Pack the frame to ensure proper sizing
+            frame.pack()
+
+            // Set bounds again after packing to ensure correct screen coverage
+            frame.setBounds(bounds)
+
+            // Show frame and bring to front
             frame.setVisible(true)
+
+            // Apply macOS window settings immediately for better visibility
+            try {
+                long windowHandle = Native.getWindowID(frame)
+                System.out.println("Setting window level for frame with handle: " + windowHandle)
+                MacWindowHelper.setEnhancedWindowProperties(windowHandle, MacWindowHelper.NSScreenSaverWindowLevel)
+            } catch (Exception e) {
+                System.err.println("Could not set macOS window level immediately: " + e.getMessage())
+                e.printStackTrace()
+            }
+
+            // Force window to front multiple times to ensure visibility
             frame.toFront()
-            
+            frame.requestFocus()
+
             // Start countdown timer for this frame
             startCountdownTimer(frame, label)
 
-            // Apply macOS window settings
+            // Additional delayed window level setting as failsafe
             SwingUtilities.invokeLater(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        long windowHandle = Native.getWindowID(frame)
-                        MacWindowHelper.setWindowLevel(windowHandle, 1000) // CGScreenSaverWindowLevel
                         frame.toFront()
+                        frame.requestFocus()
+                        long windowHandle = Native.getWindowID(frame)
+                        MacWindowHelper.setEnhancedWindowProperties(windowHandle, MacWindowHelper.NSScreenSaverWindowLevel)
+                        System.out.println("Delayed window level set and toFront() called")
                     } catch (Exception e) {
-                        System.err.println("Could not set macOS window level: " + e.getMessage())
+                        System.err.println("Could not set macOS window level in delayed call: " + e.getMessage())
                     }
                 }
             })
@@ -648,29 +685,30 @@ class MacScreenFlasher implements ScreenFlasher {
             // Log the wake time check
             System.out.println("Checking system wake time: " + timeSinceLastWake + "ms since last wake")
 
-            // If the system was just woken up very recently, give it a moment to stabilize
-            // But don't block alerts completely - just ensure the display environment is ready
-            if (timeSinceLastWake < 2000) {
-                System.out.println("System recently woke up (" + timeSinceLastWake + "ms ago), checking display stability")
+            // If the system was just woken up very recently, give it time to stabilize
+            // Reduced to 3 seconds to avoid blocking alerts unnecessarily
+            if (timeSinceLastWake < 3000) {
+                System.out.println("System recently woke up (" + timeSinceLastWake + "ms ago), delaying alert for system stability")
 
-                // Brief pause to let the system stabilize, but don't block completely
+                // Wait for system to stabilize - use non-EDT thread to prevent blocking
+                long sleepTime = Math.max(0, 3000 - timeSinceLastWake)
                 try {
-                    Thread.sleep(Math.max(0, 2000 - timeSinceLastWake))
+                    Thread.sleep(sleepTime)
                 } catch (InterruptedException e) {
                     System.err.println("Sleep interrupted: " + e.getMessage())
                 }
 
                 // Update wake time since we've now waited
-                lastSystemWakeTime.set(currentTime)
+                lastSystemWakeTime.set(currentTime + 3000)
             }
 
-            // Additional check: if we haven't updated wake time recently, assume we just woke up
-            // This handles cases where updateLastWakeTime() wasn't called explicitly
+            // Additional check: if we haven't updated wake time recently, it's likely fine
+            // Removed the aggressive 5-second sleep that was blocking alerts
             if (timeSinceLastWake > 300000) { // 5 minutes - likely indicates a wake event we missed
-                System.out.println("Long time since last wake update (" + (timeSinceLastWake/1000) + "s), assuming recent wake")
+                System.out.println("Long time since last wake update (" + (timeSinceLastWake/1000) + "s), updating wake time")
                 updateLastWakeTime()
 
-                // Brief pause for system stabilization
+                // Brief pause for system stabilization (reduced from 5 seconds to 1 second)
                 try {
                     Thread.sleep(1000)
                 } catch (InterruptedException e) {

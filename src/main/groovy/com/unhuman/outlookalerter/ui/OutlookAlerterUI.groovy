@@ -22,6 +22,7 @@ import java.util.List
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.CountDownLatch
 import java.io.OutputStream
 import java.io.PrintStream
 import java.io.StringWriter
@@ -132,6 +133,9 @@ class OutlookAlerterUI extends JFrame {
 
     // Added a flag to track if the token dialog is active
     private boolean isTokenDialogActive = false;
+    
+    // Track last system wake time for safe UI display
+    private long lastSystemWakeTime = System.currentTimeMillis()
 
     /**
      * Create a new OutlookAlerterUI
@@ -1244,12 +1248,80 @@ class OutlookAlerterUI extends JFrame {
     }
 
     /**
+     * Check if it's safe to show UI dialogs
+     * Prevents showing dialogs immediately after system wake which can cause EDT deadlock
+     */
+    private boolean isSafeToShowUI() {
+        long timeSinceWake = System.currentTimeMillis() - lastSystemWakeTime
+        if (timeSinceWake < 10000) {
+            println "UI: Delaying UI display - system recently woke (${timeSinceWake}ms ago)"
+            return false
+        }
+        return true
+    }
+    
+    /**
+     * Check if EDT is responsive
+     * @return true if EDT is responsive, false otherwise
+     */
+    private boolean isEDTResponsive() {
+        try {
+            final boolean[] completed = [false] as boolean[]
+            final CountDownLatch latch = new CountDownLatch(1)
+            
+            SwingUtilities.invokeLater({
+                completed[0] = true
+                latch.countDown()
+            } as Runnable)
+            
+            // Wait up to 2 seconds for EDT to respond
+            boolean responded = latch.await(2, TimeUnit.SECONDS)
+            return responded && completed[0]
+        } catch (Exception e) {
+            println "EDT responsiveness check failed: ${e.message}"
+            return false
+        }
+    }
+    
+    /**
+     * Update the last system wake time
+     * Should be called when system wake is detected
+     */
+    void updateLastWakeTime() {
+        lastSystemWakeTime = System.currentTimeMillis()
+        println "UI: Last system wake time updated: ${lastSystemWakeTime}"
+    }
+
+    /**
      * Prompt the user for tokens using the SimpleTokenDialog.
      * @param signInUrl The URL for signing in.
      * @return A map containing the tokens, or null if the user cancels.
      */
     Map<String, String> promptForTokens(String signInUrl) {
         try {
+            // Check if it's safe to show UI
+            if (!isSafeToShowUI()) {
+                println "UI: Delaying token dialog - system not ready"
+                // Schedule retry after delay
+                Timer retryTimer = new Timer(2000, { e ->
+                    SwingUtilities.invokeLater({ 
+                        if (isSafeToShowUI()) {
+                            promptForTokens(signInUrl)
+                        }
+                    } as Runnable)
+                    (e.source as Timer).stop()
+                } as ActionListener)
+                retryTimer.setRepeats(false)
+                retryTimer.start()
+                return null
+            }
+            
+            // Check EDT responsiveness
+            if (!isEDTResponsive()) {
+                println "UI: EDT is not responsive, cannot show token dialog"
+                return null
+            }
+            
             isTokenDialogActive = true
             updateIcons(true)  // Show invalid token state
             
