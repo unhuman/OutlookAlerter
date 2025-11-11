@@ -133,7 +133,7 @@ class OutlookAlerterUI extends JFrame {
 
     // Added a flag to track if the token dialog is active
     private boolean isTokenDialogActive = false;
-    
+
     // Track last system wake time for safe UI display
     private long lastSystemWakeTime = System.currentTimeMillis()
 
@@ -719,6 +719,7 @@ class OutlookAlerterUI extends JFrame {
                           .append(event.isOnlineMeeting ? " (Online)" : "")
                           .append(event.organizer ? " - Organized by: ${event.organizer}" : "")
                           .append(event.responseStatus ? " - Status: ${event.responseStatus}" : "")
+                          .append(" at ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))}")
                           .append(" (starts in ${event.getMinutesToStart() + 1} minutes)") // + 1 minute to account for current time
                           .append("\n")
             }
@@ -892,18 +893,6 @@ class OutlookAlerterUI extends JFrame {
         // Debug log
         System.out.println("Checking ${events.size()} events for alerts...")
 
-        // Check token validity before alerting
-        if (!outlookClient.hasValidToken()) {
-            System.out.println("Token is invalid or expired. Prompting for new token and aborting alert.");
-            // Only show the token dialog if not already active
-            if (!isTokenDialogActive) {
-                SwingUtilities.invokeLater({
-                    promptForTokens(configManager.getSignInUrl())
-                } as Runnable)
-            }
-            return;
-        }
-
         // Check each event for alerts
         List<CalendarEvent> eventsToAlert = []
         for (CalendarEvent event : events) {
@@ -947,7 +936,18 @@ class OutlookAlerterUI extends JFrame {
                 alertedEventIds.add(event.id)
             }
         }
-        
+
+        // Check token validity after alerting, and prompt if needed
+        if (!outlookClient.hasValidToken()) {
+            System.out.println("Token is invalid or expired. Prompting for new token.");
+            // Only show the token dialog if not already active
+            if (!isTokenDialogActive) {
+                SwingUtilities.invokeLater({
+                    promptForTokens(configManager.getSignInUrl())
+                } as Runnable)
+            }
+        }
+
         // Clean up alerted events list periodically
         if (alertedEventIds.size() > 100) {
             System.out.println("Clearing alertedEventIds list (size > 100)")
@@ -1259,7 +1259,7 @@ class OutlookAlerterUI extends JFrame {
         }
         return true
     }
-    
+
     /**
      * Check if EDT is responsive
      * @return true if EDT is responsive, false otherwise
@@ -1268,12 +1268,12 @@ class OutlookAlerterUI extends JFrame {
         try {
             final boolean[] completed = [false] as boolean[]
             final CountDownLatch latch = new CountDownLatch(1)
-            
+
             SwingUtilities.invokeLater({
                 completed[0] = true
                 latch.countDown()
             } as Runnable)
-            
+
             // Wait up to 2 seconds for EDT to respond
             boolean responded = latch.await(2, TimeUnit.SECONDS)
             return responded && completed[0]
@@ -1282,7 +1282,7 @@ class OutlookAlerterUI extends JFrame {
             return false
         }
     }
-    
+
     /**
      * Update the last system wake time
      * Should be called when system wake is detected
@@ -1304,7 +1304,7 @@ class OutlookAlerterUI extends JFrame {
                 println "UI: Delaying token dialog - system not ready"
                 // Schedule retry after delay
                 Timer retryTimer = new Timer(2000, { e ->
-                    SwingUtilities.invokeLater({ 
+                    SwingUtilities.invokeLater({
                         if (isSafeToShowUI()) {
                             promptForTokens(signInUrl)
                         }
@@ -1315,13 +1315,13 @@ class OutlookAlerterUI extends JFrame {
                 retryTimer.start()
                 return null
             }
-            
+
             // Check EDT responsiveness
             if (!isEDTResponsive()) {
                 println "UI: EDT is not responsive, cannot show token dialog"
                 return null
             }
-            
+
             isTokenDialogActive = true
             updateIcons(true)  // Show invalid token state
             

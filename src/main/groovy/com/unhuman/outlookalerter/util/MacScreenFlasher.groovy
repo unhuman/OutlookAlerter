@@ -7,7 +7,6 @@ import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import javax.swing.*
 import com.unhuman.outlookalerter.core.ConfigManager
-import com.sun.jna.*
 import com.unhuman.outlookalerter.model.CalendarEvent
 import java.util.List
 import java.util.concurrent.atomic.AtomicBoolean
@@ -29,7 +28,7 @@ class MacScreenFlasher implements ScreenFlasher {
     private final List<JFrame> activeFlashFrames = new CopyOnWriteArrayList<JFrame>()
 
     // Track active timers for cleanup - using CopyOnWriteArrayList for thread safety
-    private final List<javax.swing.Timer> activeTimers = new CopyOnWriteArrayList<javax.swing.Timer>()
+    private final List<Timer> activeTimers = new CopyOnWriteArrayList<Timer>()
 
     // Track countdown timers separately (these are managed independently)
     private final Map<JFrame, Timer> countdownTimers = Collections.synchronizedMap(new HashMap<JFrame, Timer>())
@@ -43,6 +42,30 @@ class MacScreenFlasher implements ScreenFlasher {
     // System state tracking to prevent alerts during problematic conditions
     private final AtomicLong lastSystemWakeTime = new AtomicLong(System.currentTimeMillis())
     private final AtomicBoolean systemStateValidationInProgress = new AtomicBoolean(false)
+
+    // --- EDT Watchdog ---
+    final AtomicBoolean edtWatchdogStarted = new AtomicBoolean(false)
+    void startEDTWatchdog() {
+        if (edtWatchdogStarted.compareAndSet(false, true)) {
+            Thread watchdog = new Thread({
+                while (true) {
+                    final AtomicBoolean responded = new AtomicBoolean(false)
+                    try {
+                        SwingUtilities.invokeLater({ responded.set(true) })
+                        Thread.sleep(3000)
+                        if (!responded.get()) {
+                            System.err.println("[EDT WATCHDOG] WARNING: EDT may be unresponsive (no response in 3s)")
+                        }
+                    } catch (Exception e) {
+                        System.err.println("[EDT WATCHDOG] Exception: " + e.getMessage())
+                    }
+                }
+            } as Runnable)
+            watchdog.setDaemon(true)
+            watchdog.setName("EDT-Watchdog")
+            watchdog.start()
+        }
+    }
 
     /**
      * Constructor
@@ -66,6 +89,8 @@ class MacScreenFlasher implements ScreenFlasher {
         
         // Register shutdown hook to ensure cleanup
         Runtime.runtime.addShutdownHook(new Thread({ forceCleanup() } as Runnable))
+
+        startEDTWatchdog()
     }
     
     /**
@@ -82,7 +107,7 @@ class MacScreenFlasher implements ScreenFlasher {
             System.out.println("MacScreenFlasher: Starting cleanup of " + activeFlashFrames.size() + " frames and " + activeTimers.size() + " timers")
 
             // Stop all active timers first (CopyOnWriteArrayList is already thread-safe)
-            for (javax.swing.Timer timer : new ArrayList<javax.swing.Timer>(activeTimers)) {
+            for (Timer timer : new ArrayList<Timer>(activeTimers)) {
                 try {
                     if (timer != null && timer.isRunning()) {
                         timer.stop()
@@ -115,13 +140,11 @@ class MacScreenFlasher implements ScreenFlasher {
             // Dispose all frames on EDT to avoid threading issues
             final CountDownLatch cleanupLatch = new CountDownLatch(1)
 
-            SwingUtilities.invokeLater(new Runnable() {
+            Runnable cleanupTask = new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        // CopyOnWriteArrayList is already thread-safe, no need for synchronized block
                         List<JFrame> framesToDispose = new ArrayList<>(activeFlashFrames)
-
                         for (JFrame frame : framesToDispose) {
                             try {
                                 if (frame != null) {
@@ -133,19 +156,24 @@ class MacScreenFlasher implements ScreenFlasher {
                                 System.err.println("Error disposing frame: " + e.getMessage())
                             }
                         }
-
                         activeFlashFrames.clear()
                     } finally {
                         cleanupLatch.countDown()
                     }
                 }
-            })
+            }
 
-            // Wait for cleanup to complete (with timeout)
-            try {
-                cleanupLatch.await(2, java.util.concurrent.TimeUnit.SECONDS)
-            } catch (InterruptedException e) {
-                System.err.println("Cleanup wait interrupted")
+            if (SwingUtilities.isEventDispatchThread()) {
+                // Already on EDT, just run cleanupTask
+                cleanupTask.run()
+            } else {
+                SwingUtilities.invokeLater(cleanupTask)
+                // Wait for cleanup to complete (with timeout)
+                try {
+                    cleanupLatch.await(2, java.util.concurrent.TimeUnit.SECONDS)
+                } catch (InterruptedException e) {
+                    System.err.println("Cleanup wait interrupted")
+                }
             }
 
             System.out.println("MacScreenFlasher: Cleanup completed")
@@ -223,8 +251,7 @@ class MacScreenFlasher implements ScreenFlasher {
 
         // Primary cleanup timer
         Timer primaryTimer = new Timer(flashDurationMs, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
+            void actionPerformed(ActionEvent e) {
                 System.out.println("Primary cleanup timer fired after " +
                     (System.currentTimeMillis() - startTime) / 1000.0 + " seconds")
                 forceCleanup()
@@ -237,8 +264,7 @@ class MacScreenFlasher implements ScreenFlasher {
 
         // Backup cleanup timer (runs 1 second later as failsafe)
         Timer backupTimer = new Timer(flashDurationMs + 1000, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
+            void actionPerformed(ActionEvent e) {
                 System.out.println("Backup cleanup timer fired - checking for stuck windows")
 
                 if (!activeFlashFrames.isEmpty()) {
@@ -254,8 +280,7 @@ class MacScreenFlasher implements ScreenFlasher {
 
         // Final failsafe timer (runs 2 seconds after backup to guarantee cleanup)
         Timer finalFailsafeTimer = new Timer(flashDurationMs + 2000, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
+            void actionPerformed(ActionEvent e) {
                 SwingUtilities.invokeLater(new Runnable() {
                     @Override
                     public void run() {
@@ -388,41 +413,60 @@ class MacScreenFlasher implements ScreenFlasher {
             // Set bounds again after packing to ensure correct screen coverage
             frame.setBounds(bounds)
 
-            // Show frame and bring to front
-            frame.setVisible(true)
+            System.out.println("Creating window with bounds: " + bounds)
 
-            // Apply macOS window settings immediately for better visibility
+            // Show the frame first and force it to front immediately
+            frame.setVisible(true)
+            frame.toFront()
+            frame.setAlwaysOnTop(true)  // Ensure it stays on top
+            System.out.println("Frame set to visible: " + frame.isVisible())
+
+            // Get configuration for logging
             try {
-                long windowHandle = Native.getWindowID(frame)
-                System.out.println("Setting window level for frame with handle: " + windowHandle)
-                MacWindowHelper.setEnhancedWindowProperties(windowHandle, MacWindowHelper.NSScreenSaverWindowLevel)
+                float actualOpacity = frame.getOpacity()
+                System.out.println("Window opacity set to: " + actualOpacity)
             } catch (Exception e) {
-                System.err.println("Could not set macOS window level immediately: " + e.getMessage())
-                e.printStackTrace()
+                System.err.println("Could not get opacity: " + e.getMessage())
             }
 
-            // Force window to front multiple times to ensure visibility
-            frame.toFront()
-            frame.requestFocus()
+            // Use standard Swing approach to ensure window is on top
+            // Note: Native window handle access is blocked by Java module system on macOS 15.7.1
+            // Standard Swing methods work reliably without needing native handles
+            Timer elevationTimer = new Timer(50, null)
+            final int[] attemptCount = [0]
+            final int maxAttempts = 3
+
+            elevationTimer.addActionListener(new ActionListener() {
+                @Override
+                void actionPerformed(ActionEvent e) {
+                    attemptCount[0]++
+
+                    try {
+                        // Multi-pronged approach to ensure visibility
+                        frame.setAlwaysOnTop(true)
+                        frame.toFront()
+                        frame.requestFocus()
+                        frame.repaint()
+
+                        if (attemptCount[0] >= maxAttempts) {
+                            ((Timer)e.getSource()).stop()
+                            System.out.println("Window elevation completed (${maxAttempts} attempts)")
+                        }
+                    } catch (Exception ex) {
+                        System.err.println("Error during window elevation: " + ex.getMessage())
+                        ((Timer)e.getSource()).stop()
+                    }
+                }
+            })
+
+            elevationTimer.setInitialDelay(50)
+            elevationTimer.setDelay(100)
+            elevationTimer.setRepeats(true)
+            elevationTimer.start()
 
             // Start countdown timer for this frame
             startCountdownTimer(frame, label)
 
-            // Additional delayed window level setting as failsafe
-            SwingUtilities.invokeLater(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        frame.toFront()
-                        frame.requestFocus()
-                        long windowHandle = Native.getWindowID(frame)
-                        MacWindowHelper.setEnhancedWindowProperties(windowHandle, MacWindowHelper.NSScreenSaverWindowLevel)
-                        System.out.println("Delayed window level set and toFront() called")
-                    } catch (Exception e) {
-                        System.err.println("Could not set macOS window level in delayed call: " + e.getMessage())
-                    }
-                }
-            })
 
             return frame
         } catch (Exception e) {
@@ -501,16 +545,11 @@ class MacScreenFlasher implements ScreenFlasher {
                             @Override
                             public void run() {
                                 try {
-                                    // Get the current label content
                                     String labelText = label.getText()
-
-                                    // Update only the countdown part using regex
                                     String newLabelText = labelText.replaceFirst(
                                         "This alert will close in \\d+ seconds",
                                         "This alert will close in " + Math.max(0, secondsRemaining[0]) + " seconds"
                                     )
-
-                                    // Set the updated text
                                     label.setText(newLabelText)
                                     label.repaint()
                                 } catch (Exception ex) {
