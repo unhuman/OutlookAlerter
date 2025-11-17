@@ -14,6 +14,7 @@ import com.unhuman.outlookalerter.core.OutlookClient.AuthenticationCancelledExce
 import com.unhuman.outlookalerter.model.CalendarEvent
 import com.unhuman.outlookalerter.util.ScreenFlasher
 import com.unhuman.outlookalerter.util.ScreenFlasherFactory
+import com.unhuman.outlookalerter.util.MacSleepWakeMonitor
 import java.time.ZonedDateTime
 import java.time.ZoneId
 import java.time.LocalDate
@@ -155,13 +156,21 @@ class OutlookAlerterUI extends JFrame {
         this.configManager.loadConfiguration()
         this.screenFlasher = ScreenFlasherFactory.createScreenFlasher()
         
-        // Initialize schedulers
-        this.alertScheduler = Executors.newScheduledThreadPool(1)
-        this.calendarScheduler = Executors.newScheduledThreadPool(1)
-        
+        // Initialize schedulers with daemon threads to prevent blocking JVM shutdown
+        this.alertScheduler = Executors.newScheduledThreadPool(1, { r ->
+            Thread t = new Thread(r, "AlertScheduler")
+            t.setDaemon(true)
+            return t
+        })
+        this.calendarScheduler = Executors.newScheduledThreadPool(1, { r ->
+            Thread t = new Thread(r, "CalendarScheduler")
+            t.setDaemon(true)
+            return t
+        })
+
         // Set up the UI
         initializeUI()
-        
+
         // Configure window behavior for system tray support
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE)  // We'll handle window closing ourselves
         addWindowListener(new WindowAdapter() {
@@ -452,6 +461,30 @@ class OutlookAlerterUI extends JFrame {
      * @param showWindow Whether to show the main window at startup
      */
     void start(boolean showWindow = false) {
+        // Set up sleep/wake monitoring for macOS
+        if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+            MacSleepWakeMonitor sleepMonitor = MacSleepWakeMonitor.getInstance()
+            sleepMonitor.startMonitoring()
+
+            sleepMonitor.addWakeListener({
+                System.out.println("[OutlookAlerterUI] Wake event detected - restarting schedulers")
+                lastSystemWakeTime = System.currentTimeMillis()
+
+                // Restart schedulers to ensure they're not stuck
+                SwingUtilities.invokeLater({
+                    try {
+                        restartSchedulers()
+
+                        // Also force a calendar refresh after wake
+                        refreshCalendarEvents()
+                    } catch (Exception e) {
+                        System.err.println("[OutlookAlerterUI] Error restarting after wake: " + e.getMessage())
+                        e.printStackTrace()
+                    }
+                } as Runnable)
+            } as Runnable)
+        }
+
         // Start periodic tasks if not already running
         if (!schedulersRunning) {
             // Schedule alert checks (every minute)
@@ -1082,16 +1115,30 @@ class OutlookAlerterUI extends JFrame {
      * This method is called by the SettingsDialog when settings are saved
      */
     void restartSchedulers() {
+        System.out.println("[OutlookAlerterUI] Restarting schedulers...")
+
         stopSchedulers();
 
         // Reinitialize schedulers to avoid using terminated executors
-        alertScheduler = Executors.newScheduledThreadPool(1);
-        calendarScheduler = Executors.newScheduledThreadPool(1);
-        
+        // Use daemon threads to ensure they don't prevent JVM shutdown
+        alertScheduler = Executors.newScheduledThreadPool(1, { r ->
+            Thread t = new Thread(r, "AlertScheduler")
+            t.setDaemon(true)
+            return t
+        })
+
+        calendarScheduler = Executors.newScheduledThreadPool(1, { r ->
+            Thread t = new Thread(r, "CalendarScheduler")
+            t.setDaemon(true)
+            return t
+        })
+
         // Recreate the screen flasher to pick up new configuration
         screenFlasher = ScreenFlasherFactory.createScreenFlasher();
         
         startSchedulers();
+
+        System.out.println("[OutlookAlerterUI] Schedulers restarted successfully")
     }
 
     /**
@@ -1139,23 +1186,47 @@ class OutlookAlerterUI extends JFrame {
 
         try {
             // Attempt to shut down gracefully
-            calendarScheduler.shutdown();
-            alertScheduler.shutdown();
-
-            // Wait for schedulers to finish their current tasks
-            if (!calendarScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                System.out.println("Forcing shutdown of calendar scheduler");
-                calendarScheduler.shutdownNow();
+            if (calendarScheduler != null) {
+                calendarScheduler.shutdown();
             }
-            if (!alertScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+            if (alertScheduler != null) {
+                alertScheduler.shutdown();
+            }
+
+            // Wait for schedulers to finish their current tasks (reduced timeout for faster recovery)
+            if (calendarScheduler != null && !calendarScheduler.awaitTermination(3, TimeUnit.SECONDS)) {
+                System.out.println("Forcing shutdown of calendar scheduler");
+                List<Runnable> pending = calendarScheduler.shutdownNow();
+                if (pending != null && !pending.isEmpty()) {
+                    System.out.println("Cancelled " + pending.size() + " pending calendar tasks");
+                }
+            }
+            if (alertScheduler != null && !alertScheduler.awaitTermination(3, TimeUnit.SECONDS)) {
                 System.out.println("Forcing shutdown of alert scheduler");
-                alertScheduler.shutdownNow();
+                List<Runnable> pending = alertScheduler.shutdownNow();
+                if (pending != null && !pending.isEmpty()) {
+                    System.out.println("Cancelled " + pending.size() + " pending alert tasks");
+                }
             }
         } catch (InterruptedException e) {
             System.err.println("Schedulers interrupted during shutdown: " + e.getMessage());
-            calendarScheduler.shutdownNow();
-            alertScheduler.shutdownNow();
+            if (calendarScheduler != null) {
+                calendarScheduler.shutdownNow();
+            }
+            if (alertScheduler != null) {
+                alertScheduler.shutdownNow();
+            }
             Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            System.err.println("Error stopping schedulers: " + e.getMessage());
+            e.printStackTrace();
+            // Force shutdown on any error
+            if (calendarScheduler != null) {
+                try { calendarScheduler.shutdownNow(); } catch (Exception ignored) {}
+            }
+            if (alertScheduler != null) {
+                try { alertScheduler.shutdownNow(); } catch (Exception ignored) {}
+            }
         }
 
         schedulersRunning = false;

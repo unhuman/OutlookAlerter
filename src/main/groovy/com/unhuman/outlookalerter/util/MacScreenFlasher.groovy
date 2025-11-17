@@ -43,18 +43,39 @@ class MacScreenFlasher implements ScreenFlasher {
     private final AtomicLong lastSystemWakeTime = new AtomicLong(System.currentTimeMillis())
     private final AtomicBoolean systemStateValidationInProgress = new AtomicBoolean(false)
 
+    // Sleep/wake monitor for macOS
+    private final MacSleepWakeMonitor sleepWakeMonitor = MacSleepWakeMonitor.getInstance()
+
     // --- EDT Watchdog ---
     final AtomicBoolean edtWatchdogStarted = new AtomicBoolean(false)
+    final AtomicLong lastEdtResponseTime = new AtomicLong(System.currentTimeMillis())
     void startEDTWatchdog() {
         if (edtWatchdogStarted.compareAndSet(false, true)) {
             Thread watchdog = new Thread({
                 while (true) {
                     final AtomicBoolean responded = new AtomicBoolean(false)
+                    final long checkStartTime = System.currentTimeMillis()
+
                     try {
-                        SwingUtilities.invokeLater({ responded.set(true) })
-                        Thread.sleep(3000)
-                        if (!responded.get()) {
-                            System.err.println("[EDT WATCHDOG] WARNING: EDT may be unresponsive (no response in 3s)")
+                        SwingUtilities.invokeLater({
+                            responded.set(true)
+                            lastEdtResponseTime.set(System.currentTimeMillis())
+                        })
+                        Thread.sleep(5000) // Check every 5 seconds
+
+                        long timeSinceResponse = System.currentTimeMillis() - lastEdtResponseTime.get()
+
+                        if (!responded.get() || timeSinceResponse > 10000) {
+                            System.err.println("[EDT WATCHDOG] CRITICAL: EDT unresponsive for " +
+                                (timeSinceResponse / 1000) + " seconds - attempting recovery")
+
+                            // Try emergency cleanup of flash windows
+                            try {
+                                System.err.println("[EDT WATCHDOG] Attempting emergency cleanup")
+                                forceCleanup()
+                            } catch (Exception cleanupEx) {
+                                System.err.println("[EDT WATCHDOG] Emergency cleanup failed: " + cleanupEx.getMessage())
+                            }
                         }
                     } catch (Exception e) {
                         System.err.println("[EDT WATCHDOG] Exception: " + e.getMessage())
@@ -88,11 +109,32 @@ class MacScreenFlasher implements ScreenFlasher {
         }
         
         // Register shutdown hook to ensure cleanup
-        Runtime.runtime.addShutdownHook(new Thread({ forceCleanup() } as Runnable))
+        Runtime.getRuntime().addShutdownHook(new Thread({
+            forceCleanup()
+            sleepWakeMonitor.stopMonitoring()
+        } as Runnable))
 
         startEDTWatchdog()
+
+        // Start sleep/wake monitoring
+        sleepWakeMonitor.startMonitoring()
+
+        // Register wake listener to update our wake time and cleanup stuck windows
+        sleepWakeMonitor.addWakeListener({
+            System.out.println("[MacScreenFlasher] Wake event detected, updating wake time")
+            updateLastWakeTime()
+
+            // Force cleanup of any stuck windows from before sleep
+            SwingUtilities.invokeLater({
+                if (!activeFlashFrames.isEmpty()) {
+                    System.out.println("[MacScreenFlasher] Cleaning up " + activeFlashFrames.size() +
+                        " windows that may have been stuck during sleep")
+                    forceCleanup()
+                }
+            } as Runnable)
+        } as Runnable)
     }
-    
+
     /**
      * Robust cleanup method that prevents race conditions and ensures all resources are freed
      */
@@ -717,39 +759,22 @@ class MacScreenFlasher implements ScreenFlasher {
 
         systemStateValidationInProgress.set(true)
         try {
-            // Check the current time since last wake
-            long currentTime = System.currentTimeMillis()
-            long timeSinceLastWake = currentTime - lastSystemWakeTime.get()
+            // Use sleep/wake monitor for accurate wake time
+            long timeSinceLastWake = sleepWakeMonitor.getTimeSinceWake()
 
             // Log the wake time check
             System.out.println("Checking system wake time: " + timeSinceLastWake + "ms since last wake")
 
             // If the system was just woken up very recently, give it time to stabilize
-            // Reduced to 3 seconds to avoid blocking alerts unnecessarily
-            if (timeSinceLastWake < 3000) {
-                System.out.println("System recently woke up (" + timeSinceLastWake + "ms ago), delaying alert for system stability")
+            // Wait 5 seconds after wake to ensure display is ready
+            if (timeSinceLastWake < 5000) {
+                System.out.println("System recently woke up (" + timeSinceLastWake +
+                    "ms ago), delaying alert for system stability")
 
-                // Wait for system to stabilize - use non-EDT thread to prevent blocking
-                long sleepTime = Math.max(0, 3000 - timeSinceLastWake)
+                // Wait for system to stabilize
+                long sleepTime = Math.max(0, 5000 - timeSinceLastWake)
                 try {
                     Thread.sleep(sleepTime)
-                } catch (InterruptedException e) {
-                    System.err.println("Sleep interrupted: " + e.getMessage())
-                }
-
-                // Update wake time since we've now waited
-                lastSystemWakeTime.set(currentTime + 3000)
-            }
-
-            // Additional check: if we haven't updated wake time recently, it's likely fine
-            // Removed the aggressive 5-second sleep that was blocking alerts
-            if (timeSinceLastWake > 300000) { // 5 minutes - likely indicates a wake event we missed
-                System.out.println("Long time since last wake update (" + (timeSinceLastWake/1000) + "s), updating wake time")
-                updateLastWakeTime()
-
-                // Brief pause for system stabilization (reduced from 5 seconds to 1 second)
-                try {
-                    Thread.sleep(1000)
                 } catch (InterruptedException e) {
                     System.err.println("Sleep interrupted: " + e.getMessage())
                 }
