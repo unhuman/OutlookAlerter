@@ -41,6 +41,7 @@ class ConfigManager {
     private double flashOpacity = 1.0d // Default 100%
     private int flashDurationSeconds = 5 // Default to 5 seconds
     private int resyncIntervalMinutes = 240; // Default to 4 hours
+    private int alertBeepCount = 5 // Default number of alert beeps
 
     // SSO related properties
     private String signInUrl
@@ -111,7 +112,8 @@ class ConfigManager {
         properties.setProperty("flashTextColor", "#ffffff")
         properties.setProperty("flashOpacity", "1.0")
         properties.setProperty("flashDurationSeconds", "5")
-        
+        properties.setProperty("alertBeepCount", "5")
+
         // Save to file
         try {
             properties.store(new FileOutputStream(configFile), "Outlook Alerter Configuration")
@@ -171,7 +173,8 @@ class ConfigManager {
         flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"))
         flashDurationSeconds = Integer.parseInt(properties.getProperty("flashDurationSeconds", "5"))
         resyncIntervalMinutes = Integer.parseInt(properties.getProperty("resyncIntervalMinutes", "240"))
-        
+        alertBeepCount = Integer.parseInt(properties.getProperty("alertBeepCount", "5"))
+
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")
     }
@@ -202,7 +205,8 @@ class ConfigManager {
             properties.setProperty("flashOpacity", String.valueOf(flashOpacity))
             properties.setProperty("flashDurationSeconds", String.valueOf(flashDurationSeconds))
             properties.setProperty("resyncIntervalMinutes", String.valueOf(resyncIntervalMinutes))
-            
+            properties.setProperty("alertBeepCount", String.valueOf(alertBeepCount))
+
             if (accessToken) {
                 properties.setProperty("accessToken", accessToken)
             }
@@ -259,7 +263,8 @@ class ConfigManager {
     double getFlashOpacity() { return flashOpacity }
     int getFlashDurationSeconds() { return flashDurationSeconds }
     int getResyncIntervalMinutes() { return resyncIntervalMinutes; }
-    
+    int getAlertBeepCount() { return alertBeepCount }
+
     /**
      * Updates the preferred timezone setting
      */
@@ -338,5 +343,13 @@ class ConfigManager {
     void updateResyncIntervalMinutes(int minutes) {
         this.resyncIntervalMinutes = minutes;
         saveConfiguration();
-    }        
+    }
+
+    /**
+     * Updates the alert beep count setting
+     */
+    void updateAlertBeepCount(int count) {
+        this.alertBeepCount = count
+        saveConfiguration()
+    }
 }

@@ -26,6 +26,7 @@ class SettingsDialog extends JDialog {
     private JSpinner alertMinutesSpinner
     private JSpinner resyncIntervalSpinner
     private JSpinner flashDurationSpinner
+    private JSpinner alertBeepCountSpinner
     private JTextField signInUrlField
     private JCheckBox defaultIgnoreCertValidationCheckbox
 
@@ -119,25 +120,41 @@ class SettingsDialog extends JDialog {
         gbc.gridy = 3
         formPanel.add(flashDurationSpinner, gbc)
         
-        // Sign-in URL setting
+        // Alert beep count setting
         gbc.gridx = 0
         gbc.gridy = 4
+        formPanel.add(new JLabel("Alert Beep Count:"), gbc)
+
+        SpinnerNumberModel beepCountModel = new SpinnerNumberModel(
+            configManager.getAlertBeepCount(),  // initial value
+            0,                                 // min (allow mute)
+            20,                                // max
+            1                                  // step
+        )
+        alertBeepCountSpinner = new JSpinner(beepCountModel)
+        gbc.gridx = 1
+        gbc.gridy = 4
+        formPanel.add(alertBeepCountSpinner, gbc)
+
+        // Sign-in URL setting
+        gbc.gridx = 0
+        gbc.gridy = 5
         formPanel.add(new JLabel("Sign-in URL:"), gbc)
         
         signInUrlField = new JTextField(configManager.getSignInUrl() ?: "", 20)
         gbc.gridx = 1
-        gbc.gridy = 4
+        gbc.gridy = 5
         formPanel.add(signInUrlField, gbc)
         
         // Default Ignore SSL certificate validation setting
         gbc.gridx = 0
-        gbc.gridy = 5
+        gbc.gridy = 6
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc)
         
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation())
         // No longer update immediately when checkbox changes
         gbc.gridx = 1
-        gbc.gridy = 5
+        gbc.gridy = 6
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc)
         
         // Button panel
@@ -206,6 +223,10 @@ class SettingsDialog extends JDialog {
             int flashDuration = (Integer)flashDurationSpinner.getValue()
             configManager.updateFlashDurationSeconds(flashDuration)
             
+            // Save alert beep count
+            int beepCount = (Integer)alertBeepCountSpinner.getValue()
+            configManager.updateAlertBeepCount(beepCount)
+
             // Save the SSL certificate validation setting
             boolean defaultIgnoreCertVal = defaultIgnoreCertValidationCheckbox.isSelected()
             configManager.updateDefaultIgnoreCertValidation(defaultIgnoreCertVal)

@@ -138,6 +138,9 @@ class OutlookAlerterUI extends JFrame {
     // Track last system wake time for safe UI display
     private long lastSystemWakeTime = System.currentTimeMillis()
 
+    // Banner components
+    private JWindow alertBannerWindow
+
     /**
      * Create a new OutlookAlerterUI
      */
@@ -432,6 +435,50 @@ class OutlookAlerterUI extends JFrame {
         })
         buttonPanel.add(exitButton)
         
+        // Temporary button for testing banner alerts
+        JButton testBannerButton = new JButton("Test Banner")
+        testBannerButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                // Simulate real alert behavior with a short delay
+                Timer t = new Timer(2000, { evt ->
+                    String bannerText = "Test meeting alert banner"
+                    showAlertBanner(bannerText)
+                    try {
+                        showTrayNotification("Upcoming meeting", bannerText, TrayIcon.MessageType.INFO)
+                    } catch (Exception ex) {
+                        System.err.println("Error showing tray notification for test banner: " + ex.getMessage())
+                    }
+                    try {
+                        // Play alert sound configurable number of times
+                        int count = Math.max(0, configManager.getAlertBeepCount())
+                        if (count > 0) {
+                            final int[] remaining = [count]
+                            Timer beepTimer = new Timer(250, { bevt ->
+                                try {
+                                    Toolkit.getDefaultToolkit().beep()
+                            } catch (Exception ex2) {
+                                System.err.println("Error beeping for test banner: " + ex2.getMessage())
+                            }
+                            remaining[0]--
+                            if (remaining[0] <= 0) {
+                                (bevt.source as Timer).stop()
+                            }
+                        } as ActionListener)
+                        beepTimer.setRepeats(true)
+                        beepTimer.start()
+                        }
+                    } catch (Exception ex) {
+                        System.err.println("Error starting beep sequence for test banner: " + ex.getMessage())
+                    }
+                    (evt.source as Timer).stop()
+                } as ActionListener)
+                t.setRepeats(false)
+                t.start()
+            }
+        })
+        buttonPanel.add(testBannerButton)
+
         JPanel statusPanel = new JPanel(new GridLayout(2, 1))
         statusLabel = new JLabel("Status: Ready")
         lastUpdateLabel = new JLabel("Last update: Never")
@@ -952,7 +999,56 @@ class OutlookAlerterUI extends JFrame {
             System.out.println("  *** Triggering alert for events: " + eventsToAlert.collect { it.subject }.join(", "))
             SwingUtilities.invokeLater({
                 statusLabel.setText("Status: Alerting for ${eventsToAlert.size()} event(s)")
+
+                // Show prominent banner in addition to screen flash
+                String bannerText
+                if (eventsToAlert.size() == 1) {
+                    bannerText = "Upcoming meeting: " + eventsToAlert[0].subject
+                } else {
+                    bannerText = "${eventsToAlert.size()} upcoming meetings starting soon"
+                }
+                showAlertBanner(bannerText)
+
+                // Tray / Notification Center alert + repeated beep
+                try {
+                    String title
+                    String message
+                    if (eventsToAlert.size() == 1) {
+                        CalendarEvent ev = eventsToAlert[0]
+                        title = "Upcoming meeting"
+                        message = "${ev.subject} in ${ev.getMinutesToStart() + 1} minute(s)"
+                    } else {
+                        title = "Upcoming meetings"
+                        message = "${eventsToAlert.size()} meetings starting soon"
+                    }
+                    showTrayNotification(title, message, TrayIcon.MessageType.INFO)
+                } catch (Exception ex) {
+                    System.err.println("Error showing tray notification for alert: " + ex.getMessage())
+                }
+                try {
+                    // Play alert sound configurable number of times
+                    int count = Math.max(0, configManager.getAlertBeepCount())
+                    if (count > 0) {
+                        final int[] remaining = [count]
+                        Timer beepTimer = new Timer(250, { bevt ->
+                            try {
+                                Toolkit.getDefaultToolkit().beep()
+                            } catch (Exception ex2) {
+                                System.err.println("Error beeping for alert: " + ex2.getMessage())
+                            }
+                            remaining[0]--
+                            if (remaining[0] <= 0) {
+                                (bevt.source as Timer).stop()
+                            }
+                        } as ActionListener)
+                        beepTimer.setRepeats(true)
+                        beepTimer.start()
+                    }
+                } catch (Exception ex) {
+                    System.err.println("Error starting beep sequence for alert: " + ex.getMessage())
+                }
             } as Runnable)
+
             // Flash the screen for all events at once, but do it off the EDT to avoid UI freeze
             new Thread({
                 try {
@@ -1450,6 +1546,67 @@ class OutlookAlerterUI extends JFrame {
     }
     
     /**
+     * Show a prominent notification banner at the top of the screen when an alert fires.
+     */
+    private void showAlertBanner(String message) {
+        try {
+            SwingUtilities.invokeLater({
+                // Close any existing banner first
+                if (alertBannerWindow != null) {
+                    alertBannerWindow.dispose()
+                    alertBannerWindow = null
+                }
+
+                // Create an undecorated always-on-top window
+                alertBannerWindow = new JWindow(this)
+
+                Color bg = new Color(220, 0, 0)
+                Color fg = Color.WHITE
+
+                JPanel panel = new JPanel(new BorderLayout())
+                panel.setBackground(bg)
+
+                JLabel label = new JLabel(message, SwingConstants.CENTER)
+                label.setForeground(fg)
+                label.setFont(label.getFont().deriveFont(Font.BOLD, 18f))
+                label.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20))
+
+                panel.add(label, BorderLayout.CENTER)
+                alertBannerWindow.setContentPane(panel)
+
+                // Position banner at top center of the primary screen
+                Rectangle bounds = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                        .getDefaultScreenDevice()
+                        .getDefaultConfiguration()
+                        .getBounds()
+
+                int width = (int) Math.min(bounds.width as double, 800d)
+                int height = (int) (panel.getPreferredSize().height + 10)
+                int x = (int) (bounds.x + (bounds.width - width) / 2)
+                int y = (int) bounds.y
+
+                alertBannerWindow.setBounds(x, y, width, height)
+                alertBannerWindow.setAlwaysOnTop(true)
+
+                // Show banner
+                alertBannerWindow.setVisible(true)
+
+                // Auto-hide after a few seconds
+                Timer hideTimer = new Timer(5000, { e ->
+                    if (alertBannerWindow != null) {
+                        alertBannerWindow.dispose()
+                        alertBannerWindow = null
+                    }
+                } as ActionListener)
+                hideTimer.setRepeats(false)
+                hideTimer.start()
+            } as Runnable)
+        } catch (Exception e) {
+            System.err.println("Error showing alert banner: " + e.getMessage())
+        }
+    }
+
+    /**
      * Show the log viewer dialog
      * Creates a new one if none exists or reuses the existing one
      */
@@ -1483,5 +1640,10 @@ class OutlookAlerterUI extends JFrame {
             logViewer.toFront()
             logViewer.repaint()
         }
+    }
+
+    // Simple helper to allow external/diagnostic triggering of the banner
+    void debugShowAlertBanner(String message) {
+        showAlertBanner(message ?: "Debug meeting alert")
     }
 }
