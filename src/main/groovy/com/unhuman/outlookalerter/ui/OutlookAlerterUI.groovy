@@ -997,59 +997,89 @@ class OutlookAlerterUI extends JFrame {
         }
         if (!eventsToAlert.isEmpty()) {
             System.out.println("  *** Triggering alert for events: " + eventsToAlert.collect { it.subject }.join(", "))
-            SwingUtilities.invokeLater({
-                statusLabel.setText("Status: Alerting for ${eventsToAlert.size()} event(s)")
 
-                // Show prominent banner in addition to screen flash
-                String bannerText
-                if (eventsToAlert.size() == 1) {
-                    bannerText = "Upcoming meeting: " + eventsToAlert[0].subject
-                } else {
-                    bannerText = "${eventsToAlert.size()} upcoming meetings starting soon"
-                }
-                showAlertBanner(bannerText)
+            // Mark events as alerted FIRST to avoid duplicate alerts if any component fails
+            for (CalendarEvent event : eventsToAlert) {
+                alertedEventIds.add(event.id)
+            }
 
-                // Tray / Notification Center alert + repeated beep
+            // Prepare alert text (compute once, use in multiple components)
+            String bannerText
+            String notificationTitle
+            String notificationMessage
+            if (eventsToAlert.size() == 1) {
+                CalendarEvent ev = eventsToAlert[0]
+                bannerText = "Upcoming meeting: " + ev.subject
+                notificationTitle = "Upcoming meeting"
+                notificationMessage = "${ev.subject} in ${ev.getMinutesToStart() + 1} minute(s)"
+            } else {
+                bannerText = "${eventsToAlert.size()} upcoming meetings starting soon"
+                notificationTitle = "Upcoming meetings"
+                notificationMessage = "${eventsToAlert.size()} meetings starting soon"
+            }
+
+            // ========== ALERT COMPONENT 1: Audio beep (highest priority, runs on separate thread) ==========
+            // Run on separate thread to ensure it fires even if EDT is busy or blocked
+            new Thread({
                 try {
-                    String title
-                    String message
-                    if (eventsToAlert.size() == 1) {
-                        CalendarEvent ev = eventsToAlert[0]
-                        title = "Upcoming meeting"
-                        message = "${ev.subject} in ${ev.getMinutesToStart() + 1} minute(s)"
-                    } else {
-                        title = "Upcoming meetings"
-                        message = "${eventsToAlert.size()} meetings starting soon"
-                    }
-                    showTrayNotification(title, message, TrayIcon.MessageType.INFO)
-                } catch (Exception ex) {
-                    System.err.println("Error showing tray notification for alert: " + ex.getMessage())
-                }
-                try {
-                    // Play alert sound configurable number of times
                     int count = Math.max(0, configManager.getAlertBeepCount())
-                    if (count > 0) {
-                        final int[] remaining = [count]
-                        Timer beepTimer = new Timer(250, { bevt ->
-                            try {
-                                Toolkit.getDefaultToolkit().beep()
-                            } catch (Exception ex2) {
-                                System.err.println("Error beeping for alert: " + ex2.getMessage())
+                    System.out.println("AlertBeep: Starting beep sequence (count: ${count})")
+                    int successCount = 0
+                    for (int i = 0; i < count; i++) {
+                        try {
+                            Toolkit.getDefaultToolkit().beep()
+                            successCount++
+                            // Sleep between beeps (not after the last one)
+                            // Keep timing-critical section free of I/O operations
+                            if (i < count - 1) {
+                                Thread.sleep(250)
                             }
-                            remaining[0]--
-                            if (remaining[0] <= 0) {
-                                (bevt.source as Timer).stop()
-                            }
-                        } as ActionListener)
-                        beepTimer.setRepeats(true)
-                        beepTimer.start()
+                        } catch (InterruptedException ie) {
+                            System.err.println("AlertBeep: Interrupted during beep sequence")
+                            Thread.currentThread().interrupt()
+                            break
+                        } catch (Exception ex) {
+                            System.err.println("AlertBeep: Error during beep ${i + 1}: " + ex.getMessage())
+                        }
                     }
+                    System.out.println("AlertBeep: Beep sequence completed (${successCount}/${count} beeps)")
                 } catch (Exception ex) {
-                    System.err.println("Error starting beep sequence for alert: " + ex.getMessage())
+                    System.err.println("AlertBeep: Error in beep sequence: " + ex.getMessage())
+                }
+            }, "AlertBeepThread").start()
+
+            // ========== ALERT COMPONENT 2: Status label update (EDT required) ==========
+            SwingUtilities.invokeLater({
+                try {
+                    statusLabel.setText("Status: Alerting for ${eventsToAlert.size()} event(s)")
+                    System.out.println("AlertStatus: Status label updated")
+                } catch (Exception ex) {
+                    System.err.println("AlertStatus: Error updating status label: " + ex.getMessage())
                 }
             } as Runnable)
 
-            // Flash the screen for all events at once, but do it off the EDT to avoid UI freeze
+            // ========== ALERT COMPONENT 3: Banner (EDT required, isolated) ==========
+            SwingUtilities.invokeLater({
+                try {
+                    showAlertBanner(bannerText)
+                    System.out.println("AlertBanner: Banner shown successfully")
+                } catch (Exception ex) {
+                    System.err.println("AlertBanner: Error showing banner: " + ex.getMessage())
+                    ex.printStackTrace()
+                }
+            } as Runnable)
+
+            // ========== ALERT COMPONENT 4: Tray notification (EDT required, isolated) ==========
+            SwingUtilities.invokeLater({
+                try {
+                    showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO)
+                    System.out.println("AlertTray: Tray notification shown successfully")
+                } catch (Exception ex) {
+                    System.err.println("AlertTray: Error showing tray notification: " + ex.getMessage())
+                }
+            } as Runnable)
+
+            // ========== ALERT COMPONENT 5: Screen flash (separate thread, isolated) ==========
             new Thread({
                 try {
                     System.out.println("ScreenFlasher: Starting flashMultiple for ${eventsToAlert.size()} events")
@@ -1060,10 +1090,6 @@ class OutlookAlerterUI extends JFrame {
                     ex.printStackTrace()
                 }
             }, "ScreenFlasherThread").start()
-            // Show system tray notification if available (optional: keep per-event or aggregate)
-            for (CalendarEvent event : eventsToAlert) {
-                alertedEventIds.add(event.id)
-            }
         }
 
         // Check token validity after alerting, and prompt if needed
