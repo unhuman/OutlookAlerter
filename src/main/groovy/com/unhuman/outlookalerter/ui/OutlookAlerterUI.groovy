@@ -435,49 +435,85 @@ class OutlookAlerterUI extends JFrame {
         })
         buttonPanel.add(exitButton)
         
-        // Temporary button for testing banner alerts
-        JButton testBannerButton = new JButton("Test Banner")
-        testBannerButton.addActionListener(new ActionListener() {
+        // Button for testing all alert components (flash, banner, beeps)
+        JButton testAlertsButton = new JButton("Test Alerts")
+        testAlertsButton.addActionListener(new ActionListener() {
             @Override
             void actionPerformed(ActionEvent e) {
-                // Simulate real alert behavior with a short delay
-                Timer t = new Timer(2000, { evt ->
-                    String bannerText = "Test meeting alert banner"
-                    showAlertBanner(bannerText)
+                System.out.println("Test Alerts: Starting test alert sequence")
+
+                // Create a test event for the flash
+                CalendarEvent testEvent = new CalendarEvent()
+                testEvent.subject = "Test Alert - Meeting Alert Demo"
+                testEvent.location = "Test Location"
+                testEvent.startTime = java.time.ZonedDateTime.now().plusMinutes(1)
+                testEvent.endTime = java.time.ZonedDateTime.now().plusMinutes(31)
+                testEvent.isOnlineMeeting = false
+
+                String bannerText = "Test meeting alert - All alert components"
+                String notificationTitle = "Test Alert"
+                String notificationMessage = "This is a test of all alert components"
+
+                // ========== ALERT COMPONENT 1: Audio beep (separate thread) ==========
+                new Thread({
                     try {
-                        showTrayNotification("Upcoming meeting", bannerText, TrayIcon.MessageType.INFO)
-                    } catch (Exception ex) {
-                        System.err.println("Error showing tray notification for test banner: " + ex.getMessage())
-                    }
-                    try {
-                        // Play alert sound configurable number of times
                         int count = Math.max(0, configManager.getAlertBeepCount())
-                        if (count > 0) {
-                            final int[] remaining = [count]
-                            Timer beepTimer = new Timer(250, { bevt ->
-                                try {
-                                    Toolkit.getDefaultToolkit().beep()
-                            } catch (Exception ex2) {
-                                System.err.println("Error beeping for test banner: " + ex2.getMessage())
+                        System.out.println("Test Alerts - Beep: Starting beep sequence (count: ${count})")
+                        int successCount = 0
+                        for (int i = 0; i < count; i++) {
+                            try {
+                                Toolkit.getDefaultToolkit().beep()
+                                successCount++
+                                if (i < count - 1) {
+                                    Thread.sleep(250)
+                                }
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt()
+                                break
+                            } catch (Exception ex) {
+                                System.err.println("Test Alerts - Beep: Error during beep: " + ex.getMessage())
                             }
-                            remaining[0]--
-                            if (remaining[0] <= 0) {
-                                (bevt.source as Timer).stop()
-                            }
-                        } as ActionListener)
-                        beepTimer.setRepeats(true)
-                        beepTimer.start()
                         }
+                        System.out.println("Test Alerts - Beep: Completed (${successCount}/${count} beeps)")
                     } catch (Exception ex) {
-                        System.err.println("Error starting beep sequence for test banner: " + ex.getMessage())
+                        System.err.println("Test Alerts - Beep: Error in beep sequence: " + ex.getMessage())
                     }
-                    (evt.source as Timer).stop()
-                } as ActionListener)
-                t.setRepeats(false)
-                t.start()
+                }, "TestAlertBeepThread").start()
+
+                // ========== ALERT COMPONENT 2: Banner (EDT) ==========
+                SwingUtilities.invokeLater({
+                    try {
+                        showAlertBanner(bannerText)
+                        System.out.println("Test Alerts - Banner: Shown successfully")
+                    } catch (Exception ex) {
+                        System.err.println("Test Alerts - Banner: Error: " + ex.getMessage())
+                    }
+                } as Runnable)
+
+                // ========== ALERT COMPONENT 3: Tray notification (EDT) ==========
+                SwingUtilities.invokeLater({
+                    try {
+                        showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO)
+                        System.out.println("Test Alerts - Tray: Notification shown successfully")
+                    } catch (Exception ex) {
+                        System.err.println("Test Alerts - Tray: Error: " + ex.getMessage())
+                    }
+                } as Runnable)
+
+                // ========== ALERT COMPONENT 4: Screen flash (separate thread) ==========
+                new Thread({
+                    try {
+                        System.out.println("Test Alerts - Flash: Starting screen flash")
+                        screenFlasher.flash(testEvent)
+                        System.out.println("Test Alerts - Flash: Completed")
+                    } catch (Exception ex) {
+                        System.err.println("Test Alerts - Flash: Error: " + ex.getMessage())
+                        ex.printStackTrace()
+                    }
+                }, "TestAlertFlashThread").start()
             }
         })
-        buttonPanel.add(testBannerButton)
+        buttonPanel.add(testAlertsButton)
 
         JPanel statusPanel = new JPanel(new GridLayout(2, 1))
         statusLabel = new JLabel("Status: Ready")

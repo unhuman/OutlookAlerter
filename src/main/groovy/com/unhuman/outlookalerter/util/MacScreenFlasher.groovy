@@ -281,6 +281,19 @@ class MacScreenFlasher implements ScreenFlasher {
         // Add to tracking (CopyOnWriteArrayList is already thread-safe)
         activeFlashFrames.addAll(newFrames)
 
+        // Request user attention on macOS to help bring windows above full-screen apps
+        try {
+            if (java.awt.Taskbar.isTaskbarSupported()) {
+                java.awt.Taskbar taskbar = java.awt.Taskbar.getTaskbar()
+                if (taskbar.isSupported(java.awt.Taskbar.Feature.USER_ATTENTION)) {
+                    taskbar.requestUserAttention(true, true)  // enabled=true, critical=true
+                    System.out.println("MacScreenFlasher: Requested critical user attention via Taskbar")
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("MacScreenFlasher: Could not request user attention: " + e.getMessage())
+        }
+
         // Set up cleanup timer
         setupCleanupTimer()
     }
@@ -364,10 +377,15 @@ class MacScreenFlasher implements ScreenFlasher {
 
             // Set critical properties before showing
             frame.setUndecorated(true)
-            frame.setType(JFrame.Type.UTILITY)
+            // Use POPUP type for higher window level on macOS - this helps appear over full-screen apps
+            frame.setType(JFrame.Type.POPUP)
             frame.setAlwaysOnTop(true)
             frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
             
+            // Additional settings to help with full-screen app visibility
+            frame.setFocusableWindowState(true)  // Allow focus to help bring to front
+            frame.setAutoRequestFocus(true)      // Request focus to trigger window activation
+
             // Get configuration
             Color alertColor = getAlertColor()
             Color textColor = getAlertTextColorWithOpacity()
@@ -476,7 +494,7 @@ class MacScreenFlasher implements ScreenFlasher {
             // Standard Swing methods work reliably without needing native handles
             Timer elevationTimer = new Timer(50, null)
             final int[] attemptCount = [0]
-            final int maxAttempts = 3
+            final int maxAttempts = 10  // Increased attempts for full-screen app scenarios
 
             elevationTimer.addActionListener(new ActionListener() {
                 @Override
@@ -484,10 +502,19 @@ class MacScreenFlasher implements ScreenFlasher {
                     attemptCount[0]++
 
                     try {
-                        // Multi-pronged approach to ensure visibility
+                        // Toggle alwaysOnTop off and on - this can help break through full-screen barriers
+                        if (attemptCount[0] <= 2) {
+                            frame.setAlwaysOnTop(false)
+                        }
                         frame.setAlwaysOnTop(true)
                         frame.toFront()
-                        frame.requestFocus()
+
+                        // On some attempts, also request focus which can help activate the window
+                        if (attemptCount[0] % 2 == 0) {
+                            frame.requestFocus()
+                            frame.requestFocusInWindow()
+                        }
+
                         frame.repaint()
 
                         if (attemptCount[0] >= maxAttempts) {
