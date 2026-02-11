@@ -1,12 +1,15 @@
 package com.unhuman.outlookalerter.ui
 
 import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import groovy.transform.CompileStatic
 import javax.swing.*
 import javax.swing.text.DefaultCaret
 import java.awt.*
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
+import java.awt.event.ItemEvent
+import java.awt.event.ItemListener
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 
@@ -20,7 +23,8 @@ class LogViewer extends JFrame {
     private JButton clearButton
     private JButton refreshButton
     private JButton saveButton
-    
+    private Map<LogCategory, JCheckBox> filterCheckboxes = new HashMap<>()
+
     /**
      * Constructor
      * @param parent The parent frame for positioning
@@ -47,8 +51,53 @@ class LogViewer extends JFrame {
     private void initializeUI() {
         // Set basic properties
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
-        setSize(800, 600)
-        
+        setSize(900, 600)
+
+        // Create filter panel at top
+        JPanel filterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT))
+        filterPanel.setBorder(BorderFactory.createTitledBorder("Filter by Category"))
+
+        LogManager logManager = LogManager.getInstance()
+        for (LogCategory category : LogManager.getCategories()) {
+            // Create a final copy to avoid closure capture issues
+            final LogCategory capturedCategory = category
+            JCheckBox checkbox = new JCheckBox(capturedCategory.displayName, logManager.isFilterEnabled(capturedCategory))
+            checkbox.addActionListener(new ActionListener() {
+                @Override
+                void actionPerformed(ActionEvent e) {
+                    JCheckBox source = (JCheckBox) e.getSource()
+                    logManager.setFilterEnabled(capturedCategory, source.isSelected())
+                }
+            })
+            filterCheckboxes.put(capturedCategory, checkbox)
+            filterPanel.add(checkbox)
+        }
+
+        // Add "Select All" and "Select None" buttons
+        JButton selectAllButton = new JButton("All")
+        selectAllButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                for (LogCategory cat : LogManager.getCategories()) {
+                    logManager.setFilterEnabled(cat, true)
+                    filterCheckboxes.get(cat).setSelected(true)
+                }
+            }
+        })
+        filterPanel.add(selectAllButton)
+
+        JButton selectNoneButton = new JButton("None")
+        selectNoneButton.addActionListener(new ActionListener() {
+            @Override
+            void actionPerformed(ActionEvent e) {
+                for (LogCategory cat : LogManager.getCategories()) {
+                    logManager.setFilterEnabled(cat, false)
+                    filterCheckboxes.get(cat).setSelected(false)
+                }
+            }
+        })
+        filterPanel.add(selectNoneButton)
+
         // Create text area for logs
         logTextArea = new JTextArea()
         logTextArea.setEditable(false)
@@ -100,6 +149,7 @@ class LogViewer extends JFrame {
         
         // Set up the layout
         setLayout(new BorderLayout())
+        add(filterPanel, BorderLayout.NORTH)
         add(scrollPane, BorderLayout.CENTER)
         add(buttonPanel, BorderLayout.SOUTH)
         

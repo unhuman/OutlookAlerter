@@ -30,6 +30,7 @@ import java.io.StringWriter
 import java.io.PrintWriter
 import java.awt.Taskbar;
 import com.unhuman.outlookalerter.util.LogManager;
+import com.unhuman.outlookalerter.util.LogCategory;
 
 /**
  * Main application window for Outlook Alerter
@@ -645,6 +646,8 @@ class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
+        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Starting calendar refresh...")
+
         // Update status label
         SwingUtilities.invokeLater({
             statusLabel.setText("Status: Refreshing calendar events...")
@@ -655,6 +658,7 @@ class OutlookAlerterUI extends JFrame {
         Thread fetchThread = new Thread({
             try {
                 // Fetch events and store them
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Fetching events from Outlook API...")
                 List<CalendarEvent> events = outlookClient.getUpcomingEventsUsingCalendarView()
                 
                 // Update token status based on refresh result
@@ -675,6 +679,7 @@ class OutlookAlerterUI extends JFrame {
                 
                 // Check if we got any events
                 if (events != null) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "Retrieved ${events.size()} events from Outlook")
                     // Update the UI with the results
                     SwingUtilities.invokeLater({
                         try {
@@ -713,7 +718,7 @@ class OutlookAlerterUI extends JFrame {
                     })
                 }
             } catch (OutlookClient.AuthenticationCancelledException ace) {
-                System.out.println("Authentication was cancelled: " + ace.getMessage() + " (reason: " + ace.getReason() + ")")
+                LogManager.getInstance().warn(LogCategory.DATA_FETCH, "Authentication was cancelled: " + ace.getMessage() + " (reason: " + ace.getReason() + ")")
                 final OutlookAlerterUI self = this  // Store reference to outer class
                 SwingUtilities.invokeLater(new Runnable() {
                     void run() {
@@ -727,7 +732,7 @@ class OutlookAlerterUI extends JFrame {
                     }
                 })
             } catch (Exception e) {
-                System.err.println("Error fetching calendar events: " + e.getMessage())
+                LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error fetching calendar events: " + e.getMessage())
                 e.printStackTrace()
                 
                 // Handle specific network errors more gracefully
@@ -1007,32 +1012,32 @@ class OutlookAlerterUI extends JFrame {
      */
     private void checkForEventAlerts(List<CalendarEvent> events) {
         // Debug log
-        System.out.println("Checking ${events.size()} events for alerts...")
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Checking ${events.size()} events for alerts...")
 
         // Check each event for alerts
         List<CalendarEvent> eventsToAlert = []
         for (CalendarEvent event : events) {
             // Skip / cleanup events that have already ended
             if (event.hasEnded()) {
-                System.out.println("${event.subject} Skipping: Event has ended")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "${event.subject} Skipping: Event has ended")
                 alertedEventIds.remove(event.id) // Remove from list if already ended
                 continue
             }
             int minutesToStart = event.getMinutesToStart() + 1 // +1 to account for current time
-            System.out.println("${event.subject} Minutes to start: ${minutesToStart}")
+            LogManager.getInstance().info(LogCategory.MEETING_INFO, "${event.subject} Minutes to start: ${minutesToStart}")
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.id)) {
-                System.out.println("${event.subject} Skipping: Already alerted for this event")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "${event.subject} Skipping: Already alerted for this event")
                 continue
             }
             // Alert for events about to start
             if (minutesToStart <= configManager.alertMinutes && minutesToStart >= -1) {
-                System.out.println("${event.subject} Alerting")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "${event.subject} Alerting")
                 eventsToAlert.add(event)
             }
         }
         if (!eventsToAlert.isEmpty()) {
-            System.out.println("  *** Triggering alert for events: " + eventsToAlert.collect { it.subject }.join(", "))
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "*** Triggering alert for events: " + eventsToAlert.collect { it.subject }.join(", "))
 
             // Mark events as alerted FIRST to avoid duplicate alerts if any component fails
             for (CalendarEvent event : eventsToAlert) {
@@ -1059,7 +1064,7 @@ class OutlookAlerterUI extends JFrame {
             new Thread({
                 try {
                     int count = Math.max(0, configManager.getAlertBeepCount())
-                    System.out.println("AlertBeep: Starting beep sequence (count: ${count})")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting beep sequence (count: ${count})")
                     int successCount = 0
                     for (int i = 0; i < count; i++) {
                         try {
@@ -1071,16 +1076,16 @@ class OutlookAlerterUI extends JFrame {
                                 Thread.sleep(250)
                             }
                         } catch (InterruptedException ie) {
-                            System.err.println("AlertBeep: Interrupted during beep sequence")
+                            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Interrupted during beep sequence")
                             Thread.currentThread().interrupt()
                             break
                         } catch (Exception ex) {
-                            System.err.println("AlertBeep: Error during beep ${i + 1}: " + ex.getMessage())
+                            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Error during beep ${i + 1}: " + ex.getMessage())
                         }
                     }
-                    System.out.println("AlertBeep: Beep sequence completed (${successCount}/${count} beeps)")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Beep sequence completed (${successCount}/${count} beeps)")
                 } catch (Exception ex) {
-                    System.err.println("AlertBeep: Error in beep sequence: " + ex.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Error in beep sequence: " + ex.getMessage())
                 }
             }, "AlertBeepThread").start()
 
@@ -1088,9 +1093,9 @@ class OutlookAlerterUI extends JFrame {
             SwingUtilities.invokeLater({
                 try {
                     statusLabel.setText("Status: Alerting for ${eventsToAlert.size()} event(s)")
-                    System.out.println("AlertStatus: Status label updated")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertStatus: Status label updated")
                 } catch (Exception ex) {
-                    System.err.println("AlertStatus: Error updating status label: " + ex.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertStatus: Error updating status label: " + ex.getMessage())
                 }
             } as Runnable)
 
@@ -1098,9 +1103,9 @@ class OutlookAlerterUI extends JFrame {
             SwingUtilities.invokeLater({
                 try {
                     showAlertBanner(bannerText)
-                    System.out.println("AlertBanner: Banner shown successfully")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully")
                 } catch (Exception ex) {
-                    System.err.println("AlertBanner: Error showing banner: " + ex.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
                     ex.printStackTrace()
                 }
             } as Runnable)
@@ -1109,20 +1114,20 @@ class OutlookAlerterUI extends JFrame {
             SwingUtilities.invokeLater({
                 try {
                     showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO)
-                    System.out.println("AlertTray: Tray notification shown successfully")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertTray: Tray notification shown successfully")
                 } catch (Exception ex) {
-                    System.err.println("AlertTray: Error showing tray notification: " + ex.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertTray: Error showing tray notification: " + ex.getMessage())
                 }
             } as Runnable)
 
             // ========== ALERT COMPONENT 5: Screen flash (separate thread, isolated) ==========
             new Thread({
                 try {
-                    System.out.println("ScreenFlasher: Starting flashMultiple for ${eventsToAlert.size()} events")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Starting flashMultiple for ${eventsToAlert.size()} events")
                     screenFlasher.flashMultiple(eventsToAlert)
-                    System.out.println("ScreenFlasher: Finished flashMultiple")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Finished flashMultiple")
                 } catch (Exception ex) {
-                    System.err.println("ScreenFlasher: Exception during flashMultiple: " + ex.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Exception during flashMultiple: " + ex.getMessage())
                     ex.printStackTrace()
                 }
             }, "ScreenFlasherThread").start()
@@ -1141,7 +1146,7 @@ class OutlookAlerterUI extends JFrame {
 
         // Clean up alerted events list periodically
         if (alertedEventIds.size() > 100) {
-            System.out.println("Clearing alertedEventIds list (size > 100)")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Clearing alertedEventIds list (size > 100)")
             alertedEventIds.clear()
         }
     }
@@ -1154,20 +1159,20 @@ class OutlookAlerterUI extends JFrame {
     private void checkAlertsFromCache() {
         // Since this runs on a background thread, wrap everything in try-catch
         try {
-            System.out.println("\n=== Checking Alerts (using cached events) ===")
-            
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "=== Checking Alerts (using cached events) ===")
+
             // Check if refresh needed (more than 4 hour since last refresh)
             // this is to capture if device has been asleep for some time (ie weekend)
             if (lastCalendarRefresh == null || 
                 ZonedDateTime.now().minusHours(4).isAfter(lastCalendarRefresh)) {
-                System.out.println("More than 4 hour since last refresh, triggering calendar update")
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "More than 4 hours since last refresh, triggering calendar update")
                 refreshCalendarEvents()
                 return
             }
             
             // Make sure cached events exist
             if (lastFetchedEvents == null || lastFetchedEvents.isEmpty()) {
-                System.out.println("No cached events to check")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "No cached events to check")
                 return
             }
             
@@ -1186,13 +1191,13 @@ class OutlookAlerterUI extends JFrame {
                     // Check for alerts
                     checkForEventAlerts(updatedEvents)
                 } catch (Exception e) {
-                    System.err.println("Error in EDT processing cached alerts: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error in EDT processing cached alerts: " + e.getMessage())
                     e.printStackTrace()
                 }
             } as Runnable)
             
         } catch (Exception e) {
-            System.err.println("Error checking alerts from cache: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error checking alerts from cache: " + e.getMessage())
             e.printStackTrace()
         }
     }

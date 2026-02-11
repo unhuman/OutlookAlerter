@@ -10,6 +10,47 @@ import java.io.PrintWriter
 import java.io.StringWriter
 
 /**
+ * Log categories for filtering
+ */
+enum LogCategory {
+    DATA_FETCH("Data Fetch"),
+    MEETING_INFO("Meeting Info"),
+    ALERT_PROCESSING("Alert Processing"),
+    GENERAL("General")
+
+    final String displayName
+
+    LogCategory(String displayName) {
+        this.displayName = displayName
+    }
+
+    @Override
+    String toString() {
+        return displayName
+    }
+}
+
+/**
+ * Represents a single log entry with category information
+ */
+@CompileStatic
+class LogEntry {
+    final String timestamp
+    final String level
+    final String message
+    final LogCategory category
+    final String formattedMessage
+
+    LogEntry(String timestamp, String level, String message, LogCategory category) {
+        this.timestamp = timestamp
+        this.level = level
+        this.message = message
+        this.category = category
+        this.formattedMessage = "${timestamp} [${level}] [${category.displayName}] ${message}"
+    }
+}
+
+/**
  * Utility class for managing logs in the application.
  * Maintains a buffer of recent log messages and supports displaying them in a UI component.
  */
@@ -24,11 +65,17 @@ class LogManager {
     // Date format for log timestamps
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS")
     
-    // Collection to store log messages (thread-safe)
-    private final ConcurrentLinkedDeque<String> logBuffer = new ConcurrentLinkedDeque<>()
-    
+    // Collection to store log entries (thread-safe)
+    private final ConcurrentLinkedDeque<LogEntry> logBuffer = new ConcurrentLinkedDeque<>()
+
+    // Active category filters (categories to show)
+    private final Set<LogCategory> activeFilters = EnumSet.allOf(LogCategory.class)
+
     // Reference to the text area where logs are displayed (if open)
     private JTextArea logTextArea = null
+
+    // Listener for filter changes
+    private Runnable filterChangeListener = null
 
     /**
      * Private constructor for singleton pattern
@@ -49,35 +96,72 @@ class LogManager {
     }
 
     /**
-     * Log an informational message
+     * Log an informational message (defaults to GENERAL category)
      * @param message The message to log
      */
     void info(String message) {
-        log("INFO", message)
+        log("INFO", message, LogCategory.GENERAL)
     }
 
     /**
-     * Log a warning message
+     * Log an informational message with category
+     * @param category The log category
+     * @param message The message to log
+     */
+    void info(LogCategory category, String message) {
+        log("INFO", message, category)
+    }
+
+    /**
+     * Log a warning message (defaults to GENERAL category)
      * @param message The message to log
      */
     void warn(String message) {
-        log("WARN", message)
+        log("WARN", message, LogCategory.GENERAL)
     }
 
     /**
-     * Log an error message
+     * Log a warning message with category
+     * @param category The log category
+     * @param message The message to log
+     */
+    void warn(LogCategory category, String message) {
+        log("WARN", message, category)
+    }
+
+    /**
+     * Log an error message (defaults to GENERAL category)
      * @param message The message to log
      */
     void error(String message) {
-        log("ERROR", message)
+        log("ERROR", message, LogCategory.GENERAL)
     }
 
     /**
-     * Log an error message with an exception
+     * Log an error message with category
+     * @param category The log category
+     * @param message The message to log
+     */
+    void error(LogCategory category, String message) {
+        log("ERROR", message, category)
+    }
+
+    /**
+     * Log an error message with an exception (defaults to GENERAL category)
      * @param message The message to log
      * @param e The exception
      */
     void error(String message, Throwable e) {
+        error(LogCategory.GENERAL, message, e)
+    }
+
+    /**
+     * Log an error message with an exception and category
+     * @param category The log category
+     * @param message The message to log
+     * @param e The exception
+     */
+    void error(LogCategory category, String message, Throwable e) {
         StringBuilder sb = new StringBuilder(message)
         sb.append(": ").append(e.getMessage())
         
@@ -87,18 +171,19 @@ class LogManager {
         e.printStackTrace(pw)
         sb.append("\n").append(sw.toString())
         
-        log("ERROR", sb.toString())
+        log("ERROR", sb.toString(), category)
     }
 
     // Track whether we're currently logging to prevent recursion
     private static final ThreadLocal<Boolean> isLogging = ThreadLocal.withInitial(() -> Boolean.FALSE)
     
     /**
-     * Log a message with the specified level
+     * Log a message with the specified level and category
      * @param level The log level
      * @param message The message to log
+     * @param category The log category
      */
-    private void log(String level, String message) {
+    private void log(String level, String message, LogCategory category) {
         // Prevent recursive logging
         if (isLogging.get()) {
             return
@@ -108,20 +193,20 @@ class LogManager {
         try {
             // Format with timestamp
             String timestamp = DATE_FORMAT.format(new Date())
-            String formattedMessage = "${timestamp} [${level}] ${message}"
-            
+            LogEntry entry = new LogEntry(timestamp, level, message, category)
+
             // Print to console using original streams to avoid recursion
             PrintStream outputStream = (level == "ERROR") 
                 ? getOriginalErrStream() 
                 : getOriginalOutStream()
                 
             if (outputStream != null) {
-                outputStream.println(formattedMessage)
+                outputStream.println(entry.formattedMessage)
             }
             
             // Add to buffer
-            addToBuffer(formattedMessage)
-            
+            addToBuffer(entry)
+
             // Update UI if attached
             updateLogTextArea()
         } finally {
@@ -164,19 +249,58 @@ class LogManager {
     }
 
     /**
-     * Add a message to the log buffer, maintaining max size
-     * @param message The formatted message to add
+     * Add an entry to the log buffer, maintaining max size
+     * @param entry The log entry to add
      */
-    private synchronized void addToBuffer(String message) {
-        // Add the new message
-        logBuffer.add(message)
-        
-        // Remove oldest messages if buffer exceeds max size
+    private synchronized void addToBuffer(LogEntry entry) {
+        // Add the new entry
+        logBuffer.add(entry)
+
+        // Remove oldest entries if buffer exceeds max size
         while (logBuffer.size() > MAX_LOG_LINES) {
             logBuffer.removeFirst()
         }
     }
     
+    /**
+     * Set filter for a specific category
+     * @param category The category to filter
+     * @param enabled Whether to show this category
+     */
+    void setFilterEnabled(LogCategory category, boolean enabled) {
+        if (enabled) {
+            activeFilters.add(category)
+        } else {
+            activeFilters.remove(category)
+        }
+        updateLogTextArea()
+    }
+
+    /**
+     * Check if a category filter is enabled
+     * @param category The category to check
+     * @return true if the category is shown
+     */
+    boolean isFilterEnabled(LogCategory category) {
+        return activeFilters.contains(category)
+    }
+
+    /**
+     * Get all available categories
+     * @return Array of all LogCategory values
+     */
+    static LogCategory[] getCategories() {
+        return LogCategory.values()
+    }
+
+    /**
+     * Set listener for filter changes
+     * @param listener The listener to call when filters change
+     */
+    void setFilterChangeListener(Runnable listener) {
+        this.filterChangeListener = listener
+    }
+
     /**
      * Set the text area for displaying logs
      * @param textArea The JTextArea component
@@ -227,14 +351,17 @@ class LogManager {
     }
     
     /**
-     * Refresh the log display with all buffered logs
+     * Refresh the log display with filtered logs
      * @param textArea The text area to update
      */
     private void refreshLogDisplay(JTextArea textArea) {
         if (textArea != null) {
             StringBuilder sb = new StringBuilder()
-            for (String line : logBuffer) {
-                sb.append(line).append("\n")
+            for (LogEntry entry : logBuffer) {
+                // Only show entries that match active filters
+                if (activeFilters.contains(entry.category)) {
+                    sb.append(entry.formattedMessage).append("\n")
+                }
             }
             textArea.setText(sb.toString())
         }
@@ -248,13 +375,27 @@ class LogManager {
     }
     
     /**
-     * Get all logs as a single string
-     * @return String containing all logs
+     * Get filtered logs as a single string
+     * @return String containing filtered logs
      */
     String getLogsAsString() {
         StringBuilder sb = new StringBuilder()
-        for (String line : logBuffer) {
-            sb.append(line).append("\n")
+        for (LogEntry entry : logBuffer) {
+            if (activeFilters.contains(entry.category)) {
+                sb.append(entry.formattedMessage).append("\n")
+            }
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Get all logs (unfiltered) as a single string
+     * @return String containing all logs
+     */
+    String getAllLogsAsString() {
+        StringBuilder sb = new StringBuilder()
+        for (LogEntry entry : logBuffer) {
+            sb.append(entry.formattedMessage).append("\n")
         }
         return sb.toString()
     }

@@ -8,6 +8,8 @@ import java.awt.event.ActionListener
 import javax.swing.*
 import com.unhuman.outlookalerter.core.ConfigManager
 import com.unhuman.outlookalerter.model.CalendarEvent
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import java.util.List
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.CountDownLatch
@@ -237,23 +239,23 @@ class MacScreenFlasher implements ScreenFlasher {
     void flashMultiple(List<CalendarEvent> events) {
         if (!events) return
 
-        System.out.println("MacScreenFlasher: Flash requested for " + events.size() + " event(s), duration: " + flashDurationMs/1000 + " seconds")
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Flash requested for " + events.size() + " event(s), duration: " + flashDurationMs/1000 + " seconds")
 
         // Validate system state before proceeding
         if (!validateSystemState()) {
-            System.out.println("MacScreenFlasher: System state validation failed, skipping alert")
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: System state validation failed, skipping alert")
             return
         }
 
         // Validate display environment
         if (!validateDisplayEnvironment()) {
-            System.out.println("MacScreenFlasher: Display environment validation failed, skipping alert")
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Display environment validation failed, skipping alert")
             return
         }
 
         // Validate events have content to display
         if (!validateEventContent(events)) {
-            System.out.println("MacScreenFlasher: Event content validation failed, skipping alert")
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Event content validation failed, skipping alert")
             return
         }
 
@@ -262,8 +264,8 @@ class MacScreenFlasher implements ScreenFlasher {
 
         // Create and show flash windows
         GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
-        System.out.println("Creating flash windows for " + screens.length + " screens")
-        
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Creating flash windows for " + screens.length + " screens")
+
         List<JFrame> newFrames = []
         for (GraphicsDevice screen : screens) {
             JFrame frame = createFlashWindowForScreen(screen, events)
@@ -274,7 +276,7 @@ class MacScreenFlasher implements ScreenFlasher {
         
         // Verify at least one frame was created successfully
         if (newFrames.isEmpty()) {
-            System.err.println("MacScreenFlasher: No flash windows were created successfully")
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: No flash windows were created successfully")
             return
         }
 
