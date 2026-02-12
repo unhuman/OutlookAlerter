@@ -262,18 +262,46 @@ class MacScreenFlasher implements ScreenFlasher {
         // Clean up any existing windows first
         forceCleanup()
 
-        // Create and show flash windows
-        GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
-        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Creating flash windows for " + screens.length + " screens")
+        // Create and show flash windows ON THE EDT for Swing thread safety
+        // Swing components must be created and manipulated on the Event Dispatch Thread
+        // to avoid intermittent rendering failures (invisible/unpainted windows)
+        final List<JFrame> newFrames = Collections.synchronizedList(new ArrayList<JFrame>())
+        try {
+            Runnable createWindows = {
+                GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Creating flash windows for " + screens.length + " screens")
 
-        List<JFrame> newFrames = []
-        for (GraphicsDevice screen : screens) {
-            JFrame frame = createFlashWindowForScreen(screen, events)
-            if (frame != null) {
-                newFrames.add(frame)
+                for (GraphicsDevice screen : screens) {
+                    try {
+                        JFrame frame = createFlashWindowForScreen(screen, events)
+                        if (frame != null) {
+                            newFrames.add(frame)
+                        }
+                    } catch (Exception screenEx) {
+                        // Per-screen isolation: one monitor failure must not prevent others
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
+                            "MacScreenFlasher: Failed to create flash for screen '" + screen.getIDstring() + "': " + screenEx.getMessage())
+                    }
+                }
+            } as Runnable
+
+            if (SwingUtilities.isEventDispatchThread()) {
+                createWindows.run()
+            } else {
+                SwingUtilities.invokeAndWait(createWindows)
             }
+        } catch (java.lang.reflect.InvocationTargetException ite) {
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: EDT invocation error during window creation: " + ite.getCause()?.getMessage())
+        } catch (InterruptedException ie) {
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: Interrupted while creating flash windows on EDT: " + ie.getMessage())
+            Thread.currentThread().interrupt()
+        } catch (Exception e) {
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: Unexpected error during flash window creation: " + e.getMessage())
         }
-        
+
         // Verify at least one frame was created successfully
         if (newFrames.isEmpty()) {
             LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: No flash windows were created successfully")
@@ -877,24 +905,11 @@ class MacScreenFlasher implements ScreenFlasher {
                 return false
             }
 
-            // Test EDT availability by attempting a simple operation
-            final AtomicBoolean edtAvailable = new AtomicBoolean(false)
-            final CountDownLatch edtLatch = new CountDownLatch(1)
-
-            SwingUtilities.invokeLater(new Runnable() {
-                @Override
-                public void run() {
-                    edtAvailable.set(true)
-                    edtLatch.countDown()
-                }
-            })
-
-            // Wait for EDT test with timeout
-            boolean edtReady = edtLatch.await(1, java.util.concurrent.TimeUnit.SECONDS)
-            if (!edtReady || !edtAvailable.get()) {
-                System.err.println("MacScreenFlasher: EDT not available or responsive")
-                return false
-            }
+            // NOTE: Previously tested EDT availability here with a 1-second latch timeout.
+            // Removed because it causes false negatives: the banner and status label updates
+            // are also enqueued on the EDT concurrently, so the EDT can legitimately be busy
+            // when this check runs, causing the entire flash to be silently skipped.
+            // The EDT watchdog provides adequate EDT health monitoring instead.
 
             System.out.println("MacScreenFlasher: Display environment validation passed")
             return true
@@ -918,30 +933,44 @@ class MacScreenFlasher implements ScreenFlasher {
         }
 
         try {
-            for (CalendarEvent event : events) {
-                // Check for null event
+            // Filter out bad events instead of failing all events when one is invalid.
+            // This prevents a single event with a missing subject from suppressing
+            // alerts for all other valid meetings.
+            Iterator<CalendarEvent> iterator = events.iterator()
+            while (iterator.hasNext()) {
+                CalendarEvent event = iterator.next()
+
+                // Remove null events
                 if (event == null) {
-                    System.err.println("MacScreenFlasher: Found null event in list")
-                    return false
+                    System.err.println("MacScreenFlasher: Filtering out null event")
+                    iterator.remove()
+                    continue
                 }
 
-                // Check for empty or null subject
+                // Remove events with empty/null subject
                 String subject = event.getSubject()
                 if (subject == null || subject.trim().isEmpty()) {
-                    System.err.println("MacScreenFlasher: Found event with empty subject")
-                    return false
+                    System.err.println("MacScreenFlasher: Filtering out event with empty subject")
+                    iterator.remove()
+                    continue
                 }
 
-                // Check that event is not corrupted (basic validation)
+                // Remove corrupted events
                 try {
-                    event.getMinutesToStart() // This should not throw an exception
+                    event.getMinutesToStart()
                 } catch (Exception e) {
-                    System.err.println("MacScreenFlasher: Event appears corrupted: " + e.getMessage())
-                    return false
+                    System.err.println("MacScreenFlasher: Filtering out corrupted event: " + e.getMessage())
+                    iterator.remove()
                 }
             }
 
-            System.out.println("MacScreenFlasher: Event content validation passed for " + events.size() + " events")
+            // Only fail if ALL events were filtered out
+            if (events.isEmpty()) {
+                System.err.println("MacScreenFlasher: All events were invalid, nothing to display")
+                return false
+            }
+
+            System.out.println("MacScreenFlasher: Event content validation passed for " + events.size() + " event(s)")
             return true
 
         } catch (Exception e) {

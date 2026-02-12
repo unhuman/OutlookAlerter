@@ -1617,14 +1617,17 @@ class OutlookAlerterUI extends JFrame {
      */
     private void showAlertBanner(String message) {
         try {
-            SwingUtilities.invokeLater({
-                // Close any existing banners first
-                alertBannerWindows.each { it.dispose() }
-                alertBannerWindows.clear()
+            // Note: This method is already called on the EDT by the orchestration code,
+            // so no additional invokeLater wrapper is needed (double-nesting delays rendering).
 
-                // Create a banner on every monitor
-                GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
-                for (GraphicsDevice screen : screens) {
+            // Close any existing banners first
+            alertBannerWindows.each { it.dispose() }
+            alertBannerWindows.clear()
+
+            // Create a banner on every monitor
+            GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
+            for (GraphicsDevice screen : screens) {
+                try {
                     JWindow bannerWindow = new JWindow(this)
 
                     Color bg = new Color(220, 0, 0)
@@ -1655,16 +1658,21 @@ class OutlookAlerterUI extends JFrame {
                     // Show banner
                     bannerWindow.setVisible(true)
                     alertBannerWindows.add(bannerWindow)
+                } catch (Exception screenEx) {
+                    // Per-screen isolation: one monitor failure must not prevent others
+                    System.err.println("Error creating banner for screen '" + screen.getIDstring() + "': " + screenEx.getMessage())
                 }
+            }
 
-                // Auto-hide after a few seconds
+            // Auto-hide after a few seconds (always set up, even if some screens failed)
+            if (!alertBannerWindows.isEmpty()) {
                 Timer hideTimer = new Timer(5000, { e ->
                     alertBannerWindows.each { it.dispose() }
                     alertBannerWindows.clear()
                 } as ActionListener)
                 hideTimer.setRepeats(false)
                 hideTimer.start()
-            } as Runnable)
+            }
         } catch (Exception e) {
             System.err.println("Error showing alert banner: " + e.getMessage())
         }
