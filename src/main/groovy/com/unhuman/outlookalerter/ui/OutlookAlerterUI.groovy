@@ -140,7 +140,7 @@ class OutlookAlerterUI extends JFrame {
     private long lastSystemWakeTime = System.currentTimeMillis()
 
     // Banner components
-    private JWindow alertBannerWindow
+    private List<JWindow> alertBannerWindows = []
 
     /**
      * Create a new OutlookAlerterUI
@@ -1618,52 +1618,49 @@ class OutlookAlerterUI extends JFrame {
     private void showAlertBanner(String message) {
         try {
             SwingUtilities.invokeLater({
-                // Close any existing banner first
-                if (alertBannerWindow != null) {
-                    alertBannerWindow.dispose()
-                    alertBannerWindow = null
+                // Close any existing banners first
+                alertBannerWindows.each { it.dispose() }
+                alertBannerWindows.clear()
+
+                // Create a banner on every monitor
+                GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
+                for (GraphicsDevice screen : screens) {
+                    JWindow bannerWindow = new JWindow(this)
+
+                    Color bg = new Color(220, 0, 0)
+                    Color fg = Color.WHITE
+
+                    JPanel panel = new JPanel(new BorderLayout())
+                    panel.setBackground(bg)
+
+                    JLabel label = new JLabel(message, SwingConstants.CENTER)
+                    label.setForeground(fg)
+                    label.setFont(label.getFont().deriveFont(Font.BOLD, 18f))
+                    label.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20))
+
+                    panel.add(label, BorderLayout.CENTER)
+                    bannerWindow.setContentPane(panel)
+
+                    // Position banner at top center of this screen
+                    Rectangle bounds = screen.getDefaultConfiguration().getBounds()
+
+                    int width = (int) Math.min(bounds.width as double, 800d)
+                    int height = (int) (panel.getPreferredSize().height + 10)
+                    int x = (int) (bounds.x + (bounds.width - width) / 2)
+                    int y = (int) bounds.y
+
+                    bannerWindow.setBounds(x, y, width, height)
+                    bannerWindow.setAlwaysOnTop(true)
+
+                    // Show banner
+                    bannerWindow.setVisible(true)
+                    alertBannerWindows.add(bannerWindow)
                 }
-
-                // Create an undecorated always-on-top window
-                alertBannerWindow = new JWindow(this)
-
-                Color bg = new Color(220, 0, 0)
-                Color fg = Color.WHITE
-
-                JPanel panel = new JPanel(new BorderLayout())
-                panel.setBackground(bg)
-
-                JLabel label = new JLabel(message, SwingConstants.CENTER)
-                label.setForeground(fg)
-                label.setFont(label.getFont().deriveFont(Font.BOLD, 18f))
-                label.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20))
-
-                panel.add(label, BorderLayout.CENTER)
-                alertBannerWindow.setContentPane(panel)
-
-                // Position banner at top center of the primary screen
-                Rectangle bounds = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                        .getDefaultScreenDevice()
-                        .getDefaultConfiguration()
-                        .getBounds()
-
-                int width = (int) Math.min(bounds.width as double, 800d)
-                int height = (int) (panel.getPreferredSize().height + 10)
-                int x = (int) (bounds.x + (bounds.width - width) / 2)
-                int y = (int) bounds.y
-
-                alertBannerWindow.setBounds(x, y, width, height)
-                alertBannerWindow.setAlwaysOnTop(true)
-
-                // Show banner
-                alertBannerWindow.setVisible(true)
 
                 // Auto-hide after a few seconds
                 Timer hideTimer = new Timer(5000, { e ->
-                    if (alertBannerWindow != null) {
-                        alertBannerWindow.dispose()
-                        alertBannerWindow = null
-                    }
+                    alertBannerWindows.each { it.dispose() }
+                    alertBannerWindows.clear()
                 } as ActionListener)
                 hideTimer.setRepeats(false)
                 hideTimer.start()
