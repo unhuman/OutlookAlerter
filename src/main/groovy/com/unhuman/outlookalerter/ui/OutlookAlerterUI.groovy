@@ -1614,6 +1614,7 @@ class OutlookAlerterUI extends JFrame {
     
     /**
      * Show a prominent notification banner at the top of the screen when an alert fires.
+     * Creates a frame border around each monitor plus a text banner at the top.
      */
     private void showAlertBanner(String message) {
         try {
@@ -1624,40 +1625,54 @@ class OutlookAlerterUI extends JFrame {
             alertBannerWindows.each { it.dispose() }
             alertBannerWindows.clear()
 
-            // Create a banner on every monitor
+            Color bg = new Color(220, 0, 0)
+            Color fg = Color.WHITE
+
+            // Create a banner + border frame on every monitor
             GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
             for (GraphicsDevice screen : screens) {
                 try {
-                    JWindow bannerWindow = new JWindow(this)
+                    Rectangle bounds = screen.getDefaultConfiguration().getBounds()
 
-                    Color bg = new Color(220, 0, 0)
-                    Color fg = Color.WHITE
-
-                    JPanel panel = new JPanel(new BorderLayout())
-                    panel.setBackground(bg)
+                    // === Top banner with text (full width of screen) ===
+                    JWindow topBanner = new JWindow(this)
+                    JPanel topPanel = new JPanel(new BorderLayout())
+                    topPanel.setBackground(bg)
 
                     JLabel label = new JLabel(message, SwingConstants.CENTER)
                     label.setForeground(fg)
                     label.setFont(label.getFont().deriveFont(Font.BOLD, 18f))
                     label.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20))
+                    topPanel.add(label, BorderLayout.CENTER)
+                    topBanner.setContentPane(topPanel)
 
-                    panel.add(label, BorderLayout.CENTER)
-                    bannerWindow.setContentPane(panel)
+                    int topHeight = (int) (topPanel.getPreferredSize().height + 10)
+                    topBanner.setBounds((int) bounds.x, (int) bounds.y, (int) bounds.width, topHeight)
+                    topBanner.setAlwaysOnTop(true)
+                    topBanner.setVisible(true)
+                    alertBannerWindows.add(topBanner)
 
-                    // Position banner at top center of this screen
-                    Rectangle bounds = screen.getDefaultConfiguration().getBounds()
+                    // Use the same thickness as the top banner for all sides
+                    int borderThickness = topHeight
 
-                    int width = (int) Math.min(bounds.width as double, 800d)
-                    int height = (int) (panel.getPreferredSize().height + 10)
-                    int x = (int) (bounds.x + (bounds.width - width) / 2)
-                    int y = (int) bounds.y
+                    // === Left border strip ===
+                    JWindow leftBorder = createBorderWindow(bg,
+                        (int) bounds.x, (int) (bounds.y + topHeight),
+                        borderThickness, (int) (bounds.height - topHeight))
+                    alertBannerWindows.add(leftBorder)
 
-                    bannerWindow.setBounds(x, y, width, height)
-                    bannerWindow.setAlwaysOnTop(true)
+                    // === Right border strip ===
+                    JWindow rightBorder = createBorderWindow(bg,
+                        (int) (bounds.x + bounds.width - borderThickness), (int) (bounds.y + topHeight),
+                        borderThickness, (int) (bounds.height - topHeight))
+                    alertBannerWindows.add(rightBorder)
 
-                    // Show banner
-                    bannerWindow.setVisible(true)
-                    alertBannerWindows.add(bannerWindow)
+                    // === Bottom border strip ===
+                    JWindow bottomBorder = createBorderWindow(bg,
+                        (int) bounds.x, (int) (bounds.y + bounds.height - borderThickness),
+                        (int) bounds.width, borderThickness)
+                    alertBannerWindows.add(bottomBorder)
+
                 } catch (Exception screenEx) {
                     // Per-screen isolation: one monitor failure must not prevent others
                     System.err.println("Error creating banner for screen '" + screen.getIDstring() + "': " + screenEx.getMessage())
@@ -1676,6 +1691,21 @@ class OutlookAlerterUI extends JFrame {
         } catch (Exception e) {
             System.err.println("Error showing alert banner: " + e.getMessage())
         }
+    }
+
+    /**
+     * Creates a simple colored border strip window for the alert frame effect.
+     */
+    private JWindow createBorderWindow(Color bg, int x, int y, int width, int height) {
+        JWindow border = new JWindow(this)
+        JPanel panel = new JPanel()
+        panel.setBackground(bg)
+        panel.setOpaque(true)
+        border.setContentPane(panel)
+        border.setBounds(x, y, width, height)
+        border.setAlwaysOnTop(true)
+        border.setVisible(true)
+        return border
     }
 
     /**
