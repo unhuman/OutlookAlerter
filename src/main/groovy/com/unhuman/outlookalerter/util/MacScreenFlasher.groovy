@@ -434,7 +434,7 @@ class MacScreenFlasher implements ScreenFlasher {
             frame.setBounds(bounds)
             frame.setBackground(alertColor)
 
-            // Create content panel
+            // Create content panel (no border — the separate banner windows provide the frame)
             JPanel panel = new JPanel(new GridBagLayout())
             panel.setBackground(alertColor)
             panel.setOpaque(true)
@@ -443,8 +443,15 @@ class MacScreenFlasher implements ScreenFlasher {
             // Create label with alert text
             String textColorHex = String.format("#%02x%02x%02x",
                 textColor.getRed(), textColor.getGreen(), textColor.getBlue())
-            
+
+            // Build banner message for the top bar
+            String bannerMsg = (events.size() == 1)
+                ? "Upcoming meeting: " + events.get(0).getSubject()
+                : events.size() + " upcoming meetings starting soon"
+
             StringBuilder labelContent = new StringBuilder("<html><div style='text-align: center; width: 100%;'>" +
+                "<div style='background-color: #DC0000; color: white; font-size: 18px; font-weight: bold; " +
+                "padding: 10px 20px; margin-bottom: 20px; width: 100%;'>" + bannerMsg + "</div>" +
                 "<h1 style='color: " + textColorHex + "; font-size: 48px; margin-bottom: 30px; white-space: nowrap;'>⚠️ MEETING ALERT ⚠️</h1>" +
                 "<div style='color: " + textColorHex + "; font-size: 36px; margin-bottom: 10px;'>")
 

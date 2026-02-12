@@ -140,7 +140,7 @@ class OutlookAlerterUI extends JFrame {
     private long lastSystemWakeTime = System.currentTimeMillis()
 
     // Banner components
-    private List<JWindow> alertBannerWindows = []
+    private List<JFrame> alertBannerWindows = []
 
     /**
      * Create a new OutlookAlerterUI
@@ -1625,53 +1625,78 @@ class OutlookAlerterUI extends JFrame {
             alertBannerWindows.each { it.dispose() }
             alertBannerWindows.clear()
 
-            Color bg = new Color(220, 0, 0)
-            Color fg = Color.WHITE
+            final Color bg = new Color(220, 0, 0)
+            final Color fg = Color.WHITE
 
-            // Create a banner + border frame on every monitor
+            // Use a single full-screen transparent window per monitor to paint the
+            // border frame + top text banner. This eliminates seam artifacts that
+            // occur when multiple overlapping windows are composited by macOS.
+            // The top banner text is ALSO rendered inside the flash window's HTML
+            // as a fallback in case the banner window gets obscured by z-order.
             GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()
             for (GraphicsDevice screen : screens) {
                 try {
                     Rectangle bounds = screen.getDefaultConfiguration().getBounds()
 
-                    // === Top banner with text (full width of screen) ===
-                    JWindow topBanner = new JWindow(this)
-                    JPanel topPanel = new JPanel(new BorderLayout())
-                    topPanel.setBackground(bg)
+                    // Account for macOS menu bar (and any other OS chrome) so the
+                    // top banner text isn't clipped behind it on regular desktops.
+                    // Full-screen apps hide the menu bar, so insets will be 0 there.
+                    Insets screenInsets = Toolkit.getDefaultToolkit().getScreenInsets(screen.getDefaultConfiguration())
+                    int frameX = (int) bounds.x
+                    int frameY = (int) bounds.y + screenInsets.top
+                    int frameW = (int) bounds.width
+                    int frameH = (int) bounds.height - screenInsets.top
 
-                    JLabel label = new JLabel(message, SwingConstants.CENTER)
-                    label.setForeground(fg)
-                    label.setFont(label.getFont().deriveFont(Font.BOLD, 18f))
-                    label.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20))
-                    topPanel.add(label, BorderLayout.CENTER)
-                    topBanner.setContentPane(topPanel)
+                    // Calculate border thickness from text height
+                    JLabel sizeRef = new JLabel("X")
+                    sizeRef.setFont(sizeRef.getFont().deriveFont(Font.BOLD, 18f))
+                    sizeRef.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20))
+                    final int borderThickness = (int) (sizeRef.getPreferredSize().height + 10)
+                    final String bannerMessage = message
 
-                    int topHeight = (int) (topPanel.getPreferredSize().height + 10)
-                    topBanner.setBounds((int) bounds.x, (int) bounds.y, (int) bounds.width, topHeight)
-                    topBanner.setAlwaysOnTop(true)
-                    topBanner.setVisible(true)
-                    alertBannerWindows.add(topBanner)
+                    JFrame frameWindow = new JFrame(screen.getDefaultConfiguration())
+                    frameWindow.setUndecorated(true)
+                    frameWindow.setType(JFrame.Type.POPUP)
+                    frameWindow.setBackground(new Color(0, 0, 0, 0))  // fully transparent
 
-                    // Use the same thickness as the top banner for all sides
-                    int borderThickness = topHeight
+                    // Custom panel that paints only the border regions and top text
+                    JPanel framePanel = new JPanel() {
+                        @Override
+                        protected void paintComponent(Graphics g) {
+                            // Do NOT call super — we want transparency in the center
+                            Graphics2D g2 = (Graphics2D) g.create()
+                            int w = getWidth()
+                            int h = getHeight()
 
-                    // === Left border strip ===
-                    JWindow leftBorder = createBorderWindow(bg,
-                        (int) bounds.x, (int) (bounds.y + topHeight),
-                        borderThickness, (int) (bounds.height - topHeight))
-                    alertBannerWindows.add(leftBorder)
+                            g2.setColor(bg)
 
-                    // === Right border strip ===
-                    JWindow rightBorder = createBorderWindow(bg,
-                        (int) (bounds.x + bounds.width - borderThickness), (int) (bounds.y + topHeight),
-                        borderThickness, (int) (bounds.height - topHeight))
-                    alertBannerWindows.add(rightBorder)
+                            // Top bar
+                            g2.fillRect(0, 0, w, borderThickness)
+                            // Left strip
+                            g2.fillRect(0, borderThickness, borderThickness, h - borderThickness)
+                            // Right strip
+                            g2.fillRect(w - borderThickness, borderThickness, borderThickness, h - borderThickness)
+                            // Bottom strip
+                            g2.fillRect(0, h - borderThickness, w, borderThickness)
 
-                    // === Bottom border strip ===
-                    JWindow bottomBorder = createBorderWindow(bg,
-                        (int) bounds.x, (int) (bounds.y + bounds.height - borderThickness),
-                        (int) bounds.width, borderThickness)
-                    alertBannerWindows.add(bottomBorder)
+                            // Draw banner text in the top bar
+                            g2.setColor(fg)
+                            g2.setFont(getFont().deriveFont(Font.BOLD, 18f))
+                            FontMetrics fm = g2.getFontMetrics()
+                            int textWidth = fm.stringWidth(bannerMessage)
+                            int textX = (int) ((w - textWidth) / 2)
+                            int textY = (int) ((borderThickness + fm.getAscent() - fm.getDescent()) / 2)
+                            g2.drawString(bannerMessage, textX, textY)
+
+                            g2.dispose()
+                        }
+                    }
+                    framePanel.setOpaque(false)
+                    frameWindow.setContentPane(framePanel)
+                    frameWindow.setBounds(frameX, frameY, frameW, frameH)
+                    frameWindow.setAlwaysOnTop(true)
+                    frameWindow.setVisible(true)
+                    alertBannerWindows.add(frameWindow)
 
                 } catch (Exception screenEx) {
                     // Per-screen isolation: one monitor failure must not prevent others
@@ -1681,7 +1706,22 @@ class OutlookAlerterUI extends JFrame {
 
             // Auto-hide after a few seconds (always set up, even if some screens failed)
             if (!alertBannerWindows.isEmpty()) {
+                // Periodically bring banner windows to front for best-effort visibility
+                // above the flash window.
+                final List<JFrame> windowsToElevate = new ArrayList<>(alertBannerWindows)
+                Timer elevationTimer = new Timer(150, { e ->
+                    for (JFrame w : windowsToElevate) {
+                        if (w.isDisplayable()) {
+                            w.toFront()
+                        }
+                    }
+                } as ActionListener)
+                elevationTimer.setInitialDelay(1200)
+                elevationTimer.setRepeats(true)
+                elevationTimer.start()
+
                 Timer hideTimer = new Timer(5000, { e ->
+                    elevationTimer.stop()
                     alertBannerWindows.each { it.dispose() }
                     alertBannerWindows.clear()
                 } as ActionListener)
@@ -1691,21 +1731,6 @@ class OutlookAlerterUI extends JFrame {
         } catch (Exception e) {
             System.err.println("Error showing alert banner: " + e.getMessage())
         }
-    }
-
-    /**
-     * Creates a simple colored border strip window for the alert frame effect.
-     */
-    private JWindow createBorderWindow(Color bg, int x, int y, int width, int height) {
-        JWindow border = new JWindow(this)
-        JPanel panel = new JPanel()
-        panel.setBackground(bg)
-        panel.setOpaque(true)
-        border.setContentPane(panel)
-        border.setBounds(x, y, width, height)
-        border.setAlwaysOnTop(true)
-        border.setVisible(true)
-        return border
     }
 
     /**
