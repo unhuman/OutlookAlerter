@@ -26,6 +26,30 @@ class MacScreenFlasher implements ScreenFlasher {
     // Instance variables for flash settings
     private int flashDurationMs
 
+    // Overlay windows that should always appear on top of flash windows.
+    // The flash elevation timer will re-elevate these after each of its own
+    // toFront() calls so the overlay stays visible without a separate timer fight.
+    private static final List<JFrame> overlayWindows = new CopyOnWriteArrayList<JFrame>()
+
+    /** Register windows that must remain above flash windows. */
+    static void registerOverlayWindows(List<JFrame> windows) {
+        overlayWindows.addAll(windows)
+    }
+
+    /** Remove all registered overlay windows. */
+    static void clearOverlayWindows() {
+        overlayWindows.clear()
+    }
+
+    // Callback fired on the EDT once flash windows are visible.
+    // Used by the banner to show itself at exactly the right moment.
+    private static volatile Runnable onFlashReady = null
+
+    /** Register a callback to run on the EDT once flash windows are visible. */
+    static void setOnFlashReady(Runnable callback) {
+        onFlashReady = callback
+    }
+
     // Track active flash frames for cleanup - using CopyOnWriteArrayList for thread safety
     private final List<JFrame> activeFlashFrames = new CopyOnWriteArrayList<JFrame>()
 
@@ -311,6 +335,14 @@ class MacScreenFlasher implements ScreenFlasher {
         // Add to tracking (CopyOnWriteArrayList is already thread-safe)
         activeFlashFrames.addAll(newFrames)
 
+        // Fire the onFlashReady callback so the banner can show itself now
+        // that flash windows are visible. Run on EDT to ensure Swing safety.
+        Runnable readyCallback = onFlashReady
+        onFlashReady = null  // one-shot
+        if (readyCallback != null) {
+            SwingUtilities.invokeLater(readyCallback)
+        }
+
         // Request user attention on macOS to help bring windows above full-screen apps
         try {
             if (java.awt.Taskbar.isTaskbarSupported()) {
@@ -529,9 +561,9 @@ class MacScreenFlasher implements ScreenFlasher {
             // Use standard Swing approach to ensure window is on top
             // Note: Native window handle access is blocked by Java module system on macOS 15.7.1
             // Standard Swing methods work reliably without needing native handles
-            Timer elevationTimer = new Timer(50, null)
+            Timer elevationTimer = new Timer(100, null)
             final int[] attemptCount = [0]
-            final int maxAttempts = 10  // Increased attempts for full-screen app scenarios
+            final int maxAttempts = 5
 
             elevationTimer.addActionListener(new ActionListener() {
                 @Override
@@ -539,20 +571,28 @@ class MacScreenFlasher implements ScreenFlasher {
                     attemptCount[0]++
 
                     try {
-                        // Toggle alwaysOnTop off and on - this can help break through full-screen barriers
-                        if (attemptCount[0] <= 2) {
+                        boolean hasOverlays = !overlayWindows.isEmpty()
+
+                        // First tick: full-screen breakthrough — toggle alwaysOnTop and toFront().
+                        // Subsequent ticks: only toFront() the flash when NO overlay windows
+                        // are registered. When overlays exist, the flash already has
+                        // alwaysOnTop and is visible; calling toFront() again would
+                        // momentarily push it above the banner causing flicker.
+                        if (attemptCount[0] == 1) {
                             frame.setAlwaysOnTop(false)
-                        }
-                        frame.setAlwaysOnTop(true)
-                        frame.toFront()
-
-                        // On some attempts, also request focus which can help activate the window
-                        if (attemptCount[0] % 2 == 0) {
-                            frame.requestFocus()
-                            frame.requestFocusInWindow()
+                            frame.setAlwaysOnTop(true)
+                            frame.toFront()
+                        } else if (!hasOverlays) {
+                            frame.toFront()
                         }
 
-                        frame.repaint()
+                        // Re-elevate any registered overlay windows (e.g. banner frame)
+                        // so they stay on top of the flash.
+                        for (JFrame overlay : overlayWindows) {
+                            if (overlay.isDisplayable()) {
+                                overlay.toFront()
+                            }
+                        }
 
                         if (attemptCount[0] >= maxAttempts) {
                             ((Timer)e.getSource()).stop()
@@ -565,8 +605,8 @@ class MacScreenFlasher implements ScreenFlasher {
                 }
             })
 
-            elevationTimer.setInitialDelay(50)
-            elevationTimer.setDelay(100)
+            elevationTimer.setInitialDelay(100)
+            elevationTimer.setDelay(200)
             elevationTimer.setRepeats(true)
             elevationTimer.start()
 

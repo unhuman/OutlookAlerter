@@ -1698,23 +1698,34 @@ class OutlookClient {
                 attempts++
                 System.out.println("Token dialog attempt ${attempts} of ${maxAttempts}")
                 
-                // Flash the screen independently in a separate thread
+                // Fire all alert components (beep, banner, tray, flash) via the UI,
+                // consistent with meeting alerts. Only on first attempt.
                 if (attempts == 1) {
-                    new Thread(() -> {
-                        try {
-                            ScreenFlasher screenFlasher = ScreenFlasherFactory.createScreenFlasher()
-                            screenFlasher.flash(new CalendarEvent(
-                                subject: "⚠️ TOKEN ENTRY REQUIRED ⚠️\nPlease enter your OAuth tokens in the dialog that will appear.",
-                                startTime: ZonedDateTime.now(),
-                                endTime: ZonedDateTime.now().plusMinutes(1),
-                                isOnlineMeeting: false,
-                                organizer: "Token Entry",
-                                responseStatus: "Flash",
-                                calendarName: "Token Entry"));
-                        } catch (Exception e) {
-                            System.err.println("[ERROR] showTokenDialogWithFlash: Error during screen flash: " + e.getMessage());
-                        }
-                    }).start();
+                    CalendarEvent tokenEvent = new CalendarEvent(
+                        subject: "⚠️ TOKEN ENTRY REQUIRED ⚠️",
+                        startTime: ZonedDateTime.now(),
+                        endTime: ZonedDateTime.now().plusMinutes(1),
+                        isOnlineMeeting: false,
+                        organizer: "Token Entry",
+                        responseStatus: "Flash",
+                        calendarName: "Token Entry")
+                    if (outlookAlerterUI != null) {
+                        outlookAlerterUI.performFullAlert(
+                            "⚠️ Token Entry Required - Please enter your OAuth tokens",
+                            "Token Entry Required",
+                            "Please enter your OAuth tokens in the dialog that will appear.",
+                            [tokenEvent])
+                    } else {
+                        // Console mode fallback — flash only
+                        new Thread(() -> {
+                            try {
+                                ScreenFlasher screenFlasher = ScreenFlasherFactory.createScreenFlasher()
+                                screenFlasher.flash(tokenEvent)
+                            } catch (Exception e) {
+                                System.err.println("[ERROR] Token alert flash error: " + e.getMessage())
+                            }
+                        }).start()
+                    }
                 }
 
                 // Handle both UI and console mode

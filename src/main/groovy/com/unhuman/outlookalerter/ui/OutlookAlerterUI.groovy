@@ -14,6 +14,7 @@ import com.unhuman.outlookalerter.core.OutlookClient.AuthenticationCancelledExce
 import com.unhuman.outlookalerter.model.CalendarEvent
 import com.unhuman.outlookalerter.util.ScreenFlasher
 import com.unhuman.outlookalerter.util.ScreenFlasherFactory
+import com.unhuman.outlookalerter.util.MacScreenFlasher
 import com.unhuman.outlookalerter.util.MacSleepWakeMonitor
 import java.time.ZonedDateTime
 import java.time.ZoneId
@@ -451,67 +452,12 @@ class OutlookAlerterUI extends JFrame {
                 testEvent.endTime = java.time.ZonedDateTime.now().plusMinutes(31)
                 testEvent.isOnlineMeeting = false
 
-                String bannerText = "Test meeting alert - All alert components"
-                String notificationTitle = "Test Alert"
-                String notificationMessage = "This is a test of all alert components"
-
-                // ========== ALERT COMPONENT 1: Audio beep (separate thread) ==========
-                new Thread({
-                    try {
-                        int count = Math.max(0, configManager.getAlertBeepCount())
-                        System.out.println("Test Alerts - Beep: Starting beep sequence (count: ${count})")
-                        int successCount = 0
-                        for (int i = 0; i < count; i++) {
-                            try {
-                                Toolkit.getDefaultToolkit().beep()
-                                successCount++
-                                if (i < count - 1) {
-                                    Thread.sleep(250)
-                                }
-                            } catch (InterruptedException ie) {
-                                Thread.currentThread().interrupt()
-                                break
-                            } catch (Exception ex) {
-                                System.err.println("Test Alerts - Beep: Error during beep: " + ex.getMessage())
-                            }
-                        }
-                        System.out.println("Test Alerts - Beep: Completed (${successCount}/${count} beeps)")
-                    } catch (Exception ex) {
-                        System.err.println("Test Alerts - Beep: Error in beep sequence: " + ex.getMessage())
-                    }
-                }, "TestAlertBeepThread").start()
-
-                // ========== ALERT COMPONENT 2: Banner (EDT) ==========
-                SwingUtilities.invokeLater({
-                    try {
-                        showAlertBanner(bannerText)
-                        System.out.println("Test Alerts - Banner: Shown successfully")
-                    } catch (Exception ex) {
-                        System.err.println("Test Alerts - Banner: Error: " + ex.getMessage())
-                    }
-                } as Runnable)
-
-                // ========== ALERT COMPONENT 3: Tray notification (EDT) ==========
-                SwingUtilities.invokeLater({
-                    try {
-                        showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO)
-                        System.out.println("Test Alerts - Tray: Notification shown successfully")
-                    } catch (Exception ex) {
-                        System.err.println("Test Alerts - Tray: Error: " + ex.getMessage())
-                    }
-                } as Runnable)
-
-                // ========== ALERT COMPONENT 4: Screen flash (separate thread) ==========
-                new Thread({
-                    try {
-                        System.out.println("Test Alerts - Flash: Starting screen flash")
-                        screenFlasher.flash(testEvent)
-                        System.out.println("Test Alerts - Flash: Completed")
-                    } catch (Exception ex) {
-                        System.err.println("Test Alerts - Flash: Error: " + ex.getMessage())
-                        ex.printStackTrace()
-                    }
-                }, "TestAlertFlashThread").start()
+                performFullAlert(
+                    "Test meeting alert - All alert components",
+                    "Test Alert",
+                    "This is a test of all alert components",
+                    [testEvent]
+                )
             }
         })
         buttonPanel.add(testAlertsButton)
@@ -1059,37 +1005,7 @@ class OutlookAlerterUI extends JFrame {
                 notificationMessage = "${eventsToAlert.size()} meetings starting soon"
             }
 
-            // ========== ALERT COMPONENT 1: Audio beep (highest priority, runs on separate thread) ==========
-            // Run on separate thread to ensure it fires even if EDT is busy or blocked
-            new Thread({
-                try {
-                    int count = Math.max(0, configManager.getAlertBeepCount())
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting beep sequence (count: ${count})")
-                    int successCount = 0
-                    for (int i = 0; i < count; i++) {
-                        try {
-                            Toolkit.getDefaultToolkit().beep()
-                            successCount++
-                            // Sleep between beeps (not after the last one)
-                            // Keep timing-critical section free of I/O operations
-                            if (i < count - 1) {
-                                Thread.sleep(250)
-                            }
-                        } catch (InterruptedException ie) {
-                            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Interrupted during beep sequence")
-                            Thread.currentThread().interrupt()
-                            break
-                        } catch (Exception ex) {
-                            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Error during beep ${i + 1}: " + ex.getMessage())
-                        }
-                    }
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Beep sequence completed (${successCount}/${count} beeps)")
-                } catch (Exception ex) {
-                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Error in beep sequence: " + ex.getMessage())
-                }
-            }, "AlertBeepThread").start()
-
-            // ========== ALERT COMPONENT 2: Status label update (EDT required) ==========
+            // Update status label (specific to meeting alerts)
             SwingUtilities.invokeLater({
                 try {
                     statusLabel.setText("Status: Alerting for ${eventsToAlert.size()} event(s)")
@@ -1099,38 +1015,8 @@ class OutlookAlerterUI extends JFrame {
                 }
             } as Runnable)
 
-            // ========== ALERT COMPONENT 3: Banner (EDT required, isolated) ==========
-            SwingUtilities.invokeLater({
-                try {
-                    showAlertBanner(bannerText)
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully")
-                } catch (Exception ex) {
-                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
-                    ex.printStackTrace()
-                }
-            } as Runnable)
-
-            // ========== ALERT COMPONENT 4: Tray notification (EDT required, isolated) ==========
-            SwingUtilities.invokeLater({
-                try {
-                    showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO)
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertTray: Tray notification shown successfully")
-                } catch (Exception ex) {
-                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertTray: Error showing tray notification: " + ex.getMessage())
-                }
-            } as Runnable)
-
-            // ========== ALERT COMPONENT 5: Screen flash (separate thread, isolated) ==========
-            new Thread({
-                try {
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Starting flashMultiple for ${eventsToAlert.size()} events")
-                    screenFlasher.flashMultiple(eventsToAlert)
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Finished flashMultiple")
-                } catch (Exception ex) {
-                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Exception during flashMultiple: " + ex.getMessage())
-                    ex.printStackTrace()
-                }
-            }, "ScreenFlasherThread").start()
+            // Fire all alert components via the common method
+            performFullAlert(bannerText, notificationTitle, notificationMessage, eventsToAlert)
         }
 
         // Check token validity after alerting, and prompt if needed
@@ -1613,6 +1499,97 @@ class OutlookAlerterUI extends JFrame {
     }
     
     /**
+     * Fire all alert components: audio beep, banner frame, tray notification, and screen flash.
+     * This is the single consistent entry point for ALL alerts (meeting alerts, token failures, test alerts).
+     * Can be called from any thread — EDT and background operations are handled internally.
+     *
+     * @param bannerText Text shown in the on-screen banner frame
+     * @param notificationTitle Title for the system tray notification
+     * @param notificationMessage Body text for the system tray notification
+     * @param events Calendar events to flash on screen (may be synthetic for non-meeting alerts)
+     */
+    void performFullAlert(String bannerText, String notificationTitle, String notificationMessage, List<CalendarEvent> events) {
+        System.out.println("performFullAlert: banner='" + bannerText + "' events=" + (events != null ? events.size() : 0))
+
+        // ========== ALERT COMPONENT 1: Audio beep (highest priority, separate thread) ==========
+        new Thread({
+            try {
+                int count = Math.max(0, configManager.getAlertBeepCount())
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting beep sequence (count: ${count})")
+                int successCount = 0
+                for (int i = 0; i < count; i++) {
+                    try {
+                        Toolkit.getDefaultToolkit().beep()
+                        successCount++
+                        if (i < count - 1) {
+                            Thread.sleep(250)
+                        }
+                    } catch (InterruptedException ie) {
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Interrupted during beep sequence")
+                        Thread.currentThread().interrupt()
+                        break
+                    } catch (Exception ex) {
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Error during beep ${i + 1}: " + ex.getMessage())
+                    }
+                }
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Beep sequence completed (${successCount}/${count} beeps)")
+            } catch (Exception ex) {
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Error in beep sequence: " + ex.getMessage())
+            }
+        }, "AlertBeepThread").start()
+
+        // ========== ALERT COMPONENT 3: Banner frame (shown once flash is visible) ==========
+        // Register a callback so the banner appears right after flash windows render,
+        // avoiding both a guessed delay and z-order reversal flicker.
+        final String bannerTextFinal = bannerText
+        MacScreenFlasher.setOnFlashReady({
+            try {
+                showAlertBanner(bannerTextFinal)
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully")
+            } catch (Exception ex) {
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
+                ex.printStackTrace()
+            }
+        } as Runnable)
+
+        // ========== ALERT COMPONENT 2: Screen flash (separate thread, started FIRST) ==========
+        // Flash starts before the banner so when the banner appears it renders
+        // directly on top of an already-visible flash — no z-order reversal flicker.
+        if (events != null && !events.isEmpty()) {
+            new Thread({
+                try {
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Starting flashMultiple for ${events.size()} events")
+                    screenFlasher.flashMultiple(events)
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Finished flashMultiple")
+                } catch (Exception ex) {
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Exception during flashMultiple: " + ex.getMessage())
+                    ex.printStackTrace()
+                }
+            }, "ScreenFlasherThread").start()
+        } else {
+            // No flash events — show banner immediately
+            SwingUtilities.invokeLater({
+                try {
+                    showAlertBanner(bannerText)
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown (no flash)")
+                } catch (Exception ex) {
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
+                }
+            } as Runnable)
+        }
+
+        // ========== ALERT COMPONENT 4: Tray notification (EDT required) ==========
+        SwingUtilities.invokeLater({
+            try {
+                showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO)
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertTray: Tray notification shown successfully")
+            } catch (Exception ex) {
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertTray: Error showing tray notification: " + ex.getMessage())
+            }
+        } as Runnable)
+    }
+
+    /**
      * Show a prominent notification banner at the top of the screen when an alert fires.
      * Creates a frame border around each monitor plus a text banner at the top.
      */
@@ -1706,22 +1683,15 @@ class OutlookAlerterUI extends JFrame {
 
             // Auto-hide after a few seconds (always set up, even if some screens failed)
             if (!alertBannerWindows.isEmpty()) {
-                // Periodically bring banner windows to front for best-effort visibility
-                // above the flash window.
-                final List<JFrame> windowsToElevate = new ArrayList<>(alertBannerWindows)
-                Timer elevationTimer = new Timer(150, { e ->
-                    for (JFrame w : windowsToElevate) {
-                        if (w.isDisplayable()) {
-                            w.toFront()
-                        }
-                    }
-                } as ActionListener)
-                elevationTimer.setInitialDelay(1200)
-                elevationTimer.setRepeats(true)
-                elevationTimer.start()
+                // Register banner windows with the flash's elevation timer so it
+                // re-elevates them after each of its own toFront() calls.
+                // This cooperative approach avoids two timers fighting each other.
+                if (screenFlasher instanceof MacScreenFlasher) {
+                    MacScreenFlasher.registerOverlayWindows(alertBannerWindows)
+                }
 
                 Timer hideTimer = new Timer(5000, { e ->
-                    elevationTimer.stop()
+                    MacScreenFlasher.clearOverlayWindows()
                     alertBannerWindows.each { it.dispose() }
                     alertBannerWindows.clear()
                 } as ActionListener)
