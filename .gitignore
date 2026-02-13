@@ -9,3 +9,4 @@ diagnostics-*/
 **/nohup.out
 **/*.class
 **/*.log
+**/*.zip
