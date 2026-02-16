@@ -19,4 +19,12 @@ interface ScreenFlasher {
      * @param events List of calendar events starting soon
      */
     void flashMultiple(List<CalendarEvent> events)
+
+    /**
+     * Force cleanup of all active flash windows and timers.
+     * Called when the application needs to stop flashing immediately.
+     */
+    default void forceCleanup() {
+        // Default no-op; implementations may override
+    }
 }

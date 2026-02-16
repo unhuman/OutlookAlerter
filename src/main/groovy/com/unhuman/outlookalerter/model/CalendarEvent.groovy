@@ -26,7 +26,7 @@ class CalendarEvent {
      */
     int getMinutesToStart() {
         if (startTime == null) {
-            return -999; // Error case - invalid event time
+            return Integer.MIN_VALUE; // Error case - invalid event time
         }
         
         // Make sure we compare with current time in the same timezone as the event

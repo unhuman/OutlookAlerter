@@ -19,7 +19,12 @@ class SingleInstanceManager {
      * Try to acquire a lock to ensure single instance.
      * @return true if lock was acquired (we're the first instance), false otherwise (another instance is running)
      */
+    private volatile boolean lockAcquired = false
+
     boolean tryAcquireLock() {
+        if (lockAcquired) {
+            return true  // Already holding the lock
+        }
         try {
             // First ensure the .outlookalerter directory exists
             File appDir = new File(System.getProperty("user.home"), APP_DIR)
@@ -44,10 +49,12 @@ class SingleInstanceManager {
             if (lock == null) {
                 // Another instance has the lock
                 channel.close()
+                channel = null
                 return false
             }
             
-            // We got the lock - add shutdown hook to release it
+            lockAcquired = true
+            // Add shutdown hook to release it (only once since lockAcquired guard prevents re-entry)
             Runtime.runtime.addShutdownHook(new Thread({ releaseLock() } as Runnable))
             
             return true

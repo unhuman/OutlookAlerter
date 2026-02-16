@@ -19,6 +19,10 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
     // Configurable flash duration, will be set from ConfigManager
     private int flashDurationMs = 5000 // Default 5 seconds
     
+    // Track active flash windows for external cleanup
+    private final List<JFrame> activeFlashWindows = new java.util.concurrent.CopyOnWriteArrayList<JFrame>()
+    private final List<javax.swing.Timer> activeTimers = new java.util.concurrent.CopyOnWriteArrayList<javax.swing.Timer>()
+    
     /**
      * Constructor that initializes the flash duration from ConfigManager
      */
@@ -92,6 +96,7 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                         } as Runnable)
                     })
                     keepAliveTimer.setRepeats(true)
+                    activeTimers.add(keepAliveTimer)
                     keepAliveTimer.start()
                     
                     // Create color animation timer
@@ -111,7 +116,11 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                         } as Runnable)
                     })
                     colorTimer.setRepeats(true)
+                    activeTimers.add(colorTimer)
                     colorTimer.start()
+                    
+                    // Track windows for external cleanup
+                    activeFlashWindows.addAll(flashWindows)
                     
                     // Wait exactly for the configured duration
                     Thread.sleep(flashDurationMs)
@@ -119,11 +128,14 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                     // Stop timers
                     keepAliveTimer.stop()
                     colorTimer.stop()
+                    activeTimers.remove(keepAliveTimer)
+                    activeTimers.remove(colorTimer)
                     
                     // Dispose all windows after exact duration
                     SwingUtilities.invokeAndWait({
                         flashWindows.each { window -> window.dispose() }
                     } as Runnable)
+                    activeFlashWindows.removeAll(flashWindows)
                     
                     long endTimeMs = System.currentTimeMillis()
                     println "Flash completed after ${(endTimeMs - startTimeMs)/1000.0} seconds"
@@ -183,6 +195,7 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                         } as Runnable)
                     })
                     keepAliveTimer.setRepeats(true)
+                    activeTimers.add(keepAliveTimer)
                     keepAliveTimer.start()
                     
                     // Create color animation timer
@@ -202,7 +215,11 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                         } as Runnable)
                     })
                     colorTimer.setRepeats(true)
+                    activeTimers.add(colorTimer)
                     colorTimer.start()
+                    
+                    // Track windows for external cleanup
+                    activeFlashWindows.addAll(flashWindows)
                     
                     // Wait exactly for the configured duration
                     Thread.sleep(flashDurationMs);
@@ -210,9 +227,12 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                     // Stop timers
                     keepAliveTimer.stop()
                     colorTimer.stop()
+                    activeTimers.remove(keepAliveTimer)
+                    activeTimers.remove(colorTimer)
                     
                     // Dispose all windows after exact duration
                     SwingUtilities.invokeAndWait({ flashWindows.each { it.dispose() } } as Runnable);
+                    activeFlashWindows.removeAll(flashWindows)
                     
                     long endTimeMs = System.currentTimeMillis()
                     println "Flash (multiple) completed after ${(endTimeMs - startTimeMs)/1000.0} seconds"
@@ -226,6 +246,27 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
         } catch (Exception e) {
             System.err.println("Error initializing screen flash: ${e.message}");
         }
+    }
+
+    @Override
+    void forceCleanup() {
+        // Stop all active timers
+        for (javax.swing.Timer timer : activeTimers) {
+            try { timer.stop() } catch (Exception ignored) {}
+        }
+        activeTimers.clear()
+        
+        // Dispose all active flash windows
+        SwingUtilities.invokeLater({
+            for (JFrame frame : activeFlashWindows) {
+                try {
+                    if (frame.isDisplayable()) {
+                        frame.dispose()
+                    }
+                } catch (Exception ignored) {}
+            }
+            activeFlashWindows.clear()
+        } as Runnable)
     }
 
     /**

@@ -305,11 +305,14 @@ class LogManager {
     }
     
     /**
-     * Update the log text area with current buffer contents
+     * Update the log text area by appending the latest entry instead of rebuilding everything
      */
     private void updateLogTextArea() {
         if (logTextArea != null) {
             final JTextArea textAreaRef = logTextArea; // Capture for thread safety
+            // Get the latest entry to append
+            final LogEntry latestEntry = logBuffer.peekLast()
+            if (latestEntry == null) return
             
             SwingUtilities.invokeLater({
                 try {
@@ -317,13 +320,19 @@ class LogManager {
                     if (textAreaRef == null || !textAreaRef.isDisplayable()) {
                         return;
                     }
+                    
+                    // Only append if the entry's category is active
+                    if (!activeFilters.contains(latestEntry.category)) {
+                        return;
+                    }
                 
                     // Get current caret position
+                    final int docLength = textAreaRef.getDocument().getLength()
                     final int caretPosition = textAreaRef.getCaretPosition()
-                    final boolean isAtEnd = (caretPosition == textAreaRef.getDocument().getLength())
+                    final boolean isAtEnd = (caretPosition == docLength)
                     
-                    // Update text
-                    refreshLogDisplay(textAreaRef)
+                    // Append only the new entry instead of rebuilding the entire display
+                    textAreaRef.append(latestEntry.formattedMessage + "\n")
                     
                     // If caret was at the end, keep it at the end
                     if (isAtEnd) {

@@ -101,7 +101,7 @@ class OutlookClient {
                 new X509TrustManager() {
                     void checkClientTrusted(X509Certificate[] chain, String authType) {}
                     void checkServerTrusted(X509Certificate[] chain, String authType) {}
-                    X509Certificate[] getAcceptedIssuers() { return null }
+                    X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0] }
                 }
             ] as TrustManager[];
 

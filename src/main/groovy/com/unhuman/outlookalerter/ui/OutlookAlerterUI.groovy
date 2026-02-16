@@ -330,6 +330,12 @@ class OutlookAlerterUI extends JFrame {
                 
                 // Create tray icon with the popup menu
                 try {
+                    // Remove existing tray icon if present to prevent leaks
+                    if (trayIcon != null) {
+                        systemTray.remove(trayIcon)
+                        trayIcon = null
+                    }
+                    
                     // Create icon based on token validity
                     boolean tokenInvalid = !outlookClient.hasValidToken()
                     Image trayIconImage = IconManager.getIconImage(tokenInvalid)

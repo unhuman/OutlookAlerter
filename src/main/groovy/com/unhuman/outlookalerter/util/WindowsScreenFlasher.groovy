@@ -92,23 +92,26 @@ class WindowsScreenFlasher implements ScreenFlasher {
             // Try to use JNA to access Windows API
             // This requires the JNA library to be in the classpath
             Class<?> userClass = Class.forName("com.sun.jna.platform.win32.User32")
-            Class<?> winUserClass = Class.forName("com.sun.jna.platform.win32.WinUser")
             
-            // Get constants
-            Object flashwInfo = winUserClass.getField("FLASHWINFO").get(null)
-            Class<?> flashwInfoClass = flashwInfo.getClass()
+            // INSTANCE is a static field, not a method
+            Object user32 = userClass.getField("INSTANCE").get(null)
+            
+            // FLASHWINFO is a nested class under WinUser
+            Class<?> flashwInfoClass = Class.forName("com.sun.jna.platform.win32.WinUser\$FLASHWINFO")
             
             // Create flash info structure
-            Object flashInfo = flashwInfoClass.newInstance()
+            Object flashInfo = flashwInfoClass.getDeclaredConstructor().newInstance()
             
-            // Set flash properties
-            flashwInfoClass.getField("cbSize").set(flashInfo, flashwInfoClass.getDeclaredField("size").get(null))
-            flashwInfoClass.getField("dwFlags").set(flashInfo, winUserClass.getField("FLASHW_ALL").get(null))
+            // Set cbSize using the structure's size() method
+            int structSize = ((Number) flashwInfoClass.getMethod("size").invoke(flashInfo)).intValue()
+            flashwInfoClass.getField("cbSize").set(flashInfo, structSize)
+            
+            // FLASHW_ALL = FLASHW_CAPTION | FLASHW_TRAY = 0x00000003
+            flashwInfoClass.getField("dwFlags").set(flashInfo, 0x00000003)
             flashwInfoClass.getField("uCount").set(flashInfo, flashCount)
             flashwInfoClass.getField("dwTimeout").set(flashInfo, flashIntervalMs)
             
             // Get current foreground window
-            Object user32 = userClass.getMethod("INSTANCE").invoke(null)
             Object hwnd = userClass.getMethod("GetForegroundWindow").invoke(user32)
             flashwInfoClass.getField("hwnd").set(flashInfo, hwnd)
             
@@ -146,6 +149,9 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 java.awt.TrayIcon trayIcon = new java.awt.TrayIcon(image, "Outlook Alerter")
                 trayIcon.setImageAutoSize(true)
                 
+                // Must add to tray before displayMessage will work
+                tray.add(trayIcon)
+                
                 // Show notification
                 trayIcon.displayMessage(
                         "Meeting Reminder",
@@ -153,11 +159,15 @@ class WindowsScreenFlasher implements ScreenFlasher {
                         java.awt.TrayIcon.MessageType.WARNING
                 )
                 
-                // Remove tray icon after a delay
-                Thread.start {
-                    Thread.sleep(10000)
+                // Remove tray icon after a delay (daemon thread so it won't block shutdown)
+                Thread cleanupThread = new Thread({
+                    try {
+                        Thread.sleep(10000)
+                    } catch (InterruptedException ignored) {}
                     tray.remove(trayIcon)
-                }
+                } as Runnable)
+                cleanupThread.setDaemon(true)
+                cleanupThread.start()
             }
         } catch (Exception e) {
             println "Error showing system tray notification: ${e.message}"
@@ -256,7 +266,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
         // Try to use Windows API for window visibility if available
         try {
             Class<?> user32Class = Class.forName("com.sun.jna.platform.win32.User32")
-            Object user32 = user32Class.getMethod("INSTANCE").invoke(null)
+            Object user32 = user32Class.getField("INSTANCE").get(null)
             Object hwnd = user32Class.getMethod("GetForegroundWindow").invoke(user32)
             
             // Set window to topmost
@@ -316,7 +326,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 if (colorToggleCount[0] % 20 == 0) {
                     try {
                         Class<?> user32Class = Class.forName("com.sun.jna.platform.win32.User32")
-                        Object user32 = user32Class.getMethod("INSTANCE").invoke(null)
+                        Object user32 = user32Class.getField("INSTANCE").get(null)
                         Object hwnd = user32Class.getMethod("GetForegroundWindow").invoke(user32)
                         Class<?> hwndClass = Class.forName("com.sun.jna.platform.win32.WinDef\$HWND")
                         user32Class.getMethod("SetForegroundWindow", hwndClass)
@@ -526,5 +536,17 @@ class WindowsScreenFlasher implements ScreenFlasher {
         } catch (Exception e) {
             return new Color(128, 0, 0, Math.round(getAlertOpacity() * 255))
         }
+    }
+
+    @Override
+    void forceCleanup() {
+        // Stop all countdown timers
+        synchronized (countdownTimers) {
+            for (Timer timer : countdownTimers.values()) {
+                try { timer.stop() } catch (Exception ignored) {}
+            }
+            countdownTimers.clear()
+        }
+        countdownLabels.clear()
     }
 }

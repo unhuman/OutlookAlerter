@@ -8,8 +8,8 @@ import com.unhuman.outlookalerter.ui.SimpleTokenDialog
  */
 @CompileStatic
 class ConfigManager {
-    // Singleton instance
-    private static ConfigManager instance
+    // Singleton instance (volatile for cross-thread visibility)
+    private static volatile ConfigManager instance
     
     /**
      * Gets the singleton instance of ConfigManager
@@ -170,15 +170,38 @@ class ConfigManager {
         
         // Application-specific properties
         preferredTimezone = properties.getProperty("preferredTimezone")
-        alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"))
+        
+        // Parse numeric/boolean config values individually so one bad value
+        // doesn't prevent loading the rest
+        try {
+            alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"))
+        } catch (NumberFormatException e) {
+            println "Invalid alertMinutes value, using default: ${e.message}"
+        }
         defaultIgnoreCertValidation = Boolean.parseBoolean(properties.getProperty("defaultIgnoreCertValidation", "false"))
         ignoreCertValidation = Boolean.parseBoolean(properties.getProperty("ignoreCertValidation", "false"))
         flashColor = properties.getProperty("flashColor", "#800000")
         flashTextColor = properties.getProperty("flashTextColor", "#ffffff")
-        flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"))
-        flashDurationSeconds = Integer.parseInt(properties.getProperty("flashDurationSeconds", "5"))
-        resyncIntervalMinutes = Integer.parseInt(properties.getProperty("resyncIntervalMinutes", "240"))
-        alertBeepCount = Integer.parseInt(properties.getProperty("alertBeepCount", "5"))
+        try {
+            flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"))
+        } catch (NumberFormatException e) {
+            println "Invalid flashOpacity value, using default: ${e.message}"
+        }
+        try {
+            flashDurationSeconds = Integer.parseInt(properties.getProperty("flashDurationSeconds", "5"))
+        } catch (NumberFormatException e) {
+            println "Invalid flashDurationSeconds value, using default: ${e.message}"
+        }
+        try {
+            resyncIntervalMinutes = Integer.parseInt(properties.getProperty("resyncIntervalMinutes", "240"))
+        } catch (NumberFormatException e) {
+            println "Invalid resyncIntervalMinutes value, using default: ${e.message}"
+        }
+        try {
+            alertBeepCount = Integer.parseInt(properties.getProperty("alertBeepCount", "5"))
+        } catch (NumberFormatException e) {
+            println "Invalid alertBeepCount value, using default: ${e.message}"
+        }
 
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")

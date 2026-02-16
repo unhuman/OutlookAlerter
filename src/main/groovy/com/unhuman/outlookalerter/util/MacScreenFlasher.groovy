@@ -66,6 +66,9 @@ class MacScreenFlasher implements ScreenFlasher {
     // Flag to prevent multiple simultaneous cleanups
     private final AtomicBoolean cleanupInProgress = new AtomicBoolean(false)
 
+    // Guard against duplicate shutdown hooks
+    private static volatile boolean shutdownHookRegistered = false
+
     // System state tracking to prevent alerts during problematic conditions
     private final AtomicLong lastSystemWakeTime = new AtomicLong(System.currentTimeMillis())
     private final AtomicBoolean systemStateValidationInProgress = new AtomicBoolean(false)
@@ -75,11 +78,12 @@ class MacScreenFlasher implements ScreenFlasher {
 
     // --- EDT Watchdog ---
     final AtomicBoolean edtWatchdogStarted = new AtomicBoolean(false)
+    private volatile boolean edtWatchdogRunning = true
     final AtomicLong lastEdtResponseTime = new AtomicLong(System.currentTimeMillis())
     void startEDTWatchdog() {
         if (edtWatchdogStarted.compareAndSet(false, true)) {
             Thread watchdog = new Thread({
-                while (true) {
+                while (edtWatchdogRunning) {
                     final AtomicBoolean responded = new AtomicBoolean(false)
                     final long checkStartTime = System.currentTimeMillis()
 
@@ -135,11 +139,15 @@ class MacScreenFlasher implements ScreenFlasher {
             System.err.println("Error initializing flash duration: " + e.getMessage())
         }
         
-        // Register shutdown hook to ensure cleanup
-        Runtime.getRuntime().addShutdownHook(new Thread({
-            forceCleanup()
-            sleepWakeMonitor.stopMonitoring()
-        } as Runnable))
+        // Register shutdown hook to ensure cleanup (only once via static flag)
+        if (!shutdownHookRegistered) {
+            shutdownHookRegistered = true
+            Runtime.getRuntime().addShutdownHook(new Thread({
+                forceCleanup()
+                edtWatchdogRunning = false
+                sleepWakeMonitor.stopMonitoring()
+            } as Runnable))
+        }
 
         startEDTWatchdog()
 
@@ -165,7 +173,8 @@ class MacScreenFlasher implements ScreenFlasher {
     /**
      * Robust cleanup method that prevents race conditions and ensures all resources are freed
      */
-    private void forceCleanup() {
+    @Override
+    void forceCleanup() {
         // Use atomic flag to prevent concurrent cleanup attempts
         if (!cleanupInProgress.compareAndSet(false, true)) {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
