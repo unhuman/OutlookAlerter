@@ -2,14 +2,6 @@ package com.unhuman.outlookalerter
 
 import groovy.transform.CompileStatic
 
-import java.time.ZonedDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
-
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.JOptionPane
@@ -24,9 +16,6 @@ import com.unhuman.outlookalerter.ui.OutlookAlerterConsole
  */
 @CompileStatic
 class OutlookAlerter {
-    // Debugging
-    private static boolean DEBUG_MODE = false
-    
     /**
      * Main entry point
      */
@@ -62,9 +51,6 @@ class OutlookAlerter {
                 i++
             } else if (args[i] == "--console") {
                 consoleMode = true
-            } else if (args[i] == "--debug") {
-                DEBUG_MODE = true
-                println "Debug mode enabled - detailed logging will be displayed"
             } else if (args[i] == "--timezone" && i < args.length - 1) {
                 timezoneOverride = args[i + 1]
                 i++
@@ -121,7 +107,6 @@ class OutlookAlerter {
         Options:
           --config <path>   Path to configuration file (default: ~/.outlookalerter/config.properties)
           --console         Run in console mode (no GUI)
-          --debug           Enable debug mode with detailed logging
           --timezone <zone> Override the timezone for displaying events (e.g., America/New_York)
           --help            Show this help message
         

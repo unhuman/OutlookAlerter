@@ -127,13 +127,6 @@ class MacSleepWakeMonitor {
     }
 
     /**
-     * Remove a wake listener
-     */
-    void removeWakeListener(Runnable listener) {
-        wakeListeners.remove(listener)
-    }
-
-    /**
      * Notify all wake listeners
      */
     private void notifyWakeListeners() {
@@ -154,21 +147,5 @@ class MacSleepWakeMonitor {
         return System.currentTimeMillis() - lastWakeTime.get()
     }
 
-    /**
-     * Get the last wake time
-     */
-    long getLastWakeTime() {
-        return lastWakeTime.get()
-    }
-
-    /**
-     * Manually update the wake time (useful for initialization)
-     */
-    void updateWakeTime() {
-        long currentTime = System.currentTimeMillis()
-        lastWakeTime.set(currentTime)
-        lastCheckTime.set(currentTime)
-        System.out.println("[SleepWakeMonitor] Wake time manually updated: " + currentTime)
-    }
 }
 

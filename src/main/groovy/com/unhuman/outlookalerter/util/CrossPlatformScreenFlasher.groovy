@@ -16,10 +16,6 @@ import com.unhuman.outlookalerter.core.ConfigManager
  */
 @CompileStatic
 class CrossPlatformScreenFlasher implements ScreenFlasher {
-    // Flash settings
-    private static final int FLASH_COUNT = 3
-    private static final int FLASH_INTERVAL_MS = 200
-    
     // Configurable flash duration, will be set from ConfigManager
     private int flashDurationMs = 5000 // Default 5 seconds
     

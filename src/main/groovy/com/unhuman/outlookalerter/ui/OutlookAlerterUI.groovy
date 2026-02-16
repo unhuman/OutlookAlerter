@@ -7,7 +7,6 @@ import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import java.awt.image.BufferedImage
 import com.unhuman.outlookalerter.core.ConfigManager
 import com.unhuman.outlookalerter.core.OutlookClient
 import com.unhuman.outlookalerter.core.OutlookClient.AuthenticationCancelledException
@@ -27,8 +26,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.CountDownLatch
 import java.io.OutputStream
 import java.io.PrintStream
-import java.io.StringWriter
-import java.io.PrintWriter
 import java.awt.Taskbar;
 import com.unhuman.outlookalerter.util.LogManager;
 import com.unhuman.outlookalerter.util.LogCategory;
@@ -386,14 +383,6 @@ class OutlookAlerterUI extends JFrame {
         }
     }
 
-    /**
-     * Create a simple icon for the system tray
-     */
-    @CompileStatic
-    private java.awt.Image createTrayIconImage() {
-        return IconManager.getIconImage()
-    }
-    
     /**
      * Display a notification message in the system tray
      */
@@ -1410,19 +1399,6 @@ class OutlookAlerterUI extends JFrame {
     }
 
     /**
-     * Shows and activates the window if it's not already visible
-     */
-    @CompileStatic
-    private void showAndActivateWindow() {
-        SwingUtilities.invokeLater({
-            // Only try to activate if window is not already visible
-            if (!isVisible()) {
-                activateWindow()
-            }
-        } as Runnable)
-    }
-
-    /**
      * Check if it's safe to show UI dialogs
      * Prevents showing dialogs immediately after system wake which can cause EDT deadlock
      */
@@ -1456,15 +1432,6 @@ class OutlookAlerterUI extends JFrame {
             println "EDT responsiveness check failed: ${e.message}"
             return false
         }
-    }
-
-    /**
-     * Update the last system wake time
-     * Should be called when system wake is detected
-     */
-    void updateLastWakeTime() {
-        lastSystemWakeTime = System.currentTimeMillis()
-        println "UI: Last system wake time updated: ${lastSystemWakeTime}"
     }
 
     /**
@@ -1795,8 +1762,4 @@ class OutlookAlerterUI extends JFrame {
         }
     }
 
-    // Simple helper to allow external/diagnostic triggering of the banner
-    void debugShowAlertBanner(String message) {
-        showAlertBanner(message ?: "Debug meeting alert")
-    }
 }

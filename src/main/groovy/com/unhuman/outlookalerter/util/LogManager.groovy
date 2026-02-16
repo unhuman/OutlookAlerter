@@ -75,9 +75,6 @@ class LogManager {
     // Reference to the text area where logs are displayed (if open)
     private JTextArea logTextArea = null
 
-    // Listener for filter changes
-    private Runnable filterChangeListener = null
-
     /**
      * Private constructor for singleton pattern
      */
@@ -295,14 +292,6 @@ class LogManager {
     }
 
     /**
-     * Set listener for filter changes
-     * @param listener The listener to call when filters change
-     */
-    void setFilterChangeListener(Runnable listener) {
-        this.filterChangeListener = listener
-    }
-
-    /**
      * Set the text area for displaying logs
      * @param textArea The JTextArea component
      */
@@ -389,18 +378,6 @@ class LogManager {
         return sb.toString()
     }
 
-    /**
-     * Get all logs (unfiltered) as a single string
-     * @return String containing all logs
-     */
-    String getAllLogsAsString() {
-        StringBuilder sb = new StringBuilder()
-        for (LogEntry entry : logBuffer) {
-            sb.append(entry.formattedMessage).append("\n")
-        }
-        return sb.toString()
-    }
-    
     /**
      * Clear all logs from the buffer
      */

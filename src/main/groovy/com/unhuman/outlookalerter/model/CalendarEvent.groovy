@@ -1,7 +1,6 @@
 package com.unhuman.outlookalerter.model
 
 import groovy.transform.CompileStatic
-import java.time.Duration
 import java.time.ZonedDateTime
 
 /**
