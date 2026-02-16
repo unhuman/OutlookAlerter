@@ -76,7 +76,9 @@ class OutlookClient {
         if (ignoreCertValidation) {
             return createHttpClientWithoutCertValidation();
         } else {
-            return HttpClient.newHttpClient();
+            return HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(30))
+                .build();
         }
     }
     
@@ -110,12 +112,15 @@ class OutlookClient {
             // Create an HttpClient that uses the custom SSLContext
             return HttpClient.newBuilder()
                 .sslContext(sslContext)
+                .connectTimeout(java.time.Duration.ofSeconds(30))
                 .build();
         } catch (Exception e) {
             System.err.println("Error creating HttpClient without certificate validation: " + e.getMessage());
             e.printStackTrace();
             // Fall back to default HttpClient
-            return HttpClient.newHttpClient();
+            return HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(30))
+                .build();
         }
     }
     

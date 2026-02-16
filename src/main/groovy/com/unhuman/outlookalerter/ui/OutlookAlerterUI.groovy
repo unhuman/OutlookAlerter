@@ -45,87 +45,93 @@ class OutlookAlerterUI extends JFrame {
         LogManager.setOriginalErrStream(originalErr)
         
         // Replace System.out with our intercepting PrintStream
+        // Uses ByteArrayOutputStream to correctly handle multi-byte UTF-8 characters
         System.setOut(new PrintStream(new OutputStream() {
-            private final StringBuilder buffer = new StringBuilder()
+            private final java.io.ByteArrayOutputStream byteBuffer = new java.io.ByteArrayOutputStream()
             
             @Override
             public synchronized void write(int b) {
-                // Write to original stream
                 originalOut.write(b)
-                
-                // Add to buffer
-                char c = (char) b
-                buffer.append(c)
-                
-                // Process buffer when we get a newline
-                if (c == '\n') {
-                    String message = buffer.toString().trim()
-                    if (!message.isEmpty()) {
-                        LogManager.getInstance().info(message)
-                    }
-                    buffer.setLength(0)
+                byteBuffer.write(b)
+                if (b == 10) {  // newline
+                    flushBuffer()
                 }
             }
             
             @Override
             public synchronized void write(byte[] b, int off, int len) {
-                // Write to original stream
                 originalOut.write(b, off, len)
-                
-                // Append to buffer and process any complete lines
-                String chunk = new String(b, off, len)
-                buffer.append(chunk)
-                
-                int newlineIdx
-                while ((newlineIdx = buffer.indexOf("\n")) >= 0) {
-                    String message = buffer.substring(0, newlineIdx).trim()
-                    if (!message.isEmpty()) {
-                        LogManager.getInstance().info(message)
+                byteBuffer.write(b, off, len)
+                // Process any complete lines in the buffer
+                for (int i = off; i < off + len; i++) {
+                    if (b[i] == (byte)10) {  // newline
+                        flushBuffer()
+                        break  // flushBuffer handles all complete lines
                     }
-                    buffer.delete(0, newlineIdx + 1)
+                }
+            }
+            
+            private void flushBuffer() {
+                String text = byteBuffer.toString(java.nio.charset.StandardCharsets.UTF_8)
+                byteBuffer.reset()
+                // Process each complete line
+                int start = 0
+                int idx
+                while ((idx = text.indexOf('\n', start)) >= 0) {
+                    String line = text.substring(start, idx).trim()
+                    if (!line.isEmpty()) {
+                        LogManager.getInstance().info(line)
+                    }
+                    start = idx + 1
+                }
+                // Put back any trailing incomplete line
+                if (start < text.length()) {
+                    byte[] remainder = text.substring(start).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                    byteBuffer.write(remainder, 0, remainder.length)
                 }
             }
         }))
         
         // Replace System.err with our intercepting PrintStream
         System.setErr(new PrintStream(new OutputStream() {
-            private final StringBuilder buffer = new StringBuilder()
+            private final java.io.ByteArrayOutputStream byteBuffer = new java.io.ByteArrayOutputStream()
             
             @Override
             public synchronized void write(int b) {
-                // Write to original stream
                 originalErr.write(b)
-                
-                // Add to buffer
-                char c = (char) b
-                buffer.append(c)
-                
-                // Process buffer when we get a newline
-                if (c == '\n') {
-                    String message = buffer.toString().trim()
-                    if (!message.isEmpty()) {
-                        LogManager.getInstance().error(message)
-                    }
-                    buffer.setLength(0)
+                byteBuffer.write(b)
+                if (b == 10) {  // newline
+                    flushBuffer()
                 }
             }
             
             @Override
             public synchronized void write(byte[] b, int off, int len) {
-                // Write to original stream
                 originalErr.write(b, off, len)
-                
-                // Append to buffer and process any complete lines
-                String chunk = new String(b, off, len)
-                buffer.append(chunk)
-                
-                int newlineIdx
-                while ((newlineIdx = buffer.indexOf("\n")) >= 0) {
-                    String message = buffer.substring(0, newlineIdx).trim()
-                    if (!message.isEmpty()) {
-                        LogManager.getInstance().error(message)
+                byteBuffer.write(b, off, len)
+                for (int i = off; i < off + len; i++) {
+                    if (b[i] == (byte)10) {  // newline
+                        flushBuffer()
+                        break
                     }
-                    buffer.delete(0, newlineIdx + 1)
+                }
+            }
+            
+            private void flushBuffer() {
+                String text = byteBuffer.toString(java.nio.charset.StandardCharsets.UTF_8)
+                byteBuffer.reset()
+                int start = 0
+                int idx
+                while ((idx = text.indexOf('\n', start)) >= 0) {
+                    String line = text.substring(start, idx).trim()
+                    if (!line.isEmpty()) {
+                        LogManager.getInstance().error(line)
+                    }
+                    start = idx + 1
+                }
+                if (start < text.length()) {
+                    byte[] remainder = text.substring(start).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                    byteBuffer.write(remainder, 0, remainder.length)
                 }
             }
         }))
@@ -172,14 +178,14 @@ class OutlookAlerterUI extends JFrame {
     // Track logs dialog instance
     private LogViewer logViewer = null;
 
-    // Added a flag to track if the token dialog is active
-    private boolean isTokenDialogActive = false;
+    // Added a flag to track if the token dialog is active (volatile for cross-thread visibility)
+    private volatile boolean isTokenDialogActive = false;
 
-    // Track last system wake time for safe UI display
-    private long lastSystemWakeTime = System.currentTimeMillis()
+    // Track last system wake time for safe UI display (volatile for cross-thread visibility)
+    private volatile long lastSystemWakeTime = System.currentTimeMillis()
 
-    // Banner components
-    private List<JFrame> alertBannerWindows = []
+    // Banner components (CopyOnWriteArrayList for thread-safe access from EDT and timer callbacks)
+    private final List<JFrame> alertBannerWindows = new java.util.concurrent.CopyOnWriteArrayList<JFrame>()
 
     /**
      * Create a new OutlookAlerterUI

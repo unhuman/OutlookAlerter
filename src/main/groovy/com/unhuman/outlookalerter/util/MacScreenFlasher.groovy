@@ -43,11 +43,12 @@ class MacScreenFlasher implements ScreenFlasher {
 
     // Callback fired on the EDT once flash windows are visible.
     // Used by the banner to show itself at exactly the right moment.
-    private static volatile Runnable onFlashReady = null
+    private static final java.util.concurrent.atomic.AtomicReference<Runnable> onFlashReady =
+        new java.util.concurrent.atomic.AtomicReference<Runnable>(null)
 
     /** Register a callback to run on the EDT once flash windows are visible. */
     static void setOnFlashReady(Runnable callback) {
-        onFlashReady = callback
+        onFlashReady.set(callback)
     }
 
     // Track active flash frames for cleanup - using CopyOnWriteArrayList for thread safety
@@ -345,8 +346,8 @@ class MacScreenFlasher implements ScreenFlasher {
 
         // Fire the onFlashReady callback so the banner can show itself now
         // that flash windows are visible. Run on EDT to ensure Swing safety.
-        Runnable readyCallback = onFlashReady
-        onFlashReady = null  // one-shot
+        // AtomicReference.getAndSet(null) is an atomic read-and-clear (one-shot).
+        Runnable readyCallback = onFlashReady.getAndSet(null)
         if (readyCallback != null) {
             SwingUtilities.invokeLater(readyCallback)
         }
@@ -616,6 +617,7 @@ class MacScreenFlasher implements ScreenFlasher {
             elevationTimer.setInitialDelay(100)
             elevationTimer.setDelay(1000)
             elevationTimer.setRepeats(true)
+            activeTimers.add(elevationTimer)
             elevationTimer.start()
 
             // Start countdown timer for this frame

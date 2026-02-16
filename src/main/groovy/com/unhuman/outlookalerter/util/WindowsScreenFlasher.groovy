@@ -17,6 +17,7 @@ import java.awt.GraphicsEnvironment
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Rectangle
+import java.awt.event.ActionEvent
 import java.util.List
 import java.util.ArrayList
 import java.util.Collections
@@ -38,11 +39,11 @@ class WindowsScreenFlasher implements ScreenFlasher {
     private int flashCount = DEFAULT_FLASH_COUNT
     private int flashIntervalMs = DEFAULT_FLASH_INTERVAL_MS
     
-    // Map to store countdown timers for each frame
-    private final Map<JFrame, Timer> countdownTimers = new HashMap<>()
+    // Map to store countdown timers for each frame (synchronized for cross-thread access)
+    private final Map<JFrame, Timer> countdownTimers = Collections.synchronizedMap(new HashMap<>())
     
-    // Map to store labels for each frame for countdown updates
-    private final Map<JFrame, JLabel> countdownLabels = new HashMap<>()
+    // Map to store labels for each frame for countdown updates (synchronized for cross-thread access)
+    private final Map<JFrame, JLabel> countdownLabels = Collections.synchronizedMap(new HashMap<>())
     
     /**
      * Constructor
@@ -272,109 +273,64 @@ class WindowsScreenFlasher implements ScreenFlasher {
             println "Could not use Windows API for window visibility: ${e.message}"
         }
         
-        // Create a dedicated control thread that keeps the window visible
-        Thread flashControlThread = new Thread({
-            println "Flash control thread started"
-            boolean isColorToggle = false
-            int colorToggleCount = 0
-            long endTime = startTimeMs + flashDurationMs
-            
-            try {
-                // Keep checking the window until the duration is over
-                while (System.currentTimeMillis() < endTime) {
-                    SwingUtilities.invokeAndWait({
-                        try {
-                            // CRITICAL: Ensure window is visible at all times
-                            if (!frame.isVisible() || !frame.isDisplayable()) {
-                                frame.setVisible(true)
-                            }
-                            
-                            // CRITICAL: Keep refreshing window level and focus
-                            frame.setAlwaysOnTop(true)
-                            frame.toFront()
-                            frame.requestFocus()
-                            
-                            // Visual effect (color toggle) every few iterations
-                            if (colorToggleCount++ % 5 == 0) {
-                                isColorToggle = !isColorToggle
-                                Color color = isColorToggle ? Color.RED : Color.ORANGE
-                                frame.getContentPane().setBackground(color)
-                                frame.repaint()
-                            }
-                            
-                            // Try to use Windows API again periodically
-                            if (colorToggleCount % 20 == 0) {
-                                try {
-                                    Class<?> user32Class = Class.forName("com.sun.jna.platform.win32.User32")
-                                    Object user32 = user32Class.getMethod("INSTANCE").invoke(null)
-                                    Object hwnd = user32Class.getMethod("GetForegroundWindow").invoke(user32)
-                                    
-                                    // Force window to foreground
-                                    Class<?> hwndClass = Class.forName("com.sun.jna.platform.win32.WinDef\$HWND")
-                                    user32Class.getMethod("SetForegroundWindow", 
-                                        hwndClass)
-                                        .invoke(user32, hwnd);
-                                } catch (Exception e) {
-                                    // Ignore errors here
-                                }
-                            }
-                        } catch (Exception e) {
-                            println "Error in flash control cycle: ${e.message}"
-                        }
-                    } as Runnable)
-                    
-                    // Sleep briefly between cycles
-                    Thread.sleep(100)
-                }
-                
-                println "Flash duration completed, disposing window"
-                
-                // Dispose the window after duration
-                SwingUtilities.invokeAndWait({
-                    try {
-                        // Stop and remove the countdown timer
-                        Timer timer = countdownTimers.get(frame)
-                        if (timer != null) {
-                            timer.stop()
-                            countdownTimers.remove(frame)
-                        }
-                        
-                        if (frame.isDisplayable()) {
-                            frame.dispose()
-                        }
-                    } catch (Exception e) {
-                        println "Error disposing flash frame: ${e.message}"
-                    }
-                } as Runnable)
-                
-                long actualDuration = System.currentTimeMillis() - startTimeMs
-                println "Flash ended after ${actualDuration/1000.0} seconds (target: ${flashDurationMs/1000.0})"
-                
-            } catch (Exception e) {
-                println "Error in flash control thread: ${e.message}"
-                // Safety cleanup
-                try {
-                    SwingUtilities.invokeAndWait({
-                        // Stop and remove the countdown timer
-                        Timer timer = countdownTimers.get(frame)
-                        if (timer != null) {
-                            timer.stop()
-                            countdownTimers.remove(frame)
-                        }
-                        
-                        if (frame.isDisplayable()) {
-                            frame.dispose()
-                        }
-                    } as Runnable)
-                } catch (Exception ex) {
-                    println "Error in emergency cleanup: ${ex.message}"
-                }
-            }
-        })
+        // Create a Swing Timer to keep the window visible and animate
+        // instead of a tight invokeAndWait loop that monopolizes the EDT
+        final long endTime = startTimeMs + flashDurationMs
+        final int[] colorToggleCount = [0]
+        final boolean[] isColorToggle = [false]
         
-        // Set as daemon thread so it doesn't prevent application exit
-        flashControlThread.setDaemon(true)
-        flashControlThread.start()
+        Timer elevationTimer = new Timer(100, { ActionEvent timerEvt ->
+            try {
+                if (System.currentTimeMillis() >= endTime || !frame.isDisplayable()) {
+                    // Duration complete — stop timer and dispose
+                    ((Timer) timerEvt.getSource()).stop()
+                    Timer cdTimer = countdownTimers.get(frame)
+                    if (cdTimer != null) {
+                        cdTimer.stop()
+                        countdownTimers.remove(frame)
+                    }
+                    if (frame.isDisplayable()) {
+                        frame.dispose()
+                    }
+                    long actualDuration = System.currentTimeMillis() - startTimeMs
+                    println "Flash duration completed after ${actualDuration}ms"
+                    return
+                }
+                
+                // Ensure window stays visible
+                if (!frame.isVisible()) {
+                    frame.setVisible(true)
+                }
+                frame.setAlwaysOnTop(true)
+                frame.toFront()
+                
+                // Color toggle animation every ~500ms (every 5th tick)
+                if (colorToggleCount[0]++ % 5 == 0) {
+                    isColorToggle[0] = !isColorToggle[0]
+                    Color color = isColorToggle[0] ? Color.RED : Color.ORANGE
+                    frame.getContentPane().setBackground(color)
+                    frame.repaint()
+                }
+                
+                // Periodically try Windows API to force foreground
+                if (colorToggleCount[0] % 20 == 0) {
+                    try {
+                        Class<?> user32Class = Class.forName("com.sun.jna.platform.win32.User32")
+                        Object user32 = user32Class.getMethod("INSTANCE").invoke(null)
+                        Object hwnd = user32Class.getMethod("GetForegroundWindow").invoke(user32)
+                        Class<?> hwndClass = Class.forName("com.sun.jna.platform.win32.WinDef\$HWND")
+                        user32Class.getMethod("SetForegroundWindow", hwndClass)
+                            .invoke(user32, hwnd)
+                    } catch (Exception e) {
+                        // Ignore errors here
+                    }
+                }
+            } catch (Exception e) {
+                println "Error in flash control cycle: ${e.message}"
+            }
+        } as java.awt.event.ActionListener)
+        elevationTimer.setInitialDelay(100)
+        elevationTimer.start()
         
         // Add safety timer as backup
         Timer safetyTimer = new Timer(flashDurationMs + 5000, { safetyEvent ->

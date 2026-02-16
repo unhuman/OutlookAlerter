@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
 class SimpleTokenDialog {
     // Singleton instance
     private static SimpleTokenDialog instance
-    private static boolean isShowing = false
+    private static volatile boolean isShowing = false
     private boolean isTokenSubmitted = false  // Track if token was successfully submitted
     private boolean isExplicitCancel = false  // Track if user explicitly cancelled
     
@@ -38,6 +38,7 @@ class SimpleTokenDialog {
     private CountDownLatch latch = new CountDownLatch(1)
     private Map<String, String> tokens
     private final String signInUrl
+    private JCheckBox ignoreCertCheckbox  // stored as field for direct access
     
     /**
      * Get or create singleton instance
@@ -216,8 +217,8 @@ class SimpleTokenDialog {
                 
                 // Add certificate validation option (always initially unchecked)
                 JPanel certPanel = new JPanel(new FlowLayout(FlowLayout.LEFT))
-                JCheckBox ignoreCertValidationCheckbox = new JCheckBox("Ignore SSL certificate validation", ConfigManager.getInstance().getDefaultIgnoreCertValidation());
-                certPanel.add(ignoreCertValidationCheckbox)
+                ignoreCertCheckbox = new JCheckBox("Ignore SSL certificate validation", ConfigManager.getInstance().getDefaultIgnoreCertValidation());
+                certPanel.add(ignoreCertCheckbox)
                 formPanel.add(certPanel)
                 
                 panel.add(formPanel, BorderLayout.CENTER)
@@ -406,7 +407,7 @@ class SimpleTokenDialog {
         tokenField = new JTextField(20)
         
         // Add certificate validation option (always initially unchecked)
-        JCheckBox ignoreCertValidationCheckbox = new JCheckBox("Ignore SSL certificate validation (security risk)", false)
+        ignoreCertCheckbox = new JCheckBox("Ignore SSL certificate validation (security risk)", false)
             
         JButton submitButton = new JButton("Submit")
         submitButton.addActionListener(e -> submitToken())
@@ -417,7 +418,7 @@ class SimpleTokenDialog {
         // Add components to panel with proper layout
         panel.add(label)
         panel.add(tokenField)
-        panel.add(ignoreCertValidationCheckbox)
+        panel.add(ignoreCertCheckbox)
         
         // Final row has button panel with both buttons
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5))
@@ -477,35 +478,11 @@ class SimpleTokenDialog {
                     return
                 }
                 
-                // Get certificate validation setting
+                // Get certificate validation setting directly from field
                 System.out.println("SimpleTokenDialog: Checking certificate validation setting")
-                Container contentPane = frame.getContentPane()
-                if (contentPane instanceof JPanel) {
-                    JPanel panel = (JPanel)contentPane
-                    Component[] components = panel.getComponents()
-                    for (Component component : components) {
-                        if (component instanceof JPanel && ((JPanel)component).getLayout() instanceof GridLayout) {
-                            JPanel formPanel = (JPanel)component
-                            Component[] formComponents = formPanel.getComponents()
-                            for (Component formComponent : formComponents) {
-                                if (formComponent instanceof JPanel) {
-                                    JPanel innerCertPanel = (JPanel)formComponent
-                                    Component[] certComponents = innerCertPanel.getComponents()
-                                    for (Component certComponent : certComponents) {
-                                        if (certComponent instanceof JCheckBox) {
-                                            JCheckBox checkbox = (JCheckBox)certComponent
-                                            if (checkbox.getText().contains("certificate validation")) {
-                                                System.out.println("SimpleTokenDialog: Certificate validation checkbox found: " + checkbox.isSelected())
-                                        
-                                                ignoreCertValidation = checkbox.isSelected()
-                                                break
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if (ignoreCertCheckbox != null) {
+                    System.out.println("SimpleTokenDialog: Certificate validation checkbox found: " + ignoreCertCheckbox.isSelected())
+                    ignoreCertValidation = ignoreCertCheckbox.isSelected()
                 }
             } catch (Exception e) {
                 System.err.println("SimpleTokenDialog: Error getting token text or certificate setting: " + e.getMessage())
