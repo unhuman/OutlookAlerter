@@ -302,7 +302,7 @@ class OutlookClient {
             // If user cancels or closes the dialog, exit immediately and do not retry or show extra popups
             if (tokens == null) {
                 println "Token dialog was cancelled by the user. Aborting authentication."
-                isAuthenticating = false // Make sure to release lock
+                synchronized(authLock) { isAuthenticating = false }
                 throw new AuthenticationCancelledException("Authentication was cancelled by the user.", "user_cancelled")
             }
             
@@ -386,7 +386,7 @@ class OutlookClient {
             
         } catch (AuthenticationCancelledException ace) {
             println "Authentication was cancelled by the user"
-            isAuthenticating = false // Make sure to release lock
+            // Note: isAuthenticating is released by the finally block below
             throw ace  // Rethrow to be handled by the caller
         } catch (Exception e) {
             println "Error during authentication: ${e.message}"
@@ -486,6 +486,11 @@ class OutlookClient {
      * @param requestSupplier A supplier function that creates and executes the HTTP request
      * @return The response from the request, either the original response or the retried response
      */
+    /**
+     * Execute a request and automatically retry with a refreshed token if it returns 401/403.
+     * NOTE: The supplier MUST read the token from configManager.accessToken at call time
+     * (not capture it in a closure), so that after token refresh the retry uses the new token.
+     */
     private HttpResponse executeRequestWithRetry(Supplier<HttpResponse> requestSupplier) {
         // Execute the original request
         HttpResponse response = requestSupplier.get()
@@ -502,14 +507,15 @@ class OutlookClient {
                 return response
             }
 
-            // Retry the request with the new token
+            // Retry the request — the supplier MUST re-read configManager.accessToken
+            // so it picks up the refreshed token. If the supplier captured the old token
+            // in a closure variable, the retry would fail with 401 again.
             HttpResponse retryResponse = requestSupplier.get()
             if (retryResponse.statusCode() == 200) {
                 println "Request retry successful"
                 return retryResponse
             } else {
                 println "Request retry failed with status ${retryResponse.statusCode()}"
-                // Return the retry response even if it failed - the caller will handle the status code
                 return retryResponse
             }
         }
@@ -1132,8 +1138,10 @@ class OutlookClient {
                 event.subject = eventMap['subject'] as String
                 
                 Map organizerMap = eventMap['organizer'] as Map
-                Map emailAddressMap = organizerMap['emailAddress'] as Map
-                event.organizer = emailAddressMap['name'] as String
+                if (organizerMap != null) {
+                    Map emailAddressMap = organizerMap['emailAddress'] as Map
+                    event.organizer = emailAddressMap != null ? emailAddressMap['name'] as String : null
+                }
                 
                 if (eventMap['location']) {
                     Map locationMap = eventMap['location'] as Map

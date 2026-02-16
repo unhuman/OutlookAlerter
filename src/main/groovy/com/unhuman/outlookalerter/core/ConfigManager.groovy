@@ -73,7 +73,12 @@ class ConfigManager {
         // If config file exists, load it
         if (configFile.exists()) {
             try {
-                properties.load(new FileInputStream(configFile))
+                FileInputStream fis = new FileInputStream(configFile)
+                try {
+                    properties.load(fis)
+                } finally {
+                    fis.close()
+                }
                 loadPropertiesFromConfig()
                 println "Configuration loaded from ${configFilePath}"
             } catch (Exception e) {
@@ -180,9 +185,10 @@ class ConfigManager {
     }
     
     /**
-     * Saves the current configuration to the config file
+     * Saves the current configuration to the config file.
+     * Synchronized to prevent concurrent writes from losing updates.
      */
-    void saveConfiguration() {
+    synchronized void saveConfiguration() {
         try {
             // Update properties with current values
             properties.setProperty("clientId", clientId ?: "")
@@ -215,9 +221,14 @@ class ConfigManager {
                 properties.setProperty("refreshToken", refreshToken)
             }
             
-            // Save to file
+            // Save to file with try-with-resources to guarantee stream is closed
             File configFile = new File(configFilePath)
-            properties.store(new FileOutputStream(configFile), "Outlook Alerter Configuration")
+            FileOutputStream fos = new FileOutputStream(configFile)
+            try {
+                properties.store(fos, "Outlook Alerter Configuration")
+            } finally {
+                fos.close()
+            }
             println "Configuration saved to ${configFilePath}"
         } catch (Exception e) {
             println "Error saving configuration: ${e.message}"

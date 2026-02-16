@@ -157,11 +157,14 @@ class OutlookAlerterUI extends JFrame {
     // Track which events we've already alerted for
     private final Set<String> alertedEventIds = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true)
     
-    // Store last fetched events to avoid frequent API calls
-    private List<CalendarEvent> lastFetchedEvents = []
+    // Store last fetched events to avoid frequent API calls (volatile for cross-thread visibility)
+    private volatile List<CalendarEvent> lastFetchedEvents = []
     
     // Track last calendar refresh time
     private volatile ZonedDateTime lastCalendarRefresh = null
+
+    // Guard against overlapping calendar fetch threads
+    private final java.util.concurrent.atomic.AtomicBoolean fetchInProgress = new java.util.concurrent.atomic.AtomicBoolean(false)
     
     // Track the current icon state
     private Boolean currentIconInvalidState = null
@@ -195,8 +198,6 @@ class OutlookAlerterUI extends JFrame {
         // Set window icon based on initial token validity
         boolean tokenInvalid = !outlookClient.isTokenAlreadyValid() // Use isTokenAlreadyValid for initial check
         updateIcons(tokenInvalid)
-
-        this.configManager.loadConfiguration()
         this.screenFlasher = ScreenFlasherFactory.createScreenFlasher()
         
         // Initialize schedulers with daemon threads to prevent blocking JVM shutdown
@@ -630,6 +631,12 @@ class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
+        // Prevent overlapping fetch threads — if one is already running, skip
+        if (!fetchInProgress.compareAndSet(false, true)) {
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Calendar refresh already in progress, skipping")
+            return
+        }
+
         LogManager.getInstance().info(LogCategory.DATA_FETCH, "Starting calendar refresh...")
 
         // Update status label
@@ -670,7 +677,8 @@ class OutlookAlerterUI extends JFrame {
                             updateEventsDisplay(events)
                             
                             // Also update our cache for alert checking and track refresh time
-                            lastFetchedEvents = events
+                            // Use Collections.unmodifiableList to make the snapshot immutable
+                            lastFetchedEvents = Collections.unmodifiableList(new ArrayList<CalendarEvent>(events))
                             lastCalendarRefresh = ZonedDateTime.now()
                         
                             // Update status to successful
@@ -740,6 +748,9 @@ class OutlookAlerterUI extends JFrame {
                         JOptionPane.ERROR_MESSAGE
                     )
                 } as Runnable)
+            } finally {
+                // Always release the fetch guard so future refreshes can proceed
+                fetchInProgress.set(false)
             }
         }, "CalendarFetchThread")
         
