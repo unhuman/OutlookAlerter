@@ -167,12 +167,14 @@ class MacScreenFlasher implements ScreenFlasher {
     private void forceCleanup() {
         // Use atomic flag to prevent concurrent cleanup attempts
         if (!cleanupInProgress.compareAndSet(false, true)) {
-            System.out.println("MacScreenFlasher: Cleanup already in progress, skipping")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: Cleanup already in progress, skipping")
             return
         }
 
         try {
-            System.out.println("MacScreenFlasher: Starting cleanup of " + activeFlashFrames.size() + " frames and " + activeTimers.size() + " timers")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: Starting cleanup of " + activeFlashFrames.size() + " frames and " + activeTimers.size() + " timers")
 
             // Stop all active timers first (CopyOnWriteArrayList is already thread-safe)
             for (Timer timer : new ArrayList<Timer>(activeTimers)) {
@@ -300,6 +302,9 @@ class MacScreenFlasher implements ScreenFlasher {
                         JFrame frame = createFlashWindowForScreen(screen, events)
                         if (frame != null) {
                             newFrames.add(frame)
+                        } else {
+                            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
+                                "FlashWindow: createFlashWindowForScreen returned null for '" + screen.getIDstring() + "'")
                         }
                     } catch (Exception screenEx) {
                         // Per-screen isolation: one monitor failure must not prevent others
@@ -307,6 +312,9 @@ class MacScreenFlasher implements ScreenFlasher {
                             "MacScreenFlasher: Failed to create flash for screen '" + screen.getIDstring() + "': " + screenEx.getMessage())
                     }
                 }
+
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                    "FlashWindow: created " + newFrames.size() + "/" + screens.length + " flash windows")
             } as Runnable
 
             if (SwingUtilities.isEventDispatchThread()) {
@@ -369,7 +377,8 @@ class MacScreenFlasher implements ScreenFlasher {
         // Primary cleanup timer
         Timer primaryTimer = new Timer(flashDurationMs, new ActionListener() {
             void actionPerformed(ActionEvent e) {
-                System.out.println("Primary cleanup timer fired after " +
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                    "FlashCleanup: Primary timer fired after " +
                     (System.currentTimeMillis() - startTime) / 1000.0 + " seconds")
                 forceCleanup()
 
@@ -536,34 +545,28 @@ class MacScreenFlasher implements ScreenFlasher {
             // Store the label for countdown updates
             countdownLabels.put(frame, label)
 
-            // Pack the frame to ensure proper sizing
-            frame.pack()
-
-            // Set bounds again after packing to ensure correct screen coverage
-            frame.setBounds(bounds)
-
-            System.out.println("Creating window with bounds: " + bounds)
-
-            // Show the frame first and force it to front immediately
+            // Show the frame and force it to front immediately
+            // Note: pack() was intentionally removed — it resizes the frame to preferred size
+            // which macOS window manager may constrain, then setBounds must override again.
+            // Since we set explicit full-screen bounds, pack() is unnecessary and harmful.
             frame.setVisible(true)
             frame.toFront()
             frame.setAlwaysOnTop(true)  // Ensure it stays on top
-            System.out.println("Frame set to visible: " + frame.isVisible())
 
-            // Get configuration for logging
-            try {
-                float actualOpacity = frame.getOpacity()
-                System.out.println("Window opacity set to: " + actualOpacity)
-            } catch (Exception e) {
-                System.err.println("Could not get opacity: " + e.getMessage())
-            }
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "FlashWindow: created on screen '" + screen.getIDstring() +
+                "' bounds=" + bounds + " visible=" + frame.isVisible() +
+                " opacity=" + frame.getOpacity())
 
             // Use standard Swing approach to ensure window is on top
             // Note: Native window handle access is blocked by Java module system on macOS 15.7.1
             // Standard Swing methods work reliably without needing native handles
+            //
+            // The elevation timer runs for the FULL flash duration (not just the first second)
+            // so that if another app steals focus at any point, the flash is re-elevated.
             Timer elevationTimer = new Timer(100, null)
             final int[] attemptCount = [0]
-            final int maxAttempts = 5
+            final int maxAttempts = Math.max(5, (int)(flashDurationMs / 1000))
 
             elevationTimer.addActionListener(new ActionListener() {
                 @Override
@@ -571,6 +574,12 @@ class MacScreenFlasher implements ScreenFlasher {
                     attemptCount[0]++
 
                     try {
+                        // Stop if the frame has already been disposed
+                        if (!frame.isDisplayable()) {
+                            ((Timer)e.getSource()).stop()
+                            return
+                        }
+
                         boolean hasOverlays = !overlayWindows.isEmpty()
 
                         // First tick: full-screen breakthrough — toggle alwaysOnTop and toFront().
@@ -596,7 +605,6 @@ class MacScreenFlasher implements ScreenFlasher {
 
                         if (attemptCount[0] >= maxAttempts) {
                             ((Timer)e.getSource()).stop()
-                            System.out.println("Window elevation completed (${maxAttempts} attempts)")
                         }
                     } catch (Exception ex) {
                         System.err.println("Error during window elevation: " + ex.getMessage())
@@ -606,7 +614,7 @@ class MacScreenFlasher implements ScreenFlasher {
             })
 
             elevationTimer.setInitialDelay(100)
-            elevationTimer.setDelay(200)
+            elevationTimer.setDelay(1000)
             elevationTimer.setRepeats(true)
             elevationTimer.start()
 
