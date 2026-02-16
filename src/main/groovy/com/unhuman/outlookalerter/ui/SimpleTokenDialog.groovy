@@ -486,38 +486,10 @@ class SimpleTokenDialog {
                 }
             } catch (Exception e) {
                 System.err.println("SimpleTokenDialog: Error getting token text or certificate setting: " + e.getMessage())
-            }
-            
-            // Strip off "Bearer " prefix if present (case insensitive)
-            if (token.toLowerCase().startsWith("bearer ")) {
-                token = token.substring(7).trim()
-            }
-            
-            if (token.isEmpty()) {
-                System.out.println("SimpleTokenDialog: Empty token submitted, showing error message")
-                try {
-                    JOptionPane.showMessageDialog(
-                        frame,
-                        "Please enter an access token",
-                        "Missing Token",
-                        JOptionPane.ERROR_MESSAGE
-                    )
-                } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error showing error message: " + e.getMessage())
+                // If we failed to read the token, we can't proceed
+                if (token.isEmpty()) {
+                    return
                 }
-                return
-            }
-            
-            // Validate token format - must contain two periods (JWT format)
-            String[] parts = token.split("\\.")
-            if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty() || parts[2].isEmpty()) {
-                JOptionPane.showMessageDialog(
-                    frame,
-                    "The token does not appear to be valid. It should contain three parts separated by periods (.).",
-                    "Invalid Token Format",
-                    JOptionPane.ERROR_MESSAGE
-                )
-                return
             }
 
             // Store token data and mark as successfully submitted

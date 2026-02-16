@@ -271,7 +271,7 @@ class LogManager {
         } else {
             activeFilters.remove(category)
         }
-        updateLogTextArea()
+        refreshLogDisplay()
     }
 
     /**
@@ -392,6 +392,6 @@ class LogManager {
      */
     void clearLogs() {
         logBuffer.clear()
-        updateLogTextArea()
+        refreshLogDisplay()
     }
 }

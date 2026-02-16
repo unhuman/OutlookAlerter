@@ -354,7 +354,8 @@ class OutlookAlerterUI extends JFrame {
                     // Add tray icon to the system tray
                     systemTray.add(trayIcon)
                     
-                    // Add window listener to minimize to tray when closed
+                    // Add window listener to minimize to tray on iconify
+                    // Note: windowClosing is already handled by the WindowAdapter in the constructor
                     addWindowListener(new WindowAdapter() {
                         @Override
                         void windowIconified(WindowEvent e) {
@@ -362,17 +363,6 @@ class OutlookAlerterUI extends JFrame {
                             trayIcon.displayMessage(
                                 "Outlook Alerter - Meeting Alerts",
                                 "Outlook Alerter is still running. Click here to open.",
-                                TrayIcon.MessageType.INFO
-                            )
-                        }
-                        
-                        @Override
-                        void windowClosing(WindowEvent e) {
-                            // Don't exit application, just hide to system tray
-                            setVisible(false)
-                            trayIcon.displayMessage(
-                                "Outlook Alerter - Meeting Alerts",
-                                "Outlook Alerter is still running in the background. Right-click the tray icon to exit.",
                                 TrayIcon.MessageType.INFO
                             )
                         }
@@ -1103,11 +1093,12 @@ class OutlookAlerterUI extends JFrame {
         try {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "=== Checking Alerts (using cached events) ===")
 
-            // Check if refresh needed (more than 4 hour since last refresh)
+            // Check if refresh needed (more than resyncInterval since last refresh)
             // this is to capture if device has been asleep for some time (ie weekend)
+            long resyncMinutes = (long) configManager.getResyncIntervalMinutes()
             if (lastCalendarRefresh == null || 
-                ZonedDateTime.now().minusHours(4).isAfter(lastCalendarRefresh)) {
-                LogManager.getInstance().info(LogCategory.DATA_FETCH, "More than 4 hours since last refresh, triggering calendar update")
+                ZonedDateTime.now().minusMinutes(resyncMinutes).isAfter(lastCalendarRefresh)) {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "More than ${resyncMinutes} minutes since last refresh, triggering calendar update")
                 refreshCalendarEvents()
                 return
             }
@@ -1237,6 +1228,15 @@ class OutlookAlerterUI extends JFrame {
             t.setDaemon(true)
             return t
         })
+
+        // Clean up the old screen flasher before creating a new one
+        if (screenFlasher != null) {
+            try {
+                screenFlasher.forceCleanup()
+            } catch (Exception e) {
+                System.err.println("[OutlookAlerterUI] Error cleaning up old screen flasher: " + e.getMessage())
+            }
+        }
 
         // Recreate the screen flasher to pick up new configuration
         screenFlasher = ScreenFlasherFactory.createScreenFlasher();
@@ -1574,23 +1574,40 @@ class OutlookAlerterUI extends JFrame {
         }, "AlertBeepThread").start()
 
         // ========== ALERT COMPONENT 3: Banner frame (shown once flash is visible) ==========
-        // Register a callback so the banner appears right after flash windows render,
-        // avoiding both a guessed delay and z-order reversal flicker.
         final String bannerTextFinal = bannerText
-        MacScreenFlasher.setOnFlashReady({
-            try {
-                showAlertBanner(bannerTextFinal)
-                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully")
-            } catch (Exception ex) {
-                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
-                ex.printStackTrace()
-            }
-        } as Runnable)
 
         // ========== ALERT COMPONENT 2: Screen flash (separate thread, started FIRST) ==========
         // Flash starts before the banner so when the banner appears it renders
         // directly on top of an already-visible flash — no z-order reversal flicker.
         if (events != null && !events.isEmpty()) {
+            // On Mac, register a callback so the banner appears right after flash windows render,
+            // avoiding both a guessed delay and z-order reversal flicker.
+            // On other platforms, show the banner after a short delay.
+            if (screenFlasher instanceof MacScreenFlasher) {
+                MacScreenFlasher.setOnFlashReady({
+                    try {
+                        showAlertBanner(bannerTextFinal)
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully (Mac callback)")
+                    } catch (Exception ex) {
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
+                        ex.printStackTrace()
+                    }
+                } as Runnable)
+            } else {
+                // Non-Mac: show banner after a brief delay to let flash windows render first
+                Timer bannerDelayTimer = new Timer(300, { ActionEvent timerEvt ->
+                    try {
+                        showAlertBanner(bannerTextFinal)
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully (delayed)")
+                    } catch (Exception ex) {
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
+                        ex.printStackTrace()
+                    }
+                } as ActionListener)
+                bannerDelayTimer.setRepeats(false)
+                bannerDelayTimer.start()
+            }
+
             new Thread({
                 try {
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Starting flashMultiple for ${events.size()} events")
