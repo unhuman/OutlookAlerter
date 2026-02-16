@@ -3,7 +3,8 @@ package com.unhuman.outlookalerter.util
 import groovy.transform.CompileStatic
 import javax.swing.JTextArea
 import javax.swing.SwingUtilities
-import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.io.PrintStream
 import java.io.PrintWriter
@@ -62,8 +63,8 @@ class LogManager {
     // Maximum number of log lines to keep in memory
     private static final int MAX_LOG_LINES = 2000
     
-    // Date format for log timestamps
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS")
+    // Date format for log timestamps (DateTimeFormatter is thread-safe, unlike SimpleDateFormat)
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
     
     // Collection to store log entries (thread-safe)
     private final ConcurrentLinkedDeque<LogEntry> logBuffer = new ConcurrentLinkedDeque<>()
@@ -192,7 +193,7 @@ class LogManager {
         isLogging.set(Boolean.TRUE)
         try {
             // Format with timestamp
-            String timestamp = DATE_FORMAT.format(new Date())
+            String timestamp = DATE_FORMAT.format(LocalDateTime.now())
             LogEntry entry = new LogEntry(timestamp, level, message, category)
 
             // Print to console using original streams to avoid recursion

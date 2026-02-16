@@ -49,10 +49,10 @@ class OutlookAlerterUI extends JFrame {
         
         // Replace System.out with our intercepting PrintStream
         System.setOut(new PrintStream(new OutputStream() {
-            private StringBuilder buffer = new StringBuilder()
+            private final StringBuilder buffer = new StringBuilder()
             
             @Override
-            public void write(int b) {
+            public synchronized void write(int b) {
                 // Write to original stream
                 originalOut.write(b)
                 
@@ -69,14 +69,33 @@ class OutlookAlerterUI extends JFrame {
                     buffer.setLength(0)
                 }
             }
+            
+            @Override
+            public synchronized void write(byte[] b, int off, int len) {
+                // Write to original stream
+                originalOut.write(b, off, len)
+                
+                // Append to buffer and process any complete lines
+                String chunk = new String(b, off, len)
+                buffer.append(chunk)
+                
+                int newlineIdx
+                while ((newlineIdx = buffer.indexOf("\n")) >= 0) {
+                    String message = buffer.substring(0, newlineIdx).trim()
+                    if (!message.isEmpty()) {
+                        LogManager.getInstance().info(message)
+                    }
+                    buffer.delete(0, newlineIdx + 1)
+                }
+            }
         }))
         
         // Replace System.err with our intercepting PrintStream
         System.setErr(new PrintStream(new OutputStream() {
-            private StringBuilder buffer = new StringBuilder()
+            private final StringBuilder buffer = new StringBuilder()
             
             @Override
-            public void write(int b) {
+            public synchronized void write(int b) {
                 // Write to original stream
                 originalErr.write(b)
                 
@@ -91,6 +110,25 @@ class OutlookAlerterUI extends JFrame {
                         LogManager.getInstance().error(message)
                     }
                     buffer.setLength(0)
+                }
+            }
+            
+            @Override
+            public synchronized void write(byte[] b, int off, int len) {
+                // Write to original stream
+                originalErr.write(b, off, len)
+                
+                // Append to buffer and process any complete lines
+                String chunk = new String(b, off, len)
+                buffer.append(chunk)
+                
+                int newlineIdx
+                while ((newlineIdx = buffer.indexOf("\n")) >= 0) {
+                    String message = buffer.substring(0, newlineIdx).trim()
+                    if (!message.isEmpty()) {
+                        LogManager.getInstance().error(message)
+                    }
+                    buffer.delete(0, newlineIdx + 1)
                 }
             }
         }))
@@ -1019,16 +1057,22 @@ class OutlookAlerterUI extends JFrame {
             performFullAlert(bannerText, notificationTitle, notificationMessage, eventsToAlert)
         }
 
-        // Check token validity after alerting, and prompt if needed
-        if (!outlookClient.hasValidToken()) {
-            System.out.println("Token is invalid or expired. Prompting for new token.");
-            // Only show the token dialog if not already active
-            if (!isTokenDialogActive) {
-                SwingUtilities.invokeLater({
-                    promptForTokens(configManager.getSignInUrl())
-                } as Runnable)
+        // Check token validity after alerting, and prompt if needed.
+        // IMPORTANT: hasValidToken() does an HTTP call, so it MUST NOT run on the EDT.
+        // promptForTokens() internally calls SimpleTokenDialog.show() which uses invokeAndWait,
+        // so it MUST NOT be called from the EDT (deadlock).
+        new Thread({
+            try {
+                if (!outlookClient.hasValidToken()) {
+                    System.out.println("Token is invalid or expired. Prompting for new token.");
+                    if (!isTokenDialogActive) {
+                        promptForTokens(configManager.getSignInUrl())
+                    }
+                }
+            } catch (Exception ex) {
+                System.err.println("Error checking token validity: " + ex.getMessage())
             }
-        }
+        }, "TokenValidityCheckThread").start()
 
         // Clean up alerted events list periodically
         if (alertedEventIds.size() > 100) {
@@ -1423,12 +1467,13 @@ class OutlookAlerterUI extends JFrame {
             if (!isSafeToShowUI()) {
                 println "UI: Delaying token dialog - system not ready"
                 // Schedule retry after delay
+                // Schedule retry on background thread (NOT EDT — promptForTokens uses invokeAndWait internally)
                 Timer retryTimer = new Timer(2000, { e ->
-                    SwingUtilities.invokeLater({
+                    new Thread({
                         if (isSafeToShowUI()) {
                             promptForTokens(signInUrl)
                         }
-                    } as Runnable)
+                    }, "TokenDialogRetryThread").start()
                     (e.source as Timer).stop()
                 } as ActionListener)
                 retryTimer.setRepeats(false)
@@ -1443,7 +1488,7 @@ class OutlookAlerterUI extends JFrame {
             }
 
             isTokenDialogActive = true
-            updateIcons(true)  // Show invalid token state
+            SwingUtilities.invokeLater({ updateIcons(true) } as Runnable)  // Show invalid token state
             
             // Make sure we have a valid sign-in URL, default to Microsoft Graph URL if not
             if (signInUrl == null || signInUrl.trim().isEmpty()) {
