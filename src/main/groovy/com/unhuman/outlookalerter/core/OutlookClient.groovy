@@ -194,19 +194,12 @@ class OutlookClient {
     
     /**
      * Check if we already have a valid token without refreshing or re-authenticating
-     * This method is specifically designed for UI feedback purposes
+     * This method is specifically designed for UI feedback purposes.
+     * Delegates to hasValidToken() which performs the same server validation.
      * @return true if the token is valid according to the server, false if re-authentication or refresh is needed
      */
     boolean isTokenAlreadyValid() {
-        String accessToken = configManager.accessToken
-
-        // Quick check: Do we have a token at all?
-        if (accessToken == null || accessToken.isEmpty()) {
-            return false;
-        }
-
-        // Validate with server
-        return validateTokenWithServer(accessToken);
+        return hasValidToken()
     }
     
     /**
@@ -469,12 +462,6 @@ class OutlookClient {
         return response
     }
 
-    /**
-     * Get upcoming events using CalendarView (alternative approach)
-     * This method can sometimes capture events that are not returned by the regular events endpoint,
-     * particularly recurring events or events in different calendars
-     * @return List of calendar events
-     */
     /**
      * Token validation result enum as string constants
      */

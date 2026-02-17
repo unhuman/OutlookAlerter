@@ -497,7 +497,7 @@ class MacScreenFlasher implements ScreenFlasher {
 
             // Build banner message for the top bar
             String bannerMsg = (events.size() == 1)
-                ? "Upcoming meeting: " + events.get(0).getSubject()
+                ? "Upcoming meeting: " + HtmlUtil.escapeHtml(events.get(0).getSubject())
                 : events.size() + " upcoming meetings starting soon"
 
             StringBuilder labelContent = new StringBuilder("<html><div style='text-align: center; width: 100%;'>" +
@@ -510,7 +510,7 @@ class MacScreenFlasher implements ScreenFlasher {
             for (int i = 0; i < events.size(); i++) {
                 CalendarEvent event = events.get(i)
                 labelContent.append("<div style='margin-bottom: 10px;'>")
-                    .append(event.subject)
+                    .append(HtmlUtil.escapeHtml(event.subject))
 
                 // Add location if it exists - show domain for URLs, full text for physical locations
                 if (event.location) {
@@ -519,7 +519,7 @@ class MacScreenFlasher implements ScreenFlasher {
                         labelContent.append("<br/><span style='font-size: 20px; font-weight: normal; color: ")
                             .append(textColorHex)
                             .append(";'>📍 ")
-                            .append(displayLocations)
+                            .append(HtmlUtil.escapeHtml(displayLocations))
                             .append("</span>")
                     }
                 }
@@ -536,7 +536,7 @@ class MacScreenFlasher implements ScreenFlasher {
                 "<p style='color: " + textColorHex + "; font-size: 28px; margin-bottom: 40px;'>Starting in " +
                 (events.get(0).getMinutesToStart() + 1) + " minute(s)</p>" +
                 "<p style='color: " + textColorHex + "; font-size: 16px;'>This alert will close in " +
-                (flashDurationMs / 1000) + " seconds</p>" +
+                flashDurationMs.intdiv(1000) + " seconds</p>" +
                 "</div></html>")
 
             JLabel label = new JLabel(labelContent.toString(), SwingConstants.CENTER)

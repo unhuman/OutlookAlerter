@@ -1063,7 +1063,8 @@ class OutlookAlerterUI extends JFrame {
         // IMPORTANT: hasValidToken() does an HTTP call, so it MUST NOT run on the EDT.
         // promptForTokens() internally calls SimpleTokenDialog.show() which uses invokeAndWait,
         // so it MUST NOT be called from the EDT (deadlock).
-        new Thread({
+        // Use the existing alertScheduler instead of spawning a new Thread every minute.
+        alertScheduler.submit({
             try {
                 if (!outlookClient.hasValidToken()) {
                     System.out.println("Token is invalid or expired. Prompting for new token.");
@@ -1074,7 +1075,7 @@ class OutlookAlerterUI extends JFrame {
             } catch (Exception ex) {
                 System.err.println("Error checking token validity: " + ex.getMessage())
             }
-        }, "TokenValidityCheckThread").start()
+        } as Runnable)
 
         // Clean up alerted events list periodically
         if (alertedEventIds.size() > 100) {
@@ -1742,7 +1743,8 @@ class OutlookAlerterUI extends JFrame {
                     MacScreenFlasher.registerOverlayWindows(alertBannerWindows)
                 }
 
-                Timer hideTimer = new Timer(5000, { e ->
+                int bannerDurationMs = configManager.getFlashDurationSeconds() * 1000
+                Timer hideTimer = new Timer(bannerDurationMs, { e ->
                     MacScreenFlasher.clearOverlayWindows()
                     alertBannerWindows.each { it.dispose() }
                     alertBannerWindows.clear()

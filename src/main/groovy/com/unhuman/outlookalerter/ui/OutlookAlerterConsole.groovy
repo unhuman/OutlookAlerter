@@ -28,8 +28,12 @@ class OutlookAlerterConsole {
     private final OutlookClient outlookClient
     private final ScreenFlasher screenFlasher
     
-    // Scheduler for periodic tasks
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1)
+    // Scheduler for periodic tasks (daemon threads so JVM can exit if stop() fails)
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1, { Runnable r ->
+        Thread t = new Thread(r, "ConsoleScheduler")
+        t.setDaemon(true)
+        return t
+    } as java.util.concurrent.ThreadFactory)
     
     // Track which events we've already alerted for
     private final Set<String> alertedEventIds = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true)
@@ -238,15 +242,12 @@ class OutlookAlerterConsole {
                 }
                 
                 // Ensure all meetings are properly sorted by start time
-                nextTimeEvents.sort { event -> event.getMinutesToStart() }
+                nextTimeEvents.sort { a, b -> a.getMinutesToStart() <=> b.getMinutesToStart() }
                 
                 // Include time information in the header
                 ZonedDateTime now = ZonedDateTime.now()
                 String displayTime = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
                 String displayZone = now.getZone().toString()
-                
-                // Always ensure next meetings are properly sorted by start time
-                nextTimeEvents.sort { a, b -> a.getMinutesToStart() <=> b.getMinutesToStart() }
                 
                 println "\nNext meetings at ${displayTime} (${displayZone}):"
                 nextTimeEvents.each { CalendarEvent event ->

@@ -68,6 +68,10 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 flashWindows.add(frame)
             }
             
+            // Track windows for external cleanup BEFORE showing them,
+            // so forceCleanup() can dispose them even during setup
+            activeFlashWindows.addAll(flashWindows)
+
             // Start flashing in a separate thread
             Thread flashThread = new Thread({
                 try {
@@ -119,9 +123,6 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                     activeTimers.add(colorTimer)
                     colorTimer.start()
                     
-                    // Track windows for external cleanup
-                    activeFlashWindows.addAll(flashWindows)
-                    
                     // Wait exactly for the configured duration
                     Thread.sleep(flashDurationMs)
                     
@@ -168,6 +169,9 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 frame.setBounds(bounds);
                 flashWindows.add(frame);
             }
+            // Track windows for external cleanup BEFORE starting flash thread,
+            // so forceCleanup() can dispose them even during setup
+            activeFlashWindows.addAll(flashWindows)
             Thread flashThread = new Thread({
                 try {
                     // Record start time for proper duration tracking
@@ -217,9 +221,6 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                     colorTimer.setRepeats(true)
                     activeTimers.add(colorTimer)
                     colorTimer.start()
-                    
-                    // Track windows for external cleanup
-                    activeFlashWindows.addAll(flashWindows)
                     
                     // Wait exactly for the configured duration
                     Thread.sleep(flashDurationMs);

@@ -44,6 +44,12 @@ class WindowsScreenFlasher implements ScreenFlasher {
     
     // Map to store labels for each frame for countdown updates (synchronized for cross-thread access)
     private final Map<JFrame, JLabel> countdownLabels = Collections.synchronizedMap(new HashMap<>())
+
+    // Track active flash windows for forceCleanup
+    private final List<JFrame> activeFlashFrames = new java.util.concurrent.CopyOnWriteArrayList<JFrame>()
+
+    // Cached tray icon to avoid creating a new one for each notification
+    private java.awt.TrayIcon cachedTrayIcon = null
     
     /**
      * Constructor
@@ -129,7 +135,8 @@ class WindowsScreenFlasher implements ScreenFlasher {
     }
     
     /**
-     * Shows a system tray notification with event details
+     * Shows a system tray notification with event details.
+     * Reuses a single cached TrayIcon to avoid icon churn.
      */
     private void showSystemTrayNotification(CalendarEvent event) {
         try {
@@ -137,37 +144,37 @@ class WindowsScreenFlasher implements ScreenFlasher {
             if (java.awt.SystemTray.isSupported()) {
                 java.awt.SystemTray tray = java.awt.SystemTray.getSystemTray()
                 
-                // Create a tray icon
-                java.awt.Image image = java.awt.Toolkit.getDefaultToolkit()
-                        .createImage(getClass().getResource("/resources/calendar_icon.png"))
-                if (image == null) {
-                    // Use a default image if resource not found
-                    image = java.awt.Toolkit.getDefaultToolkit()
-                            .createImage(new byte[0])
+                // Reuse cached tray icon or create one
+                if (cachedTrayIcon == null) {
+                    // Try to load icon; fall back to a simple generated image
+                    java.awt.Image image = null
+                    try {
+                        URL iconUrl = getClass().getResource("/calendar_icon.png")
+                        if (iconUrl != null) {
+                            image = java.awt.Toolkit.getDefaultToolkit().createImage(iconUrl)
+                        }
+                    } catch (Exception ignored) {}
+                    if (image == null) {
+                        // Create a simple 16x16 colored icon as fallback
+                        java.awt.image.BufferedImage bi = new java.awt.image.BufferedImage(16, 16, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+                        java.awt.Graphics2D g = bi.createGraphics()
+                        g.setColor(Color.RED)
+                        g.fillRect(0, 0, 16, 16)
+                        g.dispose()
+                        image = bi
+                    }
+                    
+                    cachedTrayIcon = new java.awt.TrayIcon(image, "Outlook Alerter")
+                    cachedTrayIcon.setImageAutoSize(true)
+                    tray.add(cachedTrayIcon)
                 }
                 
-                java.awt.TrayIcon trayIcon = new java.awt.TrayIcon(image, "Outlook Alerter")
-                trayIcon.setImageAutoSize(true)
-                
-                // Must add to tray before displayMessage will work
-                tray.add(trayIcon)
-                
-                // Show notification
-                trayIcon.displayMessage(
+                // Show notification using the cached icon
+                cachedTrayIcon.displayMessage(
                         "Meeting Reminder",
-                        "${event.subject} starts in ${event.getMinutesToStart()} minute(s)",
+                        "${HtmlUtil.escapeHtml(event.subject)} starts in ${event.getMinutesToStart()} minute(s)",
                         java.awt.TrayIcon.MessageType.WARNING
                 )
-                
-                // Remove tray icon after a delay (daemon thread so it won't block shutdown)
-                Thread cleanupThread = new Thread({
-                    try {
-                        Thread.sleep(10000)
-                    } catch (InterruptedException ignored) {}
-                    tray.remove(trayIcon)
-                } as Runnable)
-                cleanupThread.setDaemon(true)
-                cleanupThread.start()
             }
         } catch (Exception e) {
             println "Error showing system tray notification: ${e.message}"
@@ -216,7 +223,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
             try {
                 label = new JLabel("<html><center>" +
                         "<h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>" +
-                        "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + event.subject + "</h2>" +
+                        "<h2 style='color: " + textColorHex + "; font-size: 36px'>" + HtmlUtil.escapeHtml(event.subject) + "</h2>" +
                         "<p style='color: " + textColorHex + "; font-size: 24px'>Starting in " + (event.getMinutesToStart() + 1) + " minute(s)</p>" +
                         "<p></p><p id='countdownText' style='color: " + textColorHex + "; font-size: 18px'>This alert will close in " + 
                         (flashDurationMs / 1000) + " seconds</p>" +
@@ -234,6 +241,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 e.printStackTrace()
             }
             frame.setBounds(screen.getDefaultConfiguration().getBounds())
+            activeFlashFrames.add(frame)
             startFlashSequence(frame)
         } catch (Exception e) {
             System.err.println("Error creating flash window: " + e.getMessage())
@@ -476,7 +484,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
             try {
                 StringBuilder html = new StringBuilder("<html><center><h1 style='color: " + textColorHex + "; font-size: 48px'>⚠️ MEETING ALERT ⚠️</h1>");
                 for (CalendarEvent event : events) {
-                    html.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>").append(event.subject).append("</h2>");
+                    html.append("<h2 style='color: " + textColorHex + "; font-size: 36px'>").append(HtmlUtil.escapeHtml(event.subject)).append("</h2>");
                     html.append("<p style='color: " + textColorHex + "; font-size: 24px'>Starting in ").append(event.getMinutesToStart() + 1).append(" minute(s)</p>");
                 }
                 // Add countdown text for multiple events
@@ -498,6 +506,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 e.printStackTrace()
             }
             frame.setBounds(screen.getDefaultConfiguration().getBounds());
+            activeFlashFrames.add(frame)
             startFlashSequence(frame);
         } catch (Exception e) {
             System.err.println("Error creating flash window (multiple): " + e.getMessage())
@@ -548,5 +557,17 @@ class WindowsScreenFlasher implements ScreenFlasher {
             countdownTimers.clear()
         }
         countdownLabels.clear()
+
+        // Dispose all active flash windows
+        SwingUtilities.invokeLater({
+            for (JFrame frame : activeFlashFrames) {
+                try {
+                    if (frame.isDisplayable()) {
+                        frame.dispose()
+                    }
+                } catch (Exception ignored) {}
+            }
+            activeFlashFrames.clear()
+        } as Runnable)
     }
 }
