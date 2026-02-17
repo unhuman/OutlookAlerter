@@ -2,6 +2,8 @@ package com.unhuman.outlookalerter.ui
 
 import javax.imageio.ImageIO
 import java.io.File
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 
 /**
  * Generates a static PNG file for the application icon.
@@ -17,12 +19,12 @@ class IconGenerator {
             // Save valid icon
             def validFile = new File("target/icon-valid-${size}x${size}.png")
             ImageIO.write(validIcon, "png", validFile)
-            println "Saved valid icon: ${validFile.absolutePath}"
+            LogManager.getInstance().info(LogCategory.GENERAL, "Saved valid icon: ${validFile.absolutePath}")
 
             // Save invalid icon
             def invalidFile = new File("target/icon-invalid-${size}x${size}.png")
             ImageIO.write(invalidIcon, "png", invalidFile)
-            println "Saved invalid icon: ${invalidFile.absolutePath}"
+            LogManager.getInstance().info(LogCategory.GENERAL, "Saved invalid icon: ${invalidFile.absolutePath}")
         }
     }
 }

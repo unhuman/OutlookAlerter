@@ -9,6 +9,8 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import com.unhuman.outlookalerter.core.OutlookClient
 import com.unhuman.outlookalerter.core.ConfigManager
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -85,16 +87,16 @@ class SimpleTokenDialog {
             isShowing = true
             isTokenSubmitted = false
             isExplicitCancel = false
-            System.out.println("SimpleTokenDialog: Dialog state set to showing")
+            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Dialog state set to showing")
             
             try {
-                System.out.println("SimpleTokenDialog: Preparing to show token entry dialog")
+                LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Preparing to show token entry dialog")
                 
                 // Create UI on EDT and show immediately
                 SwingUtilities.invokeAndWait(() -> {
                     try {
                         createUI()
-                        System.out.println("SimpleTokenDialog: UI created successfully")
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: UI created successfully")
                         
                         // Show dialog immediately after creation
                         if (frame != null) {
@@ -107,18 +109,16 @@ class SimpleTokenDialog {
                             // Reset UI components
                             resetDialogUI()
                             
-                            System.out.println("SimpleTokenDialog: Frame state - visible: " + frame.isVisible() + 
+                            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Frame state - visible: " + frame.isVisible() + 
                                              ", showing: " + frame.isShowing())
                         }
                     } catch (Exception e) {
-                        System.err.println("SimpleTokenDialog: Error creating UI: " + e.getMessage())
-                        e.printStackTrace()
+                        LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error creating UI: " + e.getMessage(), e)
                         cleanup()
                     }
                 })
             } catch (Exception e) {
-                System.err.println("Error showing token dialog: " + e.getMessage())
-                e.printStackTrace()
+                LogManager.getInstance().error(LogCategory.GENERAL, "Error showing token dialog: " + e.getMessage(), e)
                 cleanup() // Ensure cleanup even on error
             }
         }
@@ -153,14 +153,14 @@ class SimpleTokenDialog {
             frame.addWindowListener(new WindowAdapter() {
                 @Override
                 void windowClosing(WindowEvent e) {
-                    System.out.println("SimpleTokenDialog: Window closing event detected (X button clicked)")
+                    LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Window closing event detected (X button clicked)")
                     isExplicitCancel = true  // Mark X button click as explicit cancellation
                     cancelDialog()
                 }
             })
         
             try {
-                System.out.println("SimpleTokenDialog: Creating UI components")
+                LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Creating UI components")
                 
                 // Main panel with simple layout
                 JPanel panel = new JPanel(new BorderLayout(10, 10))
@@ -236,10 +236,10 @@ class SimpleTokenDialog {
                     @Override
                     void actionPerformed(ActionEvent e) {
                         try {
-                            System.out.println("Opening Graph Explorer...")
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Opening Graph Explorer...")
                             Desktop.getDesktop().browse(new java.net.URI(DEFAULT_GRAPH_URL + "/graph-explorer"))
                         } catch (Exception ex) {
-                            System.err.println("Error opening Graph Explorer: " + ex.getMessage())
+                            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error opening Graph Explorer: " + ex.getMessage())
                             JOptionPane.showMessageDialog(
                                 frame,
                                 "Error opening Graph Explorer: " + ex.getMessage(),
@@ -255,10 +255,10 @@ class SimpleTokenDialog {
                     @Override
                     void actionPerformed(ActionEvent e) {
                         try {
-                            System.out.println("Opening browser for sign-in: " + signInUrl)
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Opening browser for sign-in: " + signInUrl)
                             Desktop.getDesktop().browse(new java.net.URI(signInUrl))
                         } catch (Exception ex) {
-                            System.err.println("Error opening browser: " + ex.getMessage())
+                            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error opening browser: " + ex.getMessage())
                             JOptionPane.showMessageDialog(
                                 frame,
                                 "Error opening browser: " + ex.getMessage(),
@@ -303,38 +303,37 @@ class SimpleTokenDialog {
                 
                 // Don't set visible here - we'll do it in the show() method
                 
-                System.out.println("SimpleTokenDialog: UI components created successfully")
+                LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: UI components created successfully")
             } catch (Exception e) {
-                System.err.println("SimpleTokenDialog: Error creating UI: " + e.getMessage())
-                e.printStackTrace()
+                LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error creating UI: " + e.getMessage(), e)
                 
                 // Try a fallback UI with minimal components if something went wrong
                 try {
                     createFallbackUI()
                 } catch (Exception ex) {
-                    System.err.println("SimpleTokenDialog: Even fallback UI failed: " + ex.getMessage())
+                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Even fallback UI failed: " + ex.getMessage())
                 }
             }
         } catch (Exception e) {
-            System.err.println("SimpleTokenDialog: Error in parent window detection: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error in parent window detection: " + e.getMessage())
         }
     }
     
     private void cleanup() {
         // Skip if already cleaned up
         if (!isShowing && frame == null) {
-            System.out.println("SimpleTokenDialog: Already cleaned up, skipping")
+            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Already cleaned up, skipping")
             return
         }
         
-        System.out.println("SimpleTokenDialog: Cleanup called")
+        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Cleanup called")
         isShowing = false
         isTokenSubmitted = false
         isExplicitCancel = false  // Reset explicit cancel flag
         
         // Complete latch if it hasn't been already
         if (latch != null && latch.getCount() > 0) {
-            System.out.println("SimpleTokenDialog: Counting down latch during cleanup")
+            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Counting down latch during cleanup")
             latch.countDown()
         }
         
@@ -343,17 +342,17 @@ class SimpleTokenDialog {
             SwingUtilities.invokeLater(() -> {
                 try {
                     if (frame != null) {
-                        System.out.println("SimpleTokenDialog: Disposing frame")
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing frame")
                         frame.setVisible(false)
                         frame.dispose()
                     }
                     
                     if (parentFrame != null && parentFrame.isUndecorated()) {
-                        System.out.println("SimpleTokenDialog: Disposing parent frame")
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing parent frame")
                         parentFrame.dispose()
                     }
                 } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error disposing frames: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error disposing frames: " + e.getMessage())
                 }
                 
                 // Clear references to UI components
@@ -379,7 +378,7 @@ class SimpleTokenDialog {
      * Create a minimal fallback UI as a last resort
      */
     private void createFallbackUI() {
-        System.out.println("SimpleTokenDialog: Creating fallback UI")
+        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Creating fallback UI")
         
         // Create a temporary parent frame for modality
         parentFrame = new JFrame()
@@ -394,7 +393,7 @@ class SimpleTokenDialog {
         frame.addWindowListener(new WindowAdapter() {
             @Override
             void windowClosing(WindowEvent e) {
-                System.out.println("SimpleTokenDialog: Window closing event detected in fallback UI (X button clicked)")
+                LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Window closing event detected in fallback UI (X button clicked)")
                 cancelDialog()
             }
         })
@@ -432,7 +431,7 @@ class SimpleTokenDialog {
         frame.setLocationRelativeTo(null)
         frame.setAlwaysOnTop(true)
         
-        System.out.println("SimpleTokenDialog: Fallback UI created")
+        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Fallback UI created")
     }
     
     /**
@@ -440,7 +439,7 @@ class SimpleTokenDialog {
      */
     private void submitToken() {
         try {
-            System.out.println("SimpleTokenDialog: Processing token submission")
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Processing token submission")
             
             // Get token values - with fallbacks if UI components fail
             String token = ""
@@ -456,7 +455,7 @@ class SimpleTokenDialog {
                 }
                 
                 if (token.isEmpty()) {
-                    System.out.println("SimpleTokenDialog: Empty token submitted, showing error message")
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Empty token submitted, showing error message")
                     JOptionPane.showMessageDialog(
                         frame,
                         "Please enter an access token",
@@ -479,13 +478,13 @@ class SimpleTokenDialog {
                 }
                 
                 // Get certificate validation setting directly from field
-                System.out.println("SimpleTokenDialog: Checking certificate validation setting")
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Checking certificate validation setting")
                 if (ignoreCertCheckbox != null) {
-                    System.out.println("SimpleTokenDialog: Certificate validation checkbox found: " + ignoreCertCheckbox.isSelected())
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Certificate validation checkbox found: " + ignoreCertCheckbox.isSelected())
                     ignoreCertValidation = ignoreCertCheckbox.isSelected()
                 }
             } catch (Exception e) {
-                System.err.println("SimpleTokenDialog: Error getting token text or certificate setting: " + e.getMessage())
+                LogManager.getInstance().error(LogCategory.DATA_FETCH, "SimpleTokenDialog: Error getting token text or certificate setting: " + e.getMessage())
                 // If we failed to read the token, we can't proceed
                 if (token.isEmpty()) {
                     return
@@ -494,7 +493,7 @@ class SimpleTokenDialog {
 
             // Store token data and mark as successfully submitted
             // Log the exact boolean value before converting to string
-            System.out.println("SimpleTokenDialog: ignoreCertValidation raw boolean value: " + ignoreCertValidation)
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: ignoreCertValidation raw boolean value: " + ignoreCertValidation)
             
             tokens = [
                 accessToken: token,
@@ -507,11 +506,11 @@ class SimpleTokenDialog {
             if (configManager != null) {
                 // Note: We don't update the config directly here anymore. 
                 // The value will be passed through the tokens map and handled by OutlookAlerterUI
-                System.out.println("SimpleTokenDialog: Certificate validation value will be set to: " +
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Certificate validation value will be set to: " +
                         (ignoreCertValidation ? "disabled" : "enabled"))
             }
             
-            System.out.println("SimpleTokenDialog: Token submitted (first 10 chars): " + 
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Token submitted (first 10 chars): " + 
                                token.substring(0, Math.min(10, token.length())) + "...")
             
             // Signal completion
@@ -524,23 +523,22 @@ class SimpleTokenDialog {
             SwingUtilities.invokeLater(() -> {
                 try {
                     if (frame != null) {
-                        System.out.println("SimpleTokenDialog: Disposing dialog frame after submit")
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing dialog frame after submit")
                         frame.setVisible(false)
                         frame.dispose()
                     }
                     
                     if (parentFrame != null && parentFrame.isUndecorated()) {
-                        System.out.println("SimpleTokenDialog: Disposing parent frame after submit")
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing parent frame after submit")
                         parentFrame.dispose()
                     }
                 } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error disposing dialog after submit: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error disposing dialog after submit: " + e.getMessage())
                 }
             });
             
         } catch (Exception e) {
-            System.err.println("SimpleTokenDialog: Unexpected error in submitToken: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "SimpleTokenDialog: Unexpected error in submitToken: " + e.getMessage(), e)
             
             // Still signal completion to avoid hanging
             tokens = null
@@ -553,7 +551,7 @@ class SimpleTokenDialog {
      */
     private void cancelDialog() {
         try {
-            System.out.println("SimpleTokenDialog: User canceled token entry (or clicked the X button)")
+            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: User canceled token entry (or clicked the X button)")
             isExplicitCancel = true  // Mark this as an explicit cancellation
             
             // Show cancellation message ONLY when user explicitly cancels (via button or X)
@@ -569,7 +567,7 @@ class SimpleTokenDialog {
                         )
                     }
                 } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error showing cancellation message: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error showing cancellation message: " + e.getMessage())
                 }
             }
             
@@ -578,7 +576,7 @@ class SimpleTokenDialog {
             
             // Signal completion to any waiting threads
             if (latch != null && latch.getCount() > 0) {
-                System.out.println("SimpleTokenDialog: Counting down latch in cancelDialog")
+                LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Counting down latch in cancelDialog")
                 latch.countDown()
             }
             
@@ -589,23 +587,22 @@ class SimpleTokenDialog {
             SwingUtilities.invokeLater(() -> {
                 try {
                     if (frame != null) {
-                        System.out.println("SimpleTokenDialog: Disposing dialog frame in cancelDialog")
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing dialog frame in cancelDialog")
                         frame.setVisible(false)
                         frame.dispose()
                     }
                     
                     if (parentFrame != null && parentFrame.isUndecorated()) {
-                        System.out.println("SimpleTokenDialog: Disposing parent frame in cancelDialog")
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing parent frame in cancelDialog")
                         parentFrame.dispose()
                     }
                 } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error disposing dialog in cancelDialog: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error disposing dialog in cancelDialog: " + e.getMessage())
                 }
             })
             
         } catch (Exception e) {
-            System.err.println("SimpleTokenDialog: Error in cancelDialog: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error in cancelDialog: " + e.getMessage(), e)
             
             // Still signal completion to avoid hanging
             tokens = null
@@ -622,11 +619,11 @@ class SimpleTokenDialog {
      */
     Map<String, String> waitForTokens(int timeout) {
         try {
-            System.out.println("SimpleTokenDialog: Waiting for token entry (timeout: " + timeout + " seconds)")
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Waiting for token entry (timeout: " + timeout + " seconds)")
             boolean completed = latch.await(timeout, TimeUnit.SECONDS)
             
             if (!completed) {
-                System.out.println("SimpleTokenDialog: Token entry timed out after " + timeout + " seconds")
+                LogManager.getInstance().warn(LogCategory.DATA_FETCH, "SimpleTokenDialog: Token entry timed out after " + timeout + " seconds")
                 
                 // Mark dialog as no longer showing
                 isShowing = false
@@ -635,32 +632,31 @@ class SimpleTokenDialog {
                 SwingUtilities.invokeLater(() -> {
                     try {
                         if (frame != null) {
-                            System.out.println("SimpleTokenDialog: Disposing frame after timeout")
+                            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing frame after timeout")
                             frame.setVisible(false)
                             frame.dispose()
                         }
                         if (parentFrame != null && parentFrame.isUndecorated()) {
-                            System.out.println("SimpleTokenDialog: Disposing parent frame after timeout")
+                            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Disposing parent frame after timeout")
                             parentFrame.dispose()
                         }
                     } catch (Exception e) {
-                        System.err.println("SimpleTokenDialog: Error disposing dialog after timeout: " + e.getMessage())
+                        LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error disposing dialog after timeout: " + e.getMessage())
                     }
                 })
                 
                 return null
             }
             
-            System.out.println("SimpleTokenDialog: Token entry completed, returning " + 
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Token entry completed, returning " + 
                               (tokens != null ? "valid token data" : "null (canceled)"))
             return tokens
         } catch (InterruptedException e) {
-            System.err.println("SimpleTokenDialog: Token entry interrupted: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "SimpleTokenDialog: Token entry interrupted: " + e.getMessage())
             Thread.currentThread().interrupt()
             return null
         } catch (Exception e) {
-            System.err.println("SimpleTokenDialog: Unexpected error in waitForTokens: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "SimpleTokenDialog: Unexpected error in waitForTokens: " + e.getMessage(), e)
             return null
         }
     }
@@ -671,34 +667,33 @@ class SimpleTokenDialog {
      */
     Map<String, String> getTokens() {
         try {
-            System.out.println("SimpleTokenDialog: Waiting for token input (max 5 minutes)")
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Waiting for token input (max 5 minutes)")
             boolean completed = latch.await(5, TimeUnit.MINUTES)
             
             if (!completed) {
-                System.out.println("SimpleTokenDialog: Token wait timed out")
+                LogManager.getInstance().warn(LogCategory.DATA_FETCH, "SimpleTokenDialog: Token wait timed out")
                 cleanup()
                 return null
             }
             
             if (tokens == null) {
-                System.out.println("SimpleTokenDialog: Dialog was cancelled (tokens == null)")
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Dialog was cancelled (tokens == null)")
                 cleanup()
                 return null
             }
             
-            System.out.println("SimpleTokenDialog: Tokens received successfully")
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "SimpleTokenDialog: Tokens received successfully")
             Map<String, String> result = new HashMap<>(tokens)
             cleanup()
             return result
             
         } catch (InterruptedException e) {
-            System.err.println("SimpleTokenDialog: Token wait interrupted: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "SimpleTokenDialog: Token wait interrupted: " + e.getMessage())
             Thread.currentThread().interrupt()
             cleanup()
             return null
         } catch (Exception e) {
-            System.err.println("SimpleTokenDialog: Unexpected error in getTokens: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "SimpleTokenDialog: Unexpected error in getTokens: " + e.getMessage(), e)
             cleanup()
             return null
         }
@@ -711,7 +706,7 @@ class SimpleTokenDialog {
         if (frame != null) {
             SwingUtilities.invokeLater(() -> {
                 try {
-                    System.out.println("SimpleTokenDialog: Resetting UI components");
+                    LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Resetting UI components");
 
                     // Clear previous text and reset font sizes
                     if (tokenField != null) {
@@ -732,10 +727,9 @@ class SimpleTokenDialog {
                         }
                     }
 
-                    System.out.println("SimpleTokenDialog: UI components reset successfully");
+                    LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: UI components reset successfully");
                 } catch (Exception e) {
-                    System.err.println("SimpleTokenDialog: Error resetting UI components: " + e.getMessage());
-                    e.printStackTrace();
+                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error resetting UI components: " + e.getMessage(), e);
                 }
             });
         }

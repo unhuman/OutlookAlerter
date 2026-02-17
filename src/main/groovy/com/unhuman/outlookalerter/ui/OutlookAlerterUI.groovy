@@ -307,7 +307,7 @@ class OutlookAlerterUI extends JFrame {
                     @Override
                     void actionPerformed(ActionEvent e) {
                         if (isTokenDialogActive) {
-                            System.out.println("Cannot display settings dialog while token dialog is active.");
+                            LogManager.getInstance().info(LogCategory.GENERAL, "Cannot display settings dialog while token dialog is active.")
                         } else {
                             // activateWindow()
                             showSettingsDialog()
@@ -373,19 +373,17 @@ class OutlookAlerterUI extends JFrame {
                     })
                     
                     // Note: Default close operation is already set in constructor
-                    System.out.println("System tray integration enabled successfully")
+                    LogManager.getInstance().info(LogCategory.GENERAL, "System tray integration enabled successfully")
                 } catch (Exception e) {
-                    System.err.println("Error adding system tray icon: " + e.getMessage())
-                    e.printStackTrace()
-                    System.out.println("Will continue without system tray integration")
+                    LogManager.getInstance().error(LogCategory.GENERAL, "Error adding system tray icon: " + e.getMessage(), e)
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Will continue without system tray integration")
                 }
             } else {
                 // System tray not supported, keep default behavior
-                System.out.println("System tray is not supported on this platform")
+                LogManager.getInstance().info(LogCategory.GENERAL, "System tray is not supported on this platform")
             }
         } catch (Exception e) {
-            System.err.println("Error setting up system tray: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error setting up system tray: " + e.getMessage(), e)
         }
     }
 
@@ -398,13 +396,13 @@ class OutlookAlerterUI extends JFrame {
                 trayIcon.displayMessage(title, message, type)
             } catch (Exception e) {
                 // Some platforms might not support notifications
-                System.err.println("Could not display tray notification: " + e.getMessage())
+                LogManager.getInstance().error(LogCategory.GENERAL, "Could not display tray notification: " + e.getMessage())
                 // Fall back to console output
-                System.out.println("[NOTIFICATION] " + title + ": " + message)
+                LogManager.getInstance().info(LogCategory.GENERAL, "[NOTIFICATION] " + title + ": " + message)
             }
         } else {
             // No tray icon available, fall back to console output
-            System.out.println("[NOTIFICATION] " + title + ": " + message)
+            LogManager.getInstance().info(LogCategory.GENERAL, "[NOTIFICATION] " + title + ": " + message)
         }
     }
     
@@ -476,7 +474,7 @@ class OutlookAlerterUI extends JFrame {
         testAlertsButton.addActionListener(new ActionListener() {
             @Override
             void actionPerformed(ActionEvent e) {
-                System.out.println("Test Alerts: Starting test alert sequence")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Test Alerts: Starting test alert sequence")
 
                 // Create a test event for the flash
                 CalendarEvent testEvent = new CalendarEvent()
@@ -531,7 +529,7 @@ class OutlookAlerterUI extends JFrame {
             sleepMonitor.startMonitoring()
 
             sleepMonitor.addWakeListener({
-                System.out.println("[OutlookAlerterUI] Wake event detected - restarting schedulers")
+                LogManager.getInstance().info(LogCategory.GENERAL, "[OutlookAlerterUI] Wake event detected - restarting schedulers")
                 lastSystemWakeTime = System.currentTimeMillis()
 
                 // Restart schedulers to ensure they're not stuck
@@ -542,8 +540,7 @@ class OutlookAlerterUI extends JFrame {
                         // Also force a calendar refresh after wake
                         refreshCalendarEvents()
                     } catch (Exception e) {
-                        System.err.println("[OutlookAlerterUI] Error restarting after wake: " + e.getMessage())
-                        e.printStackTrace()
+                        LogManager.getInstance().error(LogCategory.GENERAL, "[OutlookAlerterUI] Error restarting after wake: " + e.getMessage(), e)
                     }
                 } as Runnable)
             } as Runnable)
@@ -611,7 +608,7 @@ class OutlookAlerterUI extends JFrame {
                 alertScheduler.awaitTermination(5, TimeUnit.SECONDS)
                 calendarScheduler.awaitTermination(5, TimeUnit.SECONDS)
             } catch (Exception e) {
-                System.err.println("Error shutting down schedulers: " + e.getMessage())
+                LogManager.getInstance().error(LogCategory.GENERAL, "Error shutting down schedulers: " + e.getMessage())
             }
             schedulersRunning = false
         }
@@ -690,8 +687,7 @@ class OutlookAlerterUI extends JFrame {
                             setTitle("Outlook Alerter - " + todayMeetingsCount + " meetings today")
                             
                         } catch (Exception e) {
-                            System.err.println("Error updating UI after refresh: " + e.getMessage())
-                            e.printStackTrace()
+                            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error updating UI after refresh: " + e.getMessage(), e)
                         }
                     } as Runnable)
                     
@@ -719,8 +715,7 @@ class OutlookAlerterUI extends JFrame {
                     }
                 })
             } catch (Exception e) {
-                LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error fetching calendar events: " + e.getMessage())
-                e.printStackTrace()
+                LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error fetching calendar events: " + e.getMessage(), e)
                 
                 // Handle specific network errors more gracefully
                 String errorMsg
@@ -990,21 +985,23 @@ class OutlookAlerterUI extends JFrame {
             alertScheduler.submit({
                 try {
                     if (!outlookClient.hasValidToken()) {
-                        System.out.println("Token is invalid or expired. Prompting for new token.");
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Token is invalid or expired. Prompting for new token.");
                         if (!isTokenDialogActive) {
                             promptForTokens(configManager.getSignInUrl())
                         }
                     }
                 } catch (Exception ex) {
-                    System.err.println("Error checking token validity: " + ex.getMessage())
+                    LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error checking token validity: " + ex.getMessage())
                 }
             } as Runnable)
         }
 
         // Clean up alerted events list periodically
-        if (alertedEventIds.size() > 100) {
-            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Clearing alertedEventIds list (size > 100)")
-            alertedEventIds.clear()
+        synchronized (alertedEventIds) {
+            if (alertedEventIds.size() > 100) {
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Clearing alertedEventIds list (size > 100)")
+                alertedEventIds.clear()
+            }
         }
     }
 
@@ -1046,14 +1043,12 @@ class OutlookAlerterUI extends JFrame {
                     // Check for alerts
                     checkForEventAlerts(updatedEvents)
                 } catch (Exception e) {
-                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error in EDT processing cached alerts: " + e.getMessage())
-                    e.printStackTrace()
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error in EDT processing cached alerts: " + e.getMessage(), e)
                 }
             } as Runnable)
             
         } catch (Exception e) {
-            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error checking alerts from cache: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error checking alerts from cache: " + e.getMessage(), e)
         }
     }
     
@@ -1062,7 +1057,7 @@ class OutlookAlerterUI extends JFrame {
      */
     private synchronized void showSettingsDialog() {
         if (isTokenDialogActive) {
-            System.out.println("Cannot display settings dialog while token dialog is active.");
+            LogManager.getInstance().info(LogCategory.GENERAL, "Cannot display settings dialog while token dialog is active.");
             return;
         }
 
@@ -1122,7 +1117,7 @@ class OutlookAlerterUI extends JFrame {
      * This method is called by the SettingsDialog when settings are saved
      */
     void restartSchedulers() {
-        System.out.println("[OutlookAlerterUI] Restarting schedulers...")
+        LogManager.getInstance().info(LogCategory.GENERAL, "[OutlookAlerterUI] Restarting schedulers...")
 
         stopSchedulers();
 
@@ -1145,7 +1140,7 @@ class OutlookAlerterUI extends JFrame {
             try {
                 screenFlasher.forceCleanup()
             } catch (Exception e) {
-                System.err.println("[OutlookAlerterUI] Error cleaning up old screen flasher: " + e.getMessage())
+                LogManager.getInstance().error(LogCategory.GENERAL, "[OutlookAlerterUI] Error cleaning up old screen flasher: " + e.getMessage())
             }
         }
 
@@ -1154,7 +1149,7 @@ class OutlookAlerterUI extends JFrame {
         
         startSchedulers();
 
-        System.out.println("[OutlookAlerterUI] Schedulers restarted successfully")
+        LogManager.getInstance().info(LogCategory.GENERAL, "[OutlookAlerterUI] Schedulers restarted successfully")
     }
 
     /**
@@ -1162,13 +1157,13 @@ class OutlookAlerterUI extends JFrame {
      */
     private void startSchedulers() {
         if (schedulersRunning) {
-            System.out.println("Schedulers already running");
+            LogManager.getInstance().info(LogCategory.GENERAL, "Schedulers already running");
             return;
         }
 
         int resyncIntervalSeconds = configManager.getResyncIntervalMinutes() * 60;
 
-        System.out.println("Starting schedulers... Resync interval: ${resyncIntervalSeconds} seconds");
+        LogManager.getInstance().info(LogCategory.GENERAL, "Starting schedulers... Resync interval: ${resyncIntervalSeconds} seconds");
 
         // Schedule periodic calendar data refresh
         calendarScheduler.scheduleAtFixedRate(
@@ -1193,10 +1188,10 @@ class OutlookAlerterUI extends JFrame {
      * Stop all schedulers
      */
     private void stopSchedulers() {
-        System.out.println("Stopping schedulers...");
+        LogManager.getInstance().info(LogCategory.GENERAL, "Stopping schedulers...");
 
         if (!schedulersRunning) {
-            System.out.println("Schedulers not running");
+            LogManager.getInstance().info(LogCategory.GENERAL, "Schedulers not running");
             return;
         }
 
@@ -1211,21 +1206,21 @@ class OutlookAlerterUI extends JFrame {
 
             // Wait for schedulers to finish their current tasks (reduced timeout for faster recovery)
             if (calendarScheduler != null && !calendarScheduler.awaitTermination(3, TimeUnit.SECONDS)) {
-                System.out.println("Forcing shutdown of calendar scheduler");
+                LogManager.getInstance().info(LogCategory.GENERAL, "Forcing shutdown of calendar scheduler");
                 List<Runnable> pending = calendarScheduler.shutdownNow();
                 if (pending != null && !pending.isEmpty()) {
-                    System.out.println("Cancelled " + pending.size() + " pending calendar tasks");
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Cancelled " + pending.size() + " pending calendar tasks");
                 }
             }
             if (alertScheduler != null && !alertScheduler.awaitTermination(3, TimeUnit.SECONDS)) {
-                System.out.println("Forcing shutdown of alert scheduler");
+                LogManager.getInstance().info(LogCategory.GENERAL, "Forcing shutdown of alert scheduler");
                 List<Runnable> pending = alertScheduler.shutdownNow();
                 if (pending != null && !pending.isEmpty()) {
-                    System.out.println("Cancelled " + pending.size() + " pending alert tasks");
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Cancelled " + pending.size() + " pending alert tasks");
                 }
             }
         } catch (InterruptedException e) {
-            System.err.println("Schedulers interrupted during shutdown: " + e.getMessage());
+            LogManager.getInstance().error(LogCategory.GENERAL, "Schedulers interrupted during shutdown: " + e.getMessage());
             if (calendarScheduler != null) {
                 calendarScheduler.shutdownNow();
             }
@@ -1234,8 +1229,7 @@ class OutlookAlerterUI extends JFrame {
             }
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            System.err.println("Error stopping schedulers: " + e.getMessage());
-            e.printStackTrace();
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error stopping schedulers: " + e.getMessage(), e);
             // Force shutdown on any error
             if (calendarScheduler != null) {
                 try { calendarScheduler.shutdownNow(); } catch (Exception ignored) {}
@@ -1246,7 +1240,7 @@ class OutlookAlerterUI extends JFrame {
         }
 
         schedulersRunning = false;
-        System.out.println("Schedulers stopped");
+        LogManager.getInstance().info(LogCategory.GENERAL, "Schedulers stopped");
     }
 
     /**
@@ -1291,8 +1285,7 @@ class OutlookAlerterUI extends JFrame {
                     requestFocusInWindow()
                 }
             } catch (Exception e) {
-                System.err.println("Error during window activation: " + e.getMessage())
-                e.printStackTrace()
+                LogManager.getInstance().error(LogCategory.GENERAL, "Error during window activation: " + e.getMessage(), e)
             }
         } as Runnable)
     }
@@ -1304,7 +1297,7 @@ class OutlookAlerterUI extends JFrame {
     private boolean isSafeToShowUI() {
         long timeSinceWake = System.currentTimeMillis() - lastSystemWakeTime
         if (timeSinceWake < 10000) {
-            println "UI: Delaying UI display - system recently woke (${timeSinceWake}ms ago)"
+            LogManager.getInstance().info(LogCategory.GENERAL, "UI: Delaying UI display - system recently woke (${timeSinceWake}ms ago)")
             return false
         }
         return true
@@ -1328,7 +1321,7 @@ class OutlookAlerterUI extends JFrame {
             boolean responded = latch.await(2, TimeUnit.SECONDS)
             return responded && completed[0]
         } catch (Exception e) {
-            println "EDT responsiveness check failed: ${e.message}"
+            LogManager.getInstance().error(LogCategory.GENERAL, "EDT responsiveness check failed: ${e.message}")
             return false
         }
     }
@@ -1342,7 +1335,7 @@ class OutlookAlerterUI extends JFrame {
         try {
             // Check if it's safe to show UI
             if (!isSafeToShowUI()) {
-                println "UI: Delaying token dialog - system not ready"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI: Delaying token dialog - system not ready")
                 // Schedule retry after delay
                 // Schedule retry on background thread (NOT EDT — promptForTokens uses invokeAndWait internally)
                 Timer retryTimer = new Timer(2000, { e ->
@@ -1360,7 +1353,7 @@ class OutlookAlerterUI extends JFrame {
 
             // Check EDT responsiveness
             if (!isEDTResponsive()) {
-                println "UI: EDT is not responsive, cannot show token dialog"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI: EDT is not responsive, cannot show token dialog")
                 return null
             }
 
@@ -1370,14 +1363,14 @@ class OutlookAlerterUI extends JFrame {
             // Make sure we have a valid sign-in URL, default to Microsoft Graph URL if not
             if (signInUrl == null || signInUrl.trim().isEmpty()) {
                 signInUrl = SimpleTokenDialog.DEFAULT_GRAPH_URL
-                println "UI mode: Using default sign-in URL: ${signInUrl}"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI mode: Using default sign-in URL: ${signInUrl}")
             }
             
             SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl)
             dialog.show()
             Map<String, String> tokens = dialog.getTokens()
             
-            println "UI mode: Token dialog returned: ${tokens != null ? 'tokens' : 'null (cancelled)'}"
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI mode: Token dialog returned: ${tokens != null ? 'tokens' : 'null (cancelled)'}")
             
             // If tokens were obtained and certificate validation setting might have changed,
             // ensure the HTTP client is updated
@@ -1385,12 +1378,12 @@ class OutlookAlerterUI extends JFrame {
                 if (tokens.containsKey("ignoreCertValidation")) {
                     // Parse the string value explicitly by comparing to "true"
                     boolean ignoreCertValidation = "true".equalsIgnoreCase(tokens.ignoreCertValidation)
-                    println "UI mode: Certificate validation from dialog: " + 
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI mode: Certificate validation from dialog: " + 
                            (ignoreCertValidation ? "disabled" : "enabled") + 
-                           " (Raw value: '" + tokens.ignoreCertValidation + "')"
+                           " (Raw value: '" + tokens.ignoreCertValidation + "')")
                     outlookClient.updateCertificateValidation(ignoreCertValidation)
                 } else {
-                    println "UI mode: No certificate validation setting in tokens, updating HTTP client anyway"
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI mode: No certificate validation setting in tokens, updating HTTP client anyway")
                     outlookClient.updateHttpClient()
                 }
             } else {
@@ -1407,13 +1400,12 @@ class OutlookAlerterUI extends JFrame {
                     dialog.dispose()
                 }
             } catch (Exception e) {
-                println "UI mode: Error disposing token dialog: ${e.message}"
+                LogManager.getInstance().error(LogCategory.DATA_FETCH, "UI mode: Error disposing token dialog: ${e.message}")
             }
             
             return tokens
         } catch (Exception e) {
-            println "UI mode: Error in promptForTokens: ${e.message}"
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "UI mode: Error in promptForTokens: ${e.message}", e)
             return null
         } finally {
             isTokenDialogActive = false
@@ -1431,7 +1423,7 @@ class OutlookAlerterUI extends JFrame {
      * @param events Calendar events to flash on screen (may be synthetic for non-meeting alerts)
      */
     void performFullAlert(String bannerText, String notificationTitle, String notificationMessage, List<CalendarEvent> events) {
-        System.out.println("performFullAlert: banner='" + bannerText + "' events=" + (events != null ? events.size() : 0))
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "performFullAlert: banner='" + bannerText + "' events=" + (events != null ? events.size() : 0))
 
         // ========== ALERT COMPONENT 1: Audio beep (highest priority, separate thread) ==========
         Thread beepThread = new Thread({
@@ -1478,8 +1470,7 @@ class OutlookAlerterUI extends JFrame {
                         showAlertBanner(bannerTextFinal)
                         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully (Mac callback)")
                     } catch (Exception ex) {
-                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
-                        ex.printStackTrace()
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage(), ex)
                     }
                 } as Runnable)
             } else {
@@ -1489,8 +1480,7 @@ class OutlookAlerterUI extends JFrame {
                         showAlertBanner(bannerTextFinal)
                         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBanner: Banner shown successfully (delayed)")
                     } catch (Exception ex) {
-                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage())
-                        ex.printStackTrace()
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage(), ex)
                     }
                 } as ActionListener)
                 bannerDelayTimer.setRepeats(false)
@@ -1526,8 +1516,7 @@ class OutlookAlerterUI extends JFrame {
                         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Post-flash beep sequence completed")
                     }
                 } catch (Exception ex) {
-                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Exception during flashMultiple: " + ex.getMessage())
-                    ex.printStackTrace()
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Exception during flashMultiple: " + ex.getMessage(), ex)
                 }
             }, "ScreenFlasherThread").start()
         } else {
@@ -1641,7 +1630,7 @@ class OutlookAlerterUI extends JFrame {
 
                 } catch (Exception screenEx) {
                     // Per-screen isolation: one monitor failure must not prevent others
-                    System.err.println("Error creating banner for screen '" + screen.getIDstring() + "': " + screenEx.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error creating banner for screen '" + screen.getIDstring() + "': " + screenEx.getMessage())
                 }
             }
 
@@ -1666,7 +1655,7 @@ class OutlookAlerterUI extends JFrame {
                 hideTimer.start()
             }
         } catch (Exception e) {
-            System.err.println("Error showing alert banner: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error showing alert banner: " + e.getMessage())
         }
     }
 
@@ -1696,7 +1685,7 @@ class OutlookAlerterUI extends JFrame {
                     Taskbar taskbar = Taskbar.getTaskbar()
                     taskbar.requestUserAttention(true, false)
                 } catch (Exception e) {
-                    System.out.println("Could not request user attention: " + e.getMessage())
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Could not request user attention: " + e.getMessage())
                 }
             }
         } else {

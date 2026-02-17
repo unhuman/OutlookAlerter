@@ -11,6 +11,8 @@ import java.time.format.DateTimeFormatter
 import com.unhuman.outlookalerter.model.CalendarEvent
 import com.unhuman.outlookalerter.ui.SimpleTokenDialog
 import com.unhuman.outlookalerter.ui.OutlookAlerterUI
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import com.unhuman.outlookalerter.util.ScreenFlasher
 import com.unhuman.outlookalerter.util.ScreenFlasherFactory
 import javax.swing.JOptionPane
@@ -72,7 +74,7 @@ class OutlookClient {
      */
     private HttpClient createHttpClient() {
         boolean ignoreCertValidation = configManager.getIgnoreCertValidation()
-        println "Creating HTTP client with certificate validation: " + (ignoreCertValidation ? "disabled" : "enabled") 
+        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Creating HTTP client with certificate validation: " + (ignoreCertValidation ? "disabled" : "enabled")) 
         if (ignoreCertValidation) {
             return createHttpClientWithoutCertValidation();
         } else {
@@ -115,8 +117,7 @@ class OutlookClient {
                 .connectTimeout(java.time.Duration.ofSeconds(30))
                 .build();
         } catch (Exception e) {
-            System.err.println("Error creating HttpClient without certificate validation: " + e.getMessage());
-            e.printStackTrace();
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error creating HttpClient without certificate validation: " + e.getMessage(), e);
             // Fall back to default HttpClient
             return HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(30))
@@ -128,7 +129,7 @@ class OutlookClient {
      * Update the HTTP client based on current settings
      */
     void updateHttpClient() {
-        println "Updating HTTP client based on current settings"
+        LogManager.getInstance().info(LogCategory.GENERAL, "Updating HTTP client based on current settings")
         this.httpClient = createHttpClient();
     }
     
@@ -139,7 +140,7 @@ class OutlookClient {
     void updateCertificateValidation(boolean ignoreCertValidation) {
         // Always update the setting and HTTP client regardless of current value
         // This ensures the value provided is always properly saved
-        println "Certificate validation setting set to: " + (ignoreCertValidation ? "disabled" : "enabled")
+        LogManager.getInstance().info(LogCategory.GENERAL, "Certificate validation setting set to: " + (ignoreCertValidation ? "disabled" : "enabled"))
         configManager.updateDefaultIgnoreCertValidation(ignoreCertValidation)
         updateHttpClient()
     }
@@ -151,13 +152,13 @@ class OutlookClient {
     boolean authenticate() {
         // Check if we have a valid token
         if (hasValidToken()) {
-            println "Using existing valid token."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Using existing valid token.")
             return true
         }
         
         // Try to refresh token if we have one
         if (configManager.refreshToken) {
-            println "Attempting to refresh token..."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting to refresh token...")
             if (refreshToken()) {
                 return true
             }
@@ -183,12 +184,12 @@ class OutlookClient {
         boolean isValid = validateTokenWithServer(accessToken);
 
         if (!isValid) {
-            println "Token appears to be invalid according to Microsoft's server";
+            LogManager.getInstance().info(LogCategory.GENERAL, "Token appears to be invalid according to Microsoft's server");
             return false;
         }
 
         // If we got here, the token is valid according to the server
-        println "Token validated with server successfully.";
+        LogManager.getInstance().info(LogCategory.GENERAL, "Token validated with server successfully.");
         return true;
     }
     
@@ -210,7 +211,7 @@ class OutlookClient {
             String tokenUrl = configManager.tokenEndpoint
             
             if (!tokenUrl) {
-                println "Error: Token endpoint URL not configured"
+                LogManager.getInstance().error(LogCategory.GENERAL, "Error: Token endpoint URL not configured")
                 return false
             }
             
@@ -248,19 +249,19 @@ class OutlookClient {
                 
                 configManager.updateTokens(accessToken, refreshToken, configManager.getIgnoreCertValidation())
                 lastTokenValidationResult = TOKEN_REFRESHED
-                println "Token refreshed successfully!"
+                LogManager.getInstance().info(LogCategory.GENERAL, "Token refreshed successfully!")
                 return true
             } else if (response.statusCode() == 401 || response.statusCode() == 400) {
                 // If the refresh token is rejected or invalid, we need to re-authenticate
-                println "Refresh token was rejected (${response.statusCode()}). Need to re-authenticate."
+                LogManager.getInstance().info(LogCategory.GENERAL, "Refresh token was rejected (${response.statusCode()}). Need to re-authenticate.")
                 // Fall through to perform direct authentication
                 return performDirectAuthentication()
             } else {
-                println "Failed to refresh token: ${response.statusCode()}"
+                LogManager.getInstance().error(LogCategory.GENERAL, "Failed to refresh token: ${response.statusCode()}")
                 return false
             }
         } catch (Exception e) {
-            println "Error refreshing token: ${e.message}"
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error refreshing token: ${e.message}")
             return false
         }
     }
@@ -271,7 +272,7 @@ class OutlookClient {
     protected boolean performDirectAuthentication() {
         synchronized(authLock) {
             if (isAuthenticating) {
-                println "Authentication already in progress"
+                LogManager.getInstance().info(LogCategory.GENERAL, "Authentication already in progress")
                 return false
             }
             isAuthenticating = true
@@ -282,51 +283,51 @@ class OutlookClient {
             def tokens = getTokensFromUser()
             // If user cancels or closes the dialog, exit immediately and do not retry or show extra popups
             if (tokens == null) {
-                println "Token dialog was cancelled by the user. Aborting authentication."
+                LogManager.getInstance().info(LogCategory.GENERAL, "Token dialog was cancelled by the user. Aborting authentication.")
                 synchronized(authLock) { isAuthenticating = false }
                 throw new AuthenticationCancelledException("Authentication was cancelled by the user.", "user_cancelled")
             }
             
             // Check if user provided a token
             if (tokens == null || !tokens.containsKey("accessToken") || tokens.accessToken == null || tokens.accessToken.isEmpty()) {
-                println "No access token was provided or dialog was cancelled."
+                LogManager.getInstance().info(LogCategory.GENERAL, "No access token was provided or dialog was cancelled.")
                 return false
             }
             
-            println "Token received from user interface."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Token received from user interface.")
             
             // Check if certificate validation setting was provided and update if needed
             boolean ignoreCertValidation = configManager.getIgnoreCertValidation()
             if (tokens.containsKey("ignoreCertValidation")) {
-                System.out.println "*** Certificate validation setting provided in tokens: " + tokens.ignoreCertValidation + " exists " + tokens.containsKey("ignoreCertValidation")
+                LogManager.getInstance().info(LogCategory.GENERAL, "*** Certificate validation setting provided in tokens: " + tokens.ignoreCertValidation + " exists " + tokens.containsKey("ignoreCertValidation"))
                 ignoreCertValidation = Boolean.valueOf(tokens.ignoreCertValidation)
-                System.out.println "*** Certificate validation setting from token dialog: " + ignoreCertValidation
+                LogManager.getInstance().info(LogCategory.GENERAL, "*** Certificate validation setting from token dialog: " + ignoreCertValidation)
 
                 boolean currentSetting = configManager.getIgnoreCertValidation()
                 
                 // Always log the certificate validation setting
-                println "Certificate validation setting from token dialog: " + 
+                LogManager.getInstance().info(LogCategory.GENERAL, "Certificate validation setting from token dialog: " + 
                        (ignoreCertValidation ? "disabled" : "enabled") + 
-                       " (current setting: " + (currentSetting ? "disabled" : "enabled") + ")"
+                       " (current setting: " + (currentSetting ? "disabled" : "enabled") + ")")
                        
                 boolean settingChanged = currentSetting != ignoreCertValidation
                 
                 if (settingChanged) {
-                    println "Certificate validation setting changed, updating HTTP client..."
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Certificate validation setting changed, updating HTTP client...")
                     configManager.updateIgnoreCertValidation(ignoreCertValidation)
                     updateHttpClient()
                 } else {
-                    println "Certificate validation setting unchanged"
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Certificate validation setting unchanged")
                 }
             } else {
-                println "No certificate validation setting provided in tokens"
+                LogManager.getInstance().info(LogCategory.GENERAL, "No certificate validation setting provided in tokens")
             }
             
             // Redact token for logging (show only first 10 chars)
             String redactedToken = tokens.accessToken?.size() > 10 ? 
                 tokens.accessToken.substring(0, 10) + "..." : 
                 "(invalid token format)"
-            println "Received token starting with: ${redactedToken}"
+            LogManager.getInstance().info(LogCategory.GENERAL, "Received token starting with: ${redactedToken}")
             
             String accessToken = null
             long expiryTime = 0
@@ -338,15 +339,15 @@ class OutlookClient {
                 // Validate the received token with Microsoft's server before accepting it
                 accessToken = tokens.accessToken
                 
-                println "Validating token with Microsoft's server... (attempt ${validationAttempts}/${MAX_VALIDATION_ATTEMPTS})"
+                LogManager.getInstance().info(LogCategory.GENERAL, "Validating token with Microsoft's server... (attempt ${validationAttempts}/${MAX_VALIDATION_ATTEMPTS})")
                 boolean isValid = validateTokenWithServer(accessToken)
 
                 if (!isValid) {
                     if (validationAttempts >= MAX_VALIDATION_ATTEMPTS) {
-                        println "Token validation failed after ${MAX_VALIDATION_ATTEMPTS} attempts."
+                        LogManager.getInstance().error(LogCategory.GENERAL, "Token validation failed after ${MAX_VALIDATION_ATTEMPTS} attempts.")
                         throw new AuthenticationCancelledException("Token validation failed after ${MAX_VALIDATION_ATTEMPTS} attempts", "validation_exhausted")
                     }
-                    println "Token validation failed. The token appears to be invalid. Requesting a new token..."
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Token validation failed. The token appears to be invalid. Requesting a new token...")
                     JOptionPane.showMessageDialog(
                         null,
                         "The provided token was rejected by Microsoft's server. Please get a new token and try again.",
@@ -356,7 +357,7 @@ class OutlookClient {
                     // Get new tokens from user by showing the dialog again
                     tokens = getTokensFromUser()
                     if (tokens == null) {
-                        println "User canceled token dialog during validation retry"
+                        LogManager.getInstance().info(LogCategory.GENERAL, "User canceled token dialog during validation retry")
                         throw new AuthenticationCancelledException("Authentication was cancelled during token validation", "validation_cancelled")
                     }
                     // Continue the while loop to validate the new token
@@ -369,16 +370,15 @@ class OutlookClient {
             
             // Refresh token is not collected anymore, pass null as refresh token
             configManager.updateTokens(accessToken, null, ignoreCertValidation)
-            println "Authentication successful! Token validated and saved."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Authentication successful! Token validated and saved.")
             return true
             
         } catch (AuthenticationCancelledException ace) {
-            println "Authentication was cancelled by the user"
+            LogManager.getInstance().info(LogCategory.GENERAL, "Authentication was cancelled by the user")
             // Note: isAuthenticating is released by the finally block below
             throw ace  // Rethrow to be handled by the caller
         } catch (Exception e) {
-            println "Error during authentication: ${e.message}"
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error during authentication: ${e.message}", e)
             return false
         } finally {
             synchronized(authLock) {
@@ -396,20 +396,20 @@ class OutlookClient {
      */
     private String handleUnauthorizedResponse(int statusCode = 401) {
         String errorType = (statusCode == 401) ? "401 Unauthorized" : "403 Forbidden"
-        println "Access token was rejected (${errorType}). Attempting to re-authenticate..."
+        LogManager.getInstance().info(LogCategory.GENERAL, "Access token was rejected (${errorType}). Attempting to re-authenticate...")
 
         // Clear the existing token's expiry time to force validation
         configManager.updateTokens(configManager.accessToken, configManager.refreshToken, configManager.getDefaultIgnoreCertValidation());
 
         // Try to refresh the token first if we have one
         if (configManager.refreshToken && refreshToken()) {
-            println "Successfully refreshed the token."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Successfully refreshed the token.")
             return configManager.accessToken
         }
 
         // If refresh failed or no refresh token, try direct authentication
         if (performDirectAuthentication()) {
-            println "Successfully re-authenticated."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Successfully re-authenticated.")
             return configManager.accessToken
         }
 
@@ -429,7 +429,7 @@ class OutlookClient {
         // If we got a 401 Unauthorized or 403 Forbidden, try to re-authenticate and retry
         if (response.statusCode() == 401 || response.statusCode() == 403) {
             String errorType = (response.statusCode() == 401) ? "401 Unauthorized" : "403 Forbidden";
-            println "Received ${errorType} response. Attempting to re-authenticate..."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Received ${errorType} response. Attempting to re-authenticate...")
 
             // Pass the specific status code to the handler
             String newToken = handleUnauthorizedResponse(response.statusCode())
@@ -444,19 +444,19 @@ class OutlookClient {
                     .build()
 
                 // Execute the retry request
-                println "Retrying request with new token..."
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Retrying request with new token...")
                 HttpResponse<String> retryResponse = httpClient.send(retryRequest, HttpResponse.BodyHandlers.ofString())
 
                 if (retryResponse.statusCode() == 200) {
-                    println "Request retry successful"
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "Request retry successful")
                     return retryResponse
                 } else {
-                    println "Request retry failed with status ${retryResponse.statusCode()}"
+                    LogManager.getInstance().error(LogCategory.DATA_FETCH, "Request retry failed with status ${retryResponse.statusCode()}")
                     // Return the retry response even if it failed - the caller will handle the status code
                     return retryResponse
                 }
             } else {
-                println "Failed to obtain a new token for retry"
+                LogManager.getInstance().error(LogCategory.DATA_FETCH, "Failed to obtain a new token for retry")
             }
         }
 
@@ -492,10 +492,10 @@ class OutlookClient {
             
             // Check if we have any token at all
             if (accessToken == null || accessToken.isEmpty()) {
-                println "No access token available. Showing token dialog...";
+                LogManager.getInstance().info(LogCategory.GENERAL, "No access token available. Showing token dialog...");
                 try {
                     if (!performDirectAuthentication()) {
-                        println "No token provided after showing dialog. Cannot retrieve calendar events.";
+                        LogManager.getInstance().error(LogCategory.GENERAL, "No token provided after showing dialog. Cannot retrieve calendar events.");
                         throw new AuthenticationCancelledException(
                             "Authentication failed during calendar refresh.",
                             "validation_cancelled"
@@ -508,13 +508,13 @@ class OutlookClient {
                 }
             }                // First check if token format is valid
             else if (!isValidTokenFormat(accessToken)) {
-                println "Token format is invalid. Need to authenticate again.";
+                LogManager.getInstance().info(LogCategory.GENERAL, "Token format is invalid. Need to authenticate again.");
                 if (!authenticate()) {
                     // Show direct authentication dialog if regular auth fails
-                    println "Re-authentication failed. Showing token dialog...";
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Re-authentication failed. Showing token dialog...");
                     try {
                         if (!performDirectAuthentication()) {
-                            println "User cancelled token dialog. Cannot retrieve calendar events.";
+                            LogManager.getInstance().error(LogCategory.GENERAL, "User cancelled token dialog. Cannot retrieve calendar events.");
                             throw new AuthenticationCancelledException(
                                 "Authentication was cancelled by the user.", 
                                 "user_cancelled"
@@ -529,13 +529,13 @@ class OutlookClient {
             // Then check if we have a valid token (by server validation)
             else if (!hasValidToken()) {
                 // If we get here, the token is invalid according to the server and we need to authenticate
-                println "Token validation failed. Need to authenticate again.";
+                LogManager.getInstance().info(LogCategory.GENERAL, "Token validation failed. Need to authenticate again.");
                 if (!authenticate()) {
                     // Show direct authentication dialog if regular auth fails
-                    println "Re-authentication failed. Showing token dialog...";
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Re-authentication failed. Showing token dialog...");
                     try {
                         if (!performDirectAuthentication()) {
-                            println "User cancelled token dialog. Cannot retrieve calendar events.";
+                            LogManager.getInstance().error(LogCategory.GENERAL, "User cancelled token dialog. Cannot retrieve calendar events.");
                             throw new AuthenticationCancelledException(
                                 "Authentication was cancelled by the user.", 
                                 "user_cancelled"
@@ -550,7 +550,7 @@ class OutlookClient {
             else {
                 // Token was validated with the server in hasValidToken()
                 lastTokenValidationResult = TOKEN_VALID_AFTER_SERVER_VALIDATION;
-                println "Token was validated with server. Using validated token.";
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Token was validated with server. Using validated token.");
                 accessToken = configManager.accessToken;
             }
             
@@ -578,7 +578,7 @@ class OutlookClient {
             urlBuilder.append("&\$top=50")
             
             String url = urlBuilder.toString()
-            println "Requesting calendar events with calendar view URL: ${url}"
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Requesting calendar events with calendar view URL: ${url}")
             
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(url))
@@ -593,12 +593,11 @@ class OutlookClient {
                 List<CalendarEvent> events = parseEventResponse(response.body())
                 return events
             } else {
-                println "Failed to retrieve events using calendar view (HTTP ${response.statusCode()})"
+                LogManager.getInstance().error(LogCategory.DATA_FETCH, "Failed to retrieve events using calendar view (HTTP ${response.statusCode()})")
                 return []
             }
         } catch (Exception e) {
-            println "Error retrieving calendar events using calendar view: ${e.message}"
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error retrieving calendar events using calendar view: ${e.message}", e)
             return []
         }
     }
@@ -641,7 +640,7 @@ class OutlookClient {
             // If we get a 200 OK, the token is valid
             return response.statusCode() == 200
         } catch (Exception e) {
-            println "Error validating token with server: ${e.message}"
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error validating token with server: ${e.message}")
             return false
         }
     }
@@ -667,11 +666,11 @@ class OutlookClient {
             urlBuilder.append("&\$orderby=").append(URLEncoder.encode("start/dateTime asc", "UTF-8"))
             
             // Log the encoded URL
-            println "Encoded URL: ${urlBuilder.toString()}"
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Encoded URL: ${urlBuilder.toString()}")
             
             return new URI(urlBuilder.toString())
         } catch (Exception e) {
-            println "Error creating URI: " + e.getMessage()
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error creating URI: " + e.getMessage())
             
             // Fall back to safer approach with less precise filtering
             return createSimpleDateFilterUri(baseUrl)
@@ -731,11 +730,11 @@ class OutlookClient {
             // Increase the maximum number of events returned
             urlBuilder.append("&\$top=50")
             
-            println "Using fallback simple date URL: ${urlBuilder.toString()}"
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Using fallback simple date URL: ${urlBuilder.toString()}")
             
             return new URI(urlBuilder.toString())
         } catch (Exception e) {
-            println "Error creating fallback URI: " + e.getMessage()
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error creating fallback URI: " + e.getMessage())
             
             // Ultimate fallback - just get recent calendar events with limited date filtering
             try {
@@ -800,18 +799,18 @@ class OutlookClient {
                     
                     // Fall back to local timezone if parsing fails
                     if (event.startTime == null) {
-                        println "Warning: Could not parse start time: ${startTimeStr} ${startTimeZone}"
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Warning: Could not parse start time: ${startTimeStr} ${startTimeZone}")
                         // Try to extract date part at minimum
                         event.startTime = ZonedDateTime.now() // Default to now as last resort
                     }
                     
                     if (event.endTime == null) {
-                        println "Warning: Could not parse end time: ${endTimeStr} ${endTimeZone}"
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Warning: Could not parse end time: ${endTimeStr} ${endTimeZone}")
                         // Default to start time plus 1 hour if we have a start time
                         event.endTime = event.startTime ? event.startTime.plusHours(1) : ZonedDateTime.now().plusHours(1)
                     }
                 } catch (Exception e) {
-                    println "Error parsing date/time for event ${event.subject}: ${e.message}"
+                    LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error parsing date/time for event ${event.subject}: ${e.message}")
                     // Set default times so the event can still be displayed
                     event.startTime = ZonedDateTime.now()
                     event.endTime = ZonedDateTime.now().plusHours(1)
@@ -836,8 +835,7 @@ class OutlookClient {
                 events.add(event)
             }
         } catch (Exception e) {
-            println "Error parsing event data: ${e.message}"
-            e.printStackTrace() // Add stack trace for better debugging
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error parsing event data: ${e.message}", e)
         }
         
         return events
@@ -874,7 +872,7 @@ class OutlookClient {
                         zoneId = ZoneId.of(timeZone)
                     } catch (Exception e) {
                         // If the timezone string isn't a valid ZoneId, log and use UTC
-                        println "Invalid timezone: ${timeZone}, falling back to UTC. Error: ${e.message}"
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Invalid timezone: ${timeZone}, falling back to UTC. Error: ${e.message}")
                         zoneId = ZoneId.of("UTC")
                     }
                 }
@@ -888,11 +886,11 @@ class OutlookClient {
                     try {
                         targetZoneId = ZoneId.of(configManager.preferredTimezone);
                         if (!hasLoggedTimezone) {
-                            println "Using preferred timezone from config: ${targetZoneId}"
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Using preferred timezone from config: ${targetZoneId}")
                             hasLoggedTimezone = true
                         }
                     } catch (Exception e) {
-                        println "Invalid preferred timezone in config: ${configManager.preferredTimezone}, falling back to system default"
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Invalid preferred timezone in config: ${configManager.preferredTimezone}, falling back to system default")
                         targetZoneId = ZonedDateTime.now().getZone();
                     }
                 } else {
@@ -906,7 +904,7 @@ class OutlookClient {
                 return eventTimeInLocalZone
             } catch (Exception e) {
                 exceptions.add(e)
-                println "Failed first parsing method: ${e.message}"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Failed first parsing method: ${e.message}")
             }
             
             // Second attempt: Try with direct string concatenation
@@ -935,12 +933,12 @@ class OutlookClient {
                     // Convert to local timezone
                     return zonedDateTime.withZoneSameInstant(ZonedDateTime.now().getZone());
                 } catch (Exception e) {
-                    println "Failed to parse with direct timezone: ${dateTimeWithZone}, error: ${e.message}"
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "Failed to parse with direct timezone: ${dateTimeWithZone}, error: ${e.message}")
                     throw e; // Rethrow to try the next method
                 }
             } catch (Exception e) {
                 exceptions.add(e)
-                println "Failed second parsing method: ${e.message}"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Failed second parsing method: ${e.message}")
             }
             
             // Last desperate attempt: just use the date part and a default time
@@ -948,18 +946,18 @@ class OutlookClient {
                 String datePart = dateTimeStr.split("T")[0]
                 java.time.LocalDate localDate = java.time.LocalDate.parse(datePart)
                 java.time.LocalDateTime localDateTime = localDate.atTime(0, 0) // Midnight
-                println "Falling back to date-only parsing with midnight time: ${localDate}"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Falling back to date-only parsing with midnight time: ${localDate}")
                 return localDateTime.atZone(ZoneId.systemDefault())
             } catch (Exception e) {
                 exceptions.add(e)
-                println "Failed third parsing method: ${e.message}"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Failed third parsing method: ${e.message}")
                 throw e; // Let the outer catch block handle this
             }
         } catch (Exception e) {
             // Log all attempted parsing exceptions for debugging
-            println "Failed to parse date/time: ${dateTimeStr} ${timeZone}"
-            println "Attempts failed with: ${exceptions.collect { it.message }.join(", ")}"
-            println "Final error: ${e.message}"
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Failed to parse date/time: ${dateTimeStr} ${timeZone}")
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Attempts failed with: ${exceptions.collect { it.message }.join(", ")}")
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Final error: ${e.message}")
             return null
         }
     }
@@ -997,7 +995,7 @@ class OutlookClient {
                    resultTokens.accessToken == null || resultTokens.accessToken.isEmpty()) 
                   && attempts < maxAttempts) {
                 attempts++
-                System.out.println("Token dialog attempt ${attempts} of ${maxAttempts}")
+                LogManager.getInstance().info(LogCategory.GENERAL, "Token dialog attempt ${attempts} of ${maxAttempts}")
                 
                 // Fire all alert components (beep, banner, tray, flash) via the UI,
                 // consistent with meeting alerts. Only on first attempt.
@@ -1023,7 +1021,7 @@ class OutlookClient {
                                 ScreenFlasher screenFlasher = ScreenFlasherFactory.createScreenFlasher()
                                 screenFlasher.flash(tokenEvent)
                             } catch (Exception e) {
-                                System.err.println("[ERROR] Token alert flash error: " + e.getMessage())
+                                LogManager.getInstance().error(LogCategory.GENERAL, "[ERROR] Token alert flash error: " + e.getMessage())
                             }
                         }, "TokenAlertFlashThread")
                         flashThread.setDaemon(true)
@@ -1044,7 +1042,7 @@ class OutlookClient {
                 
                 // Return null for cancelled dialog without additional messages
                 if (resultTokens == null) {
-                    System.out.println("Token dialog was cancelled or closed. No tokens obtained.")
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Token dialog was cancelled or closed. No tokens obtained.")
                     throw new AuthenticationCancelledException(
                         "Authentication was cancelled by the user.", 
                         "user_cancelled"
@@ -1057,29 +1055,28 @@ class OutlookClient {
                     if (resultTokens.containsKey("ignoreCertValidation")) {
                         try {
                             boolean ignoreCertValidation = Boolean.valueOf(resultTokens.get("ignoreCertValidation"))
-                            System.out.println("Certificate validation setting: " + 
+                            LogManager.getInstance().info(LogCategory.GENERAL, "Certificate validation setting: " + 
                                           (ignoreCertValidation ? "disabled" : "enabled"))
                             ConfigManager.getInstance().updateIgnoreCertValidation(ignoreCertValidation)
                             updateHttpClient()
                         } catch (Exception e) {
-                            System.err.println("Error applying certificate validation setting: " + e.getMessage())
+                            LogManager.getInstance().error(LogCategory.GENERAL, "Error applying certificate validation setting: " + e.getMessage())
                         }
                     }
-                    System.out.println("Valid token received from user interface.")
+                    LogManager.getInstance().info(LogCategory.GENERAL, "Valid token received from user interface.")
                     return resultTokens
                 }
             }
             
             // If we get here without valid tokens, return null
-            System.out.println("No valid token obtained after ${attempts} attempt(s).")
+            LogManager.getInstance().info(LogCategory.GENERAL, "No valid token obtained after ${attempts} attempt(s).")
             return null
             
         } catch (AuthenticationCancelledException ace) {
             // Let the cancellation exception propagate up - the UI layer will handle any necessary notifications
             throw ace
         } catch (Exception e) {
-            System.err.println("Error during token entry: ${e.message}")
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error during token entry: ${e.message}", e)
             return null
         }
     }

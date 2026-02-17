@@ -1,6 +1,8 @@
 package com.unhuman.outlookalerter.util
 
 import groovy.transform.CompileStatic
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -40,11 +42,11 @@ class MacSleepWakeMonitor {
      */
     synchronized void startMonitoring() {
         if (monitoring) {
-            System.out.println("[SleepWakeMonitor] Already monitoring")
+            LogManager.getInstance().info(LogCategory.GENERAL, "[SleepWakeMonitor] Already monitoring")
             return
         }
 
-        System.out.println("[SleepWakeMonitor] Starting sleep/wake monitoring")
+        LogManager.getInstance().info(LogCategory.GENERAL, "[SleepWakeMonitor] Starting sleep/wake monitoring")
 
         monitorExecutor = Executors.newScheduledThreadPool(1, { r ->
             Thread t = new Thread(r, "SleepWakeMonitor")
@@ -71,7 +73,7 @@ class MacSleepWakeMonitor {
             return
         }
 
-        System.out.println("[SleepWakeMonitor] Stopping sleep/wake monitoring")
+        LogManager.getInstance().info(LogCategory.GENERAL, "[SleepWakeMonitor] Stopping sleep/wake monitoring")
 
         if (monitorExecutor != null) {
             monitorExecutor.shutdown()
@@ -102,7 +104,7 @@ class MacSleepWakeMonitor {
 
             // If time difference is significantly more than expected, we likely woke from sleep
             if (timeDifference > SLEEP_DETECTION_THRESHOLD_MS) {
-                System.out.println("[SleepWakeMonitor] Wake event detected! Time jump: " +
+                LogManager.getInstance().info(LogCategory.GENERAL, "[SleepWakeMonitor] Wake event detected! Time jump: " +
                     (timeDifference / 1000) + " seconds")
 
                 // Update wake time
@@ -112,8 +114,7 @@ class MacSleepWakeMonitor {
                 notifyWakeListeners()
             }
         } catch (Exception e) {
-            System.err.println("[SleepWakeMonitor] Error checking for wake event: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.GENERAL, "[SleepWakeMonitor] Error checking for wake event: " + e.getMessage(), e)
         }
     }
 
@@ -134,8 +135,7 @@ class MacSleepWakeMonitor {
             try {
                 listener.run()
             } catch (Exception e) {
-                System.err.println("[SleepWakeMonitor] Error notifying wake listener: " + e.getMessage())
-                e.printStackTrace()
+                LogManager.getInstance().error(LogCategory.GENERAL, "[SleepWakeMonitor] Error notifying wake listener: " + e.getMessage(), e)
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.unhuman.outlookalerter.core
 
 import groovy.transform.CompileStatic
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import java.nio.channels.FileLock
 import java.nio.channels.FileChannel
 import java.nio.file.StandardOpenOption
@@ -59,7 +61,7 @@ class SingleInstanceManager {
             
             return true
         } catch (Exception e) {
-            println "Error checking for existing instance: ${e.message}"
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error checking for existing instance: ${e.message}")
             return false
         }
     }
@@ -78,7 +80,7 @@ class SingleInstanceManager {
                 channel = null
             }
         } catch (Exception e) {
-            println "Error releasing lock: ${e.message}"
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error releasing lock: ${e.message}")
         }
     }
 }

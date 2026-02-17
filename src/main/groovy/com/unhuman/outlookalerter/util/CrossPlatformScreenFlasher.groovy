@@ -1,6 +1,8 @@
 package com.unhuman.outlookalerter.util
 
 import groovy.transform.CompileStatic
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import java.awt.Color
 import java.awt.GraphicsDevice
 import java.awt.GraphicsEnvironment
@@ -33,11 +35,11 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
             if (configManager != null) {
                 // Convert seconds to milliseconds
                 flashDurationMs = configManager.getFlashDurationSeconds() * 1000
-                System.out.println("Screen flasher initialized with duration: " + 
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Screen flasher initialized with duration: " + 
                                  configManager.getFlashDurationSeconds() + " seconds")
             }
         } catch (Exception e) {
-            System.err.println("Error initializing flash duration from config: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error initializing flash duration from config: " + e.getMessage())
             // Use default duration if there's an error
         }
     }
@@ -77,7 +79,7 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 try {
                     // Record start time for proper duration tracking
                     long startTimeMs = System.currentTimeMillis()
-                    println "Cross-platform flash starting at: ${startTimeMs}, configured duration: ${flashDurationMs} ms"
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Cross-platform flash starting at: ${startTimeMs}, configured duration: ${flashDurationMs} ms")
                     
                     // Show flash windows
                     SwingUtilities.invokeAndWait({
@@ -139,10 +141,10 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                     activeFlashWindows.removeAll(flashWindows)
                     
                     long endTimeMs = System.currentTimeMillis()
-                    println "Flash completed after ${(endTimeMs - startTimeMs)/1000.0} seconds"
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Flash completed after ${(endTimeMs - startTimeMs)/1000.0} seconds")
                     
                 } catch (Exception e) {
-                    System.err.println("Error during screen flash: ${e.message}")
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error during screen flash: ${e.message}")
                 }
             })
             
@@ -150,7 +152,7 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
             flashThread.start()
             
         } catch (Exception e) {
-            System.err.println("Error initializing screen flash: ${e.message}")
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error initializing screen flash: ${e.message}")
         }
     }
     
@@ -176,7 +178,7 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                 try {
                     // Record start time for proper duration tracking
                     long startTimeMs = System.currentTimeMillis()
-                    println "Cross-platform flash (multiple) starting at: ${startTimeMs}, configured duration: ${flashDurationMs} ms"
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Cross-platform flash (multiple) starting at: ${startTimeMs}, configured duration: ${flashDurationMs} ms")
                     
                     // Show all flash windows
                     SwingUtilities.invokeAndWait({ 
@@ -236,16 +238,16 @@ class CrossPlatformScreenFlasher implements ScreenFlasher {
                     activeFlashWindows.removeAll(flashWindows)
                     
                     long endTimeMs = System.currentTimeMillis()
-                    println "Flash (multiple) completed after ${(endTimeMs - startTimeMs)/1000.0} seconds"
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Flash (multiple) completed after ${(endTimeMs - startTimeMs)/1000.0} seconds")
                     
                 } catch (Exception e) {
-                    System.err.println("Error during screen flash: ${e.message}");
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error during screen flash: ${e.message}");
                 }
             });
             flashThread.setDaemon(true);
             flashThread.start();
         } catch (Exception e) {
-            System.err.println("Error initializing screen flash: ${e.message}");
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error initializing screen flash: ${e.message}");
         }
     }
 

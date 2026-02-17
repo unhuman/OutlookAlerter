@@ -2,6 +2,8 @@ package com.unhuman.outlookalerter.ui
 
 import com.unhuman.outlookalerter.core.ConfigManager
 import com.unhuman.outlookalerter.core.OutlookClient
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 
 import javax.swing.*
 import java.awt.*
@@ -255,7 +257,7 @@ class SettingsDialog extends JDialog {
             JOptionPane.showMessageDialog(parent, "Settings saved successfully", "Success", JOptionPane.INFORMATION_MESSAGE)
         } catch (Exception ex) {
             String errorMessage = "Invalid settings: " + ex.getMessage()
-            System.err.println(errorMessage) // Log the error to the console
+            LogManager.getInstance().error(LogCategory.GENERAL, errorMessage)
             JOptionPane.showMessageDialog(this, errorMessage, "Error", JOptionPane.ERROR_MESSAGE)
         }
     }

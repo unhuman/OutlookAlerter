@@ -10,6 +10,8 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import com.unhuman.outlookalerter.core.ConfigManager
 import com.unhuman.outlookalerter.core.OutlookClient
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import com.unhuman.outlookalerter.model.CalendarEvent
 import com.unhuman.outlookalerter.util.ScreenFlasher
 import com.unhuman.outlookalerter.util.ScreenFlasherFactory
@@ -48,7 +50,7 @@ class OutlookAlerterConsole {
         
         // Load certificate validation setting from config
         boolean ignoreCertValidation = this.configManager.getDefaultIgnoreCertValidation()
-        println "Loaded certificate validation setting: " + (ignoreCertValidation ? "disabled" : "enabled")
+        LogManager.getInstance().info(LogCategory.GENERAL, "Loaded certificate validation setting: " + (ignoreCertValidation ? "disabled" : "enabled"))
         
         this.outlookClient = new OutlookClient(configManager)
         this.screenFlasher = ScreenFlasherFactory.createScreenFlasher()
@@ -59,18 +61,18 @@ class OutlookAlerterConsole {
      * @param daemonMode Whether to run as a daemon (background service)
      */
     void start(boolean daemonMode) {
-        println "Starting Outlook Alerter in console mode..."
+        LogManager.getInstance().info(LogCategory.GENERAL, "Starting Outlook Alerter in console mode...")
         
         // Print timezone information
         printSystemTimezoneInfo()
         
         // Authenticate with Outlook/Microsoft
         if (!outlookClient.authenticate()) {
-            println "Failed to authenticate with Outlook. Exiting."
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Failed to authenticate with Outlook. Exiting.")
             System.exit(1)
         }
         
-        println "Successfully authenticated with Outlook."
+        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Successfully authenticated with Outlook.")
         
         // Schedule periodic calendar checks
         scheduler.scheduleAtFixedRate(
@@ -81,9 +83,9 @@ class OutlookAlerterConsole {
         )
         
         if (daemonMode) {
-            println "Running in daemon mode. Press Ctrl+C to exit."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Running in daemon mode. Press Ctrl+C to exit.")
         } else {
-            println "Press Enter to exit."
+            LogManager.getInstance().info(LogCategory.GENERAL, "Press Enter to exit.")
             System.in.read()
             stop()
         }
@@ -93,36 +95,36 @@ class OutlookAlerterConsole {
      * Print system timezone information to help diagnose timezone issues
      */
     private void printSystemTimezoneInfo() {
-        println "\n=============== SYSTEM TIMEZONE INFO ==============="
-        println "System default timezone: ${ZoneId.systemDefault()}"
-        println "Current time (system): ${ZonedDateTime.now()}"
-        println "Current time (UTC): ${ZonedDateTime.now(ZoneId.of("UTC"))}"
-        println "System timezone offset: ${ZonedDateTime.now().getOffset()}"
-        println "Available timezone IDs: ${ZoneId.getAvailableZoneIds().size()} zones available"
+        LogManager.getInstance().info(LogCategory.GENERAL, "\n=============== SYSTEM TIMEZONE INFO ===============")
+        LogManager.getInstance().info(LogCategory.GENERAL, "System default timezone: ${ZoneId.systemDefault()}")
+        LogManager.getInstance().info(LogCategory.GENERAL, "Current time (system): ${ZonedDateTime.now()}")
+        LogManager.getInstance().info(LogCategory.GENERAL, "Current time (UTC): ${ZonedDateTime.now(ZoneId.of("UTC"))}")
+        LogManager.getInstance().info(LogCategory.GENERAL, "System timezone offset: ${ZonedDateTime.now().getOffset()}")
+        LogManager.getInstance().info(LogCategory.GENERAL, "Available timezone IDs: ${ZoneId.getAvailableZoneIds().size()} zones available")
         
         // Show configured timezone if set
         if (configManager.preferredTimezone && !configManager.preferredTimezone.isEmpty()) {
             try {
                 ZoneId configuredZone = ZoneId.of(configManager.preferredTimezone)
-                println "Configured timezone: ${configManager.preferredTimezone}"
-                println "Current time (configured timezone): ${ZonedDateTime.now(configuredZone)}"
-                println "Configured timezone offset: ${ZonedDateTime.now(configuredZone).getOffset()}"
+                LogManager.getInstance().info(LogCategory.GENERAL, "Configured timezone: ${configManager.preferredTimezone}")
+                LogManager.getInstance().info(LogCategory.GENERAL, "Current time (configured timezone): ${ZonedDateTime.now(configuredZone)}")
+                LogManager.getInstance().info(LogCategory.GENERAL, "Configured timezone offset: ${ZonedDateTime.now(configuredZone).getOffset()}")
             } catch (Exception e) {
-                println "Configured timezone (INVALID): ${configManager.preferredTimezone}"
-                println "Error: ${e.message}"
+                LogManager.getInstance().warn(LogCategory.GENERAL, "Configured timezone (INVALID): ${configManager.preferredTimezone}")
+                LogManager.getInstance().error(LogCategory.GENERAL, "Error: ${e.message}")
             }
         } else {
-            println "No preferred timezone configured, using system default"
+            LogManager.getInstance().info(LogCategory.GENERAL, "No preferred timezone configured, using system default")
         }
         
-        println "==================================================="
+        LogManager.getInstance().info(LogCategory.GENERAL, "===================================================")
     }
     
     /**
      * Stop the application
      */
     void stop() {
-        println "Stopping Outlook Alerter..."
+        LogManager.getInstance().info(LogCategory.GENERAL, "Stopping Outlook Alerter...")
         scheduler.shutdown()
         
         try {
@@ -134,7 +136,7 @@ class OutlookAlerterConsole {
             Thread.currentThread().interrupt()
         }
         
-        println "Outlook Alerter stopped."
+        LogManager.getInstance().info(LogCategory.GENERAL, "Outlook Alerter stopped.")
     }
     
     /**
@@ -143,7 +145,7 @@ class OutlookAlerterConsole {
      */
     void setTimezone(String timezone) {
         if (timezone == null || timezone.isEmpty()) {
-            println "No timezone specified, using system default"
+            LogManager.getInstance().info(LogCategory.GENERAL, "No timezone specified, using system default")
             return
         }
         
@@ -151,11 +153,11 @@ class OutlookAlerterConsole {
             // Validate the timezone ID
             ZoneId zoneId = ZoneId.of(timezone)
             configManager.updatePreferredTimezone(timezone)
-            println "Timezone set to: ${timezone} (${ZonedDateTime.now(zoneId)})"
+            LogManager.getInstance().info(LogCategory.GENERAL, "Timezone set to: ${timezone} (${ZonedDateTime.now(zoneId)})")
         } catch (Exception e) {
-            println "Invalid timezone: ${timezone}"
-            println "Error: ${e.message}"
-            println "Available timezones: ${ZoneId.getAvailableZoneIds().size()} zones available"
+            LogManager.getInstance().error(LogCategory.GENERAL, "Invalid timezone: ${timezone}")
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error: ${e.message}")
+            LogManager.getInstance().info(LogCategory.GENERAL, "Available timezones: ${ZoneId.getAvailableZoneIds().size()} zones available")
         }
     }
     
@@ -181,12 +183,12 @@ class OutlookAlerterConsole {
             // Sort events by minutes to start (ascending) so closest events are first
             combinedEvents.sort { event -> event.getMinutesToStart() }
             
-            println "\n=========== CALENDAR UPDATE ==========="
-            println "Found ${combinedEvents.size()} calendar events."
-            println "===================================================="
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "\n=========== CALENDAR UPDATE ===========")
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Found ${combinedEvents.size()} calendar events.")
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "====================================================")
             
             if (combinedEvents.isEmpty()) {
-                println "No upcoming events found."
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "No upcoming events found.")
                 return
             }
             
@@ -197,14 +199,14 @@ class OutlookAlerterConsole {
                 boolean isInProgress = event.isInProgress() // Currently happening event
                 
                 if (!isUpcoming && !isInProgress) {
-                    println "Filtering out past event: ${event.subject} (started ${-minutesToStart} minutes ago, already ended)"
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "Filtering out past event: ${event.subject} (started ${-minutesToStart} minutes ago, already ended)")
                     return false
                 }
                 return true
             }
             
             if (relevantEvents.isEmpty()) {
-                println "Note: No current or upcoming events found."
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Note: No current or upcoming events found.")
                 return
             }
             
@@ -217,13 +219,13 @@ class OutlookAlerterConsole {
             
             // Show in-progress events first
             if (!inProgressEvents.isEmpty()) {
-                println "\nCurrently in progress:"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "\nCurrently in progress:")
                 inProgressEvents.each { CalendarEvent event ->
-                    println "  - ${event.subject}" +
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "  - ${event.subject}" +
                           (event.isOnlineMeeting ? " (Online)" : "") +
                           (event.organizer ? " - Organized by: ${event.organizer}" : "") +
                           (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
-                          " (started ${-event.getMinutesToStart()} minutes ago)"
+                          " (started ${-event.getMinutesToStart()} minutes ago)")
                 }
             }
             
@@ -249,13 +251,13 @@ class OutlookAlerterConsole {
                 String displayTime = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
                 String displayZone = now.getZone().toString()
                 
-                println "\nNext meetings at ${displayTime} (${displayZone}):"
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "\nNext meetings at ${displayTime} (${displayZone}):")
                 nextTimeEvents.each { CalendarEvent event ->
-                    println "  - ${event.subject}" + 
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "  - ${event.subject}" + 
                           (event.isOnlineMeeting ? " (Online)" : "") +
                           (event.organizer ? " - Organized by: ${event.organizer}" : "") +
                           (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
-                          " (starts in ${event.getMinutesToStart()} minutes)"
+                          " (starts in ${event.getMinutesToStart()} minutes)")
                 }
                 
                 // List subsequent events if there are any
@@ -264,20 +266,20 @@ class OutlookAlerterConsole {
                 }
                 
                 if (!laterEvents.isEmpty()) {
-                    println "\nLater meetings:"
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "\nLater meetings:")
                     laterEvents.take(5).each { CalendarEvent event ->
-                        println "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}" +
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "  - ${event.subject} at ${event.startTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))}" +
                               (event.responseStatus ? " - Status: ${event.responseStatus}" : "") +
-                              " (starts in ${event.getMinutesToStart()} minutes)"
+                              " (starts in ${event.getMinutesToStart()} minutes)")
                     }
                     
                     if (laterEvents.size() > 5) {
-                        println "  - ...and ${laterEvents.size() - 5} more later events"
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "  - ...and ${laterEvents.size() - 5} more later events")
                     }
                 }
             }
             
-            println "=============================================\n"
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "=============================================\n")
             
             // Check each event for alerts
             List<CalendarEvent> eventsToAlert = []
@@ -297,7 +299,7 @@ class OutlookAlerterConsole {
                 }
             }
             if (!eventsToAlert.isEmpty()) {
-                println "Alerting for events: " + eventsToAlert.collect { it.subject }.join(", ")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Alerting for events: " + eventsToAlert.collect { it.subject }.join(", "))
                 screenFlasher.flashMultiple(eventsToAlert)
                 // Mark as alerted
                 for (CalendarEvent event : eventsToAlert) {
@@ -305,8 +307,7 @@ class OutlookAlerterConsole {
                 }
             }
         } catch (Exception e) {
-            println "Error checking for upcoming meetings: ${e.message}"
-            e.printStackTrace() // Add stack trace for better debugging
+            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error checking for upcoming meetings: ${e.message}", e)
         }
     }
 }

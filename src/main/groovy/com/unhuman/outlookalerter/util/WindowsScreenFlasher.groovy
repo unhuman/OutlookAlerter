@@ -1,6 +1,8 @@
 package com.unhuman.outlookalerter.util
 
 import com.unhuman.outlookalerter.util.ScreenFlasher
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import com.unhuman.outlookalerter.model.CalendarEvent
 import com.unhuman.outlookalerter.core.ConfigManager
 import groovy.transform.CompileStatic
@@ -61,17 +63,17 @@ class WindowsScreenFlasher implements ScreenFlasher {
             if (configManager != null) {
                 // Convert seconds to milliseconds
                 flashDurationMs = configManager.getFlashDurationSeconds() * 1000
-                System.out.println("Windows screen flasher initialized with duration: " + 
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Windows screen flasher initialized with duration: " + 
                                    configManager.getFlashDurationSeconds() + " seconds")
             } else {
                 // Default value if config manager not available
                 flashDurationMs = 5000 // 5 seconds
-                System.out.println("Windows screen flasher using default duration: 5 seconds (config not available)")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Windows screen flasher using default duration: 5 seconds (config not available)")
             }
         } catch (Exception e) {
             // Use default value on error
             flashDurationMs = 5000 // 5 seconds
-            System.err.println("Error initializing flash duration: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error initializing flash duration: " + e.getMessage())
         }
     }
     
@@ -129,7 +131,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
             
             return true
         } catch (Exception e) {
-            println "Windows API not available, falling back to cross-platform approach: ${e.message}"
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "Windows API not available, falling back to cross-platform approach: ${e.message}")
             return false
         }
     }
@@ -177,7 +179,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 )
             }
         } catch (Exception e) {
-            println "Error showing system tray notification: ${e.message}"
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error showing system tray notification: ${e.message}")
         }
     }
     
@@ -206,7 +208,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
             frame.setType(javax.swing.JFrame.Type.POPUP)
             double opacity = getAlertOpacity();
             try { frame.setOpacity((float)opacity); } catch (Throwable t) {
-                System.err.println("Warning: Could not set frame opacity: " + t.getMessage());
+                LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "Warning: Could not set frame opacity: " + t.getMessage());
             }
             Color alertColor = getAlertColor();
             Color textColor = getAlertTextColorWithOpacity();
@@ -237,15 +239,13 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 // Store the label in the map for access by timer
                 countdownLabels.put(frame, label)
             } catch (Exception e) {
-                System.err.println("Error creating JLabel for flash overlay: " + e.getMessage())
-                e.printStackTrace()
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error creating JLabel for flash overlay: " + e.getMessage(), e)
             }
             frame.setBounds(screen.getDefaultConfiguration().getBounds())
             activeFlashFrames.add(frame)
             startFlashSequence(frame)
         } catch (Exception e) {
-            System.err.println("Error creating flash window: " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error creating flash window: " + e.getMessage(), e)
         }
     }
     
@@ -255,7 +255,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
     private void startFlashSequence(JFrame frame) {
         // Record the start time of the flash
         long startTimeMs = System.currentTimeMillis()
-        println "Windows Flash starting at: ${startTimeMs} ms, configured duration: ${flashDurationMs} ms"
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Windows Flash starting at: ${startTimeMs} ms, configured duration: ${flashDurationMs} ms")
         
         // Get the countdown label from the map
         JLabel countdownLabel = countdownLabels.get(frame)
@@ -286,9 +286,9 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 .invoke(user32, hwnd, null, 0, 0, 0, 0, 
                        0x0001 | 0x0002 | 0x0040); // HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE
             
-            println "Set window to topmost using Windows API"
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Set window to topmost using Windows API")
         } catch (Exception e) {
-            println "Could not use Windows API for window visibility: ${e.message}"
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "Could not use Windows API for window visibility: ${e.message}")
         }
         
         // Create a Swing Timer to keep the window visible and animate
@@ -311,7 +311,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                         frame.dispose()
                     }
                     long actualDuration = System.currentTimeMillis() - startTimeMs
-                    println "Flash duration completed after ${actualDuration}ms"
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Flash duration completed after ${actualDuration}ms")
                     return
                 }
                 
@@ -344,7 +344,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                     }
                 }
             } catch (Exception e) {
-                println "Error in flash control cycle: ${e.message}"
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error in flash control cycle: ${e.message}")
             }
         } as java.awt.event.ActionListener)
         elevationTimer.setInitialDelay(100)
@@ -363,10 +363,10 @@ class WindowsScreenFlasher implements ScreenFlasher {
                     
                     if (frame.isDisplayable()) {
                         frame.dispose()
-                        println "Safety timer triggered cleanup after ${(System.currentTimeMillis() - startTimeMs)/1000.0} seconds"
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Safety timer triggered cleanup after ${(System.currentTimeMillis() - startTimeMs)/1000.0} seconds")
                     }
                 } catch (Exception e) {
-                    println "Error in safety timer: ${e.message}"
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error in safety timer: ${e.message}")
                 }
                 ((Timer)safetyEvent.getSource()).stop()
             }
@@ -428,7 +428,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
                         }
                     }
                 } catch (Exception e) {
-                    println "Error updating countdown: ${e.message}"
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error updating countdown: ${e.message}")
                 }
             }
         })
@@ -439,7 +439,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
         // Store the timer in the map
         countdownTimers.put(frame, timer)
         
-        println "Started countdown timer for flash window"
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Started countdown timer for flash window")
     }
     
     /**
@@ -467,7 +467,7 @@ class WindowsScreenFlasher implements ScreenFlasher {
             frame.setType(javax.swing.JFrame.Type.POPUP);
             double opacity = getAlertOpacity();
             try { frame.setOpacity((float)opacity); } catch (Throwable t) {
-                System.err.println("Warning: Could not set frame opacity: " + t.getMessage());
+                LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "Warning: Could not set frame opacity: " + t.getMessage());
             }
             Color alertColor = getAlertColor();
             Color textColor = getAlertTextColorWithOpacity();
@@ -502,15 +502,13 @@ class WindowsScreenFlasher implements ScreenFlasher {
                 // Store the label in the map for access by timer
                 countdownLabels.put(frame, label);
             } catch (Exception e) {
-                System.err.println("Error creating JLabel for flash overlay (multiple): " + e.getMessage())
-                e.printStackTrace()
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error creating JLabel for flash overlay (multiple): " + e.getMessage(), e)
             }
             frame.setBounds(screen.getDefaultConfiguration().getBounds());
             activeFlashFrames.add(frame)
             startFlashSequence(frame);
         } catch (Exception e) {
-            System.err.println("Error creating flash window (multiple): " + e.getMessage())
-            e.printStackTrace()
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error creating flash window (multiple): " + e.getMessage(), e)
         }
     }
 

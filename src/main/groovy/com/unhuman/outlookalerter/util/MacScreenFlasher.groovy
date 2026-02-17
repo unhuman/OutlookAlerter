@@ -97,19 +97,19 @@ class MacScreenFlasher implements ScreenFlasher {
                         long timeSinceResponse = System.currentTimeMillis() - lastEdtResponseTime.get()
 
                         if (!responded.get() || timeSinceResponse > 10000) {
-                            System.err.println("[EDT WATCHDOG] CRITICAL: EDT unresponsive for " +
+                            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "[EDT WATCHDOG] CRITICAL: EDT unresponsive for " +
                                 (timeSinceResponse / 1000) + " seconds - attempting recovery")
 
                             // Try emergency cleanup of flash windows
                             try {
-                                System.err.println("[EDT WATCHDOG] Attempting emergency cleanup")
+                                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "[EDT WATCHDOG] Attempting emergency cleanup")
                                 forceCleanup()
                             } catch (Exception cleanupEx) {
-                                System.err.println("[EDT WATCHDOG] Emergency cleanup failed: " + cleanupEx.getMessage())
+                                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "[EDT WATCHDOG] Emergency cleanup failed: " + cleanupEx.getMessage())
                             }
                         }
                     } catch (Exception e) {
-                        System.err.println("[EDT WATCHDOG] Exception: " + e.getMessage())
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "[EDT WATCHDOG] Exception: " + e.getMessage())
                     }
                 }
             } as Runnable)
@@ -128,15 +128,15 @@ class MacScreenFlasher implements ScreenFlasher {
             ConfigManager configManager = ConfigManager.getInstance()
             if (configManager != null) {
                 flashDurationMs = configManager.getFlashDurationSeconds() * 1000
-                System.out.println("Mac screen flasher initialized with duration: " + 
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Mac screen flasher initialized with duration: " + 
                                    configManager.getFlashDurationSeconds() + " seconds")
             } else {
                 flashDurationMs = 5000 // 5 seconds default
-                System.out.println("Mac screen flasher using default duration: 5 seconds")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Mac screen flasher using default duration: 5 seconds")
             }
         } catch (Exception e) {
             flashDurationMs = 5000 // 5 seconds default
-            System.err.println("Error initializing flash duration: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error initializing flash duration: " + e.getMessage())
         }
         
         // Register shutdown hook to ensure cleanup (only once via static flag)
@@ -156,13 +156,13 @@ class MacScreenFlasher implements ScreenFlasher {
 
         // Register wake listener to update our wake time and cleanup stuck windows
         sleepWakeMonitor.addWakeListener({
-            System.out.println("[MacScreenFlasher] Wake event detected, updating wake time")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "[MacScreenFlasher] Wake event detected, updating wake time")
             updateLastWakeTime()
 
             // Force cleanup of any stuck windows from before sleep
             SwingUtilities.invokeLater({
                 if (!activeFlashFrames.isEmpty()) {
-                    System.out.println("[MacScreenFlasher] Cleaning up " + activeFlashFrames.size() +
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "[MacScreenFlasher] Cleaning up " + activeFlashFrames.size() +
                         " windows that may have been stuck during sleep")
                     forceCleanup()
                 }
@@ -193,7 +193,7 @@ class MacScreenFlasher implements ScreenFlasher {
                         timer.stop()
                     }
                 } catch (Exception e) {
-                    System.err.println("Error stopping timer: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error stopping timer: " + e.getMessage())
                 }
             }
             activeTimers.clear()
@@ -206,7 +206,7 @@ class MacScreenFlasher implements ScreenFlasher {
                             timer.stop()
                         }
                     } catch (Exception e) {
-                        System.err.println("Error stopping countdown timer: " + e.getMessage())
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error stopping countdown timer: " + e.getMessage())
                     }
                 }
                 countdownTimers.clear()
@@ -228,12 +228,12 @@ class MacScreenFlasher implements ScreenFlasher {
                         for (JFrame frame : framesToDispose) {
                             try {
                                 if (frame != null) {
-                                    System.out.println("Disposing flash frame: " + frame)
+                                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Disposing flash frame: " + frame)
                                     frame.setVisible(false)
                                     frame.dispose()
                                 }
                             } catch (Exception e) {
-                                System.err.println("Error disposing frame: " + e.getMessage())
+                                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error disposing frame: " + e.getMessage())
                             }
                         }
                         activeFlashFrames.clear()
@@ -252,14 +252,14 @@ class MacScreenFlasher implements ScreenFlasher {
                 try {
                     cleanupLatch.await(2, java.util.concurrent.TimeUnit.SECONDS)
                 } catch (InterruptedException e) {
-                    System.err.println("Cleanup wait interrupted")
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Cleanup wait interrupted")
                 }
             }
 
-            System.out.println("MacScreenFlasher: Cleanup completed")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Cleanup completed")
 
         } catch (Exception e) {
-            System.err.println("Error during cleanup: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error during cleanup: " + e.getMessage())
             e.printStackTrace()
         } finally {
             cleanupInProgress.set(false)
@@ -367,11 +367,11 @@ class MacScreenFlasher implements ScreenFlasher {
                 java.awt.Taskbar taskbar = java.awt.Taskbar.getTaskbar()
                 if (taskbar.isSupported(java.awt.Taskbar.Feature.USER_ATTENTION)) {
                     taskbar.requestUserAttention(true, true)  // enabled=true, critical=true
-                    System.out.println("MacScreenFlasher: Requested critical user attention via Taskbar")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Requested critical user attention via Taskbar")
                 }
             }
         } catch (Exception e) {
-            System.out.println("MacScreenFlasher: Could not request user attention: " + e.getMessage())
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Could not request user attention: " + e.getMessage())
         }
 
         // Set up cleanup timer
@@ -401,10 +401,10 @@ class MacScreenFlasher implements ScreenFlasher {
         // Backup cleanup timer (runs 1 second later as failsafe)
         Timer backupTimer = new Timer(flashDurationMs + 1000, new ActionListener() {
             void actionPerformed(ActionEvent e) {
-                System.out.println("Backup cleanup timer fired - checking for stuck windows")
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Backup cleanup timer fired - checking for stuck windows")
 
                 if (!activeFlashFrames.isEmpty()) {
-                    System.out.println("Found " + activeFlashFrames.size() + " stuck windows, forcing cleanup")
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Found " + activeFlashFrames.size() + " stuck windows, forcing cleanup")
                     forceCleanup()
                 }
                 
@@ -422,13 +422,13 @@ class MacScreenFlasher implements ScreenFlasher {
                     public void run() {
                         try {
                             if (!activeFlashFrames.isEmpty()) {
-                                System.out.println("FINAL FAILSAFE: Forcing cleanup of " + activeFlashFrames.size() + " remaining flash frames")
+                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "FINAL FAILSAFE: Forcing cleanup of " + activeFlashFrames.size() + " remaining flash frames")
                                 forceCleanup()
                             } else {
-                                System.out.println("FINAL FAILSAFE: No frames remaining, cleanup successful")
+                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "FINAL FAILSAFE: No frames remaining, cleanup successful")
                             }
                         } catch (Exception ex) {
-                            System.err.println("FINAL FAILSAFE: Cleanup failed: " + ex.getMessage())
+                            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "FINAL FAILSAFE: Cleanup failed: " + ex.getMessage())
                         }
                     }
                 })
@@ -448,7 +448,7 @@ class MacScreenFlasher implements ScreenFlasher {
         backupTimer.start()
         finalFailsafeTimer.start()
 
-        System.out.println("Cleanup timers started - primary: " + flashDurationMs + "ms, backup: " + (flashDurationMs + 1000) + "ms, failsafe: " + (flashDurationMs + 2000) + "ms")
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Cleanup timers started - primary: " + flashDurationMs + "ms, backup: " + (flashDurationMs + 1000) + "ms, failsafe: " + (flashDurationMs + 2000) + "ms")
     }
     
     private JFrame createFlashWindowForScreen(GraphicsDevice screen, List<CalendarEvent> events) {
@@ -477,7 +477,7 @@ class MacScreenFlasher implements ScreenFlasher {
                 float actualOpacity = (float)Math.min(Math.max(opacity, 0.7f), 0.95f)
                 frame.setOpacity(actualOpacity)
             } catch (Throwable t) {
-                System.err.println("Could not set opacity: " + t.getMessage())
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Could not set opacity: " + t.getMessage())
             }
             
             // Set up frame bounds and background
@@ -617,7 +617,7 @@ class MacScreenFlasher implements ScreenFlasher {
                             ((Timer)e.getSource()).stop()
                         }
                     } catch (Exception ex) {
-                        System.err.println("Error during window elevation: " + ex.getMessage())
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error during window elevation: " + ex.getMessage())
                         ((Timer)e.getSource()).stop()
                     }
                 }
@@ -635,7 +635,7 @@ class MacScreenFlasher implements ScreenFlasher {
 
             return frame
         } catch (Exception e) {
-            System.err.println("Error creating flash window: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error creating flash window: " + e.getMessage())
             e.printStackTrace()
             return null
         }
@@ -651,7 +651,7 @@ class MacScreenFlasher implements ScreenFlasher {
             }
             return Color.RED
         } catch (Exception e) {
-            System.err.println("Error getting alert color: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error getting alert color: " + e.getMessage())
             return Color.RED
         }
     }
@@ -665,7 +665,7 @@ class MacScreenFlasher implements ScreenFlasher {
             }
             return Color.WHITE
         } catch (Exception e) {
-            System.err.println("Error getting alert text color: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error getting alert text color: " + e.getMessage())
             return Color.WHITE
         }
     }
@@ -678,7 +678,7 @@ class MacScreenFlasher implements ScreenFlasher {
             }
             return 0.9
         } catch (Exception e) {
-            System.err.println("Error getting alert opacity: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error getting alert opacity: " + e.getMessage())
             return 0.9
         }
     }
@@ -694,7 +694,7 @@ class MacScreenFlasher implements ScreenFlasher {
         int totalDurationSeconds = (int)(flashDurationMs / 1000)
         final int[] secondsRemaining = [totalDurationSeconds]
 
-        System.out.println("Starting countdown timer for frame: " + frame + " with " + totalDurationSeconds + " seconds")
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Starting countdown timer for frame: " + frame + " with " + totalDurationSeconds + " seconds")
 
         // Create a timer that fires every second to update the countdown
         Timer countdownTimer = new Timer(1000, new ActionListener() {
@@ -718,12 +718,12 @@ class MacScreenFlasher implements ScreenFlasher {
                                     label.setText(newLabelText)
                                     label.repaint()
                                 } catch (Exception ex) {
-                                    System.err.println("Error updating countdown: " + ex.getMessage())
+                                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error updating countdown: " + ex.getMessage())
                                 }
                             }
                         })
                     } catch (Exception ex) {
-                        System.err.println("Error scheduling countdown update: " + ex.getMessage())
+                        LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error scheduling countdown update: " + ex.getMessage())
                     }
                 }
 
@@ -737,7 +737,7 @@ class MacScreenFlasher implements ScreenFlasher {
                         countdownTimers.remove(frame)
                     }
 
-                    System.out.println("Countdown timer stopped for frame: " + frame)
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Countdown timer stopped for frame: " + frame)
                 }
             }
         })
@@ -751,7 +751,7 @@ class MacScreenFlasher implements ScreenFlasher {
             countdownTimers.put(frame, countdownTimer)
         }
 
-        System.out.println("Countdown timer started for frame: " + frame)
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Countdown timer started for frame: " + frame)
     }
 
     /**
@@ -864,7 +864,7 @@ class MacScreenFlasher implements ScreenFlasher {
             return domain.substring(0, 1).toUpperCase() + domain.substring(1)
 
         } catch (Exception e) {
-            System.err.println("Error extracting domain from URL: " + url + " - " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error extracting domain from URL: " + url + " - " + e.getMessage())
             return "Online Meeting"
         }
     }
@@ -886,12 +886,12 @@ class MacScreenFlasher implements ScreenFlasher {
             long timeSinceLastWake = sleepWakeMonitor.getTimeSinceWake()
 
             // Log the wake time check
-            System.out.println("Checking system wake time: " + timeSinceLastWake + "ms since last wake")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Checking system wake time: " + timeSinceLastWake + "ms since last wake")
 
             // If the system was just woken up very recently, give it time to stabilize
             // Wait 5 seconds after wake to ensure display is ready
             if (timeSinceLastWake < 5000) {
-                System.out.println("System recently woke up (" + timeSinceLastWake +
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "System recently woke up (" + timeSinceLastWake +
                     "ms ago), delaying alert for system stability")
 
                 // Wait for system to stabilize
@@ -899,14 +899,14 @@ class MacScreenFlasher implements ScreenFlasher {
                 try {
                     Thread.sleep(sleepTime)
                 } catch (InterruptedException e) {
-                    System.err.println("Sleep interrupted: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Sleep interrupted: " + e.getMessage())
                 }
             }
 
             // System is considered valid for alerts
             return true
         } catch (Exception e) {
-            System.err.println("Error validating system state: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error validating system state: " + e.getMessage())
             return false
         } finally {
             systemStateValidationInProgress.set(false)
@@ -919,7 +919,7 @@ class MacScreenFlasher implements ScreenFlasher {
      */
     void updateLastWakeTime() {
         lastSystemWakeTime.set(System.currentTimeMillis())
-        System.out.println("Last system wake time updated: " + lastSystemWakeTime.get())
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Last system wake time updated: " + lastSystemWakeTime.get())
     }
 
     /**
@@ -931,21 +931,21 @@ class MacScreenFlasher implements ScreenFlasher {
         try {
             // Check if running in headless mode
             if (GraphicsEnvironment.isHeadless()) {
-                System.err.println("MacScreenFlasher: Cannot show alerts in headless environment")
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Cannot show alerts in headless environment")
                 return false
             }
 
             // Get graphics environment and validate it's available
             GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment()
             if (ge == null) {
-                System.err.println("MacScreenFlasher: Graphics environment is null")
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Graphics environment is null")
                 return false
             }
 
             // Check for available screens
             GraphicsDevice[] screens = ge.getScreenDevices()
             if (screens == null || screens.length == 0) {
-                System.err.println("MacScreenFlasher: No graphics devices available")
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: No graphics devices available")
                 return false
             }
 
@@ -962,12 +962,12 @@ class MacScreenFlasher implements ScreenFlasher {
                         }
                     }
                 } catch (Exception e) {
-                    System.err.println("Error checking screen configuration: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error checking screen configuration: " + e.getMessage())
                 }
             }
 
             if (!hasValidScreen) {
-                System.err.println("MacScreenFlasher: No valid screen configurations found")
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: No valid screen configurations found")
                 return false
             }
 
@@ -977,11 +977,11 @@ class MacScreenFlasher implements ScreenFlasher {
             // when this check runs, causing the entire flash to be silently skipped.
             // The EDT watchdog provides adequate EDT health monitoring instead.
 
-            System.out.println("MacScreenFlasher: Display environment validation passed")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Display environment validation passed")
             return true
 
         } catch (Exception e) {
-            System.err.println("MacScreenFlasher: Error validating display environment: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Error validating display environment: " + e.getMessage())
             return false
         }
     }
@@ -994,7 +994,7 @@ class MacScreenFlasher implements ScreenFlasher {
      */
     private boolean validateEventContent(List<CalendarEvent> events) {
         if (events == null || events.isEmpty()) {
-            System.err.println("MacScreenFlasher: No events to validate")
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: No events to validate")
             return false
         }
 
@@ -1008,7 +1008,7 @@ class MacScreenFlasher implements ScreenFlasher {
 
                 // Remove null events
                 if (event == null) {
-                    System.err.println("MacScreenFlasher: Filtering out null event")
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Filtering out null event")
                     iterator.remove()
                     continue
                 }
@@ -1016,7 +1016,7 @@ class MacScreenFlasher implements ScreenFlasher {
                 // Remove events with empty/null subject
                 String subject = event.getSubject()
                 if (subject == null || subject.trim().isEmpty()) {
-                    System.err.println("MacScreenFlasher: Filtering out event with empty subject")
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Filtering out event with empty subject")
                     iterator.remove()
                     continue
                 }
@@ -1025,22 +1025,22 @@ class MacScreenFlasher implements ScreenFlasher {
                 try {
                     event.getMinutesToStart()
                 } catch (Exception e) {
-                    System.err.println("MacScreenFlasher: Filtering out corrupted event: " + e.getMessage())
+                    LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Filtering out corrupted event: " + e.getMessage())
                     iterator.remove()
                 }
             }
 
             // Only fail if ALL events were filtered out
             if (events.isEmpty()) {
-                System.err.println("MacScreenFlasher: All events were invalid, nothing to display")
+                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: All events were invalid, nothing to display")
                 return false
             }
 
-            System.out.println("MacScreenFlasher: Event content validation passed for " + events.size() + " event(s)")
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Event content validation passed for " + events.size() + " event(s)")
             return true
 
         } catch (Exception e) {
-            System.err.println("MacScreenFlasher: Error validating event content: " + e.getMessage())
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Error validating event content: " + e.getMessage())
             return false
         }
     }

@@ -18,7 +18,23 @@
         <maven.compiler.target>21</maven.compiler.target>
         <groovy.version>4.0.27</groovy.version>
         <jna.version>5.17.0</jna.version>
+        <!-- Default: skip jpackage on non-macOS; overridden by mac profile -->
+        <skip.jpackage>true</skip.jpackage>
     </properties>
+
+    <profiles>
+        <profile>
+            <id>macos</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <skip.jpackage>false</skip.jpackage>
+            </properties>
+        </profile>
+    </profiles>
 
     <repositories>
         <repository>
@@ -199,7 +215,7 @@
                                 <argument>--resource-dir</argument>
                                 <argument>${project.build.directory}/classes</argument>
                             </arguments>
-                            <skip>${os.name} != 'Mac OS X'</skip>
+                            <skip>${skip.jpackage}</skip>
                         </configuration>
                         <goals>
                             <goal>exec</goal>

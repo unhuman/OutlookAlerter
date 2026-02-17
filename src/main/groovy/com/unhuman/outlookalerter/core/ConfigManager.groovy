@@ -2,6 +2,8 @@ package com.unhuman.outlookalerter.core
 
 import groovy.transform.CompileStatic
 import com.unhuman.outlookalerter.ui.SimpleTokenDialog
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 
 /**
  * Manages configuration settings and OAuth credentials for Outlook Alerter
@@ -15,7 +17,7 @@ class ConfigManager {
      * Gets the singleton instance of ConfigManager
      * @return The ConfigManager instance or null if not initialized
      */
-    static ConfigManager getInstance() {
+    static synchronized ConfigManager getInstance() {
         return instance
     }
     
@@ -54,8 +56,10 @@ class ConfigManager {
      */
     ConfigManager(String configFilePath) {
         this.configFilePath = configFilePath
-        instance = this  // Set this instance as the singleton
-        println "ConfigManager initialized with path: ${configFilePath}"
+        synchronized (ConfigManager) {
+            instance = this
+        }
+        LogManager.getInstance().info(LogCategory.GENERAL, "ConfigManager initialized with path: ${configFilePath}")
     }
     
     /**
@@ -81,9 +85,9 @@ class ConfigManager {
                     fis.close()
                 }
                 loadPropertiesFromConfig()
-                println "Configuration loaded from ${configFilePath}"
+                LogManager.getInstance().info(LogCategory.GENERAL, "Configuration loaded from ${configFilePath}")
             } catch (Exception e) {
-                println "Error loading configuration: ${e.message}"
+                LogManager.getInstance().error(LogCategory.GENERAL, "Error loading configuration: ${e.message}")
                 createDefaultConfig(configFile)
             }
         } else {
@@ -96,7 +100,7 @@ class ConfigManager {
      * Creates default configuration file
      */
     private void createDefaultConfig(File configFile) {
-        println "Creating default configuration at ${configFile.absolutePath}"
+        LogManager.getInstance().info(LogCategory.GENERAL, "Creating default configuration at ${configFile.absolutePath}")
         
         // Set default properties
         properties.setProperty("clientId", "")
@@ -124,9 +128,14 @@ class ConfigManager {
 
         // Save to file
         try {
-            properties.store(new FileOutputStream(configFile), "Outlook Alerter Configuration")
+            FileOutputStream fos = new FileOutputStream(configFile)
+            try {
+                properties.store(fos, "Outlook Alerter Configuration")
+            } finally {
+                fos.close()
+            }
             
-            println """
+            LogManager.getInstance().info(LogCategory.GENERAL, """
             Configuration file created at ${configFile.absolutePath}
             
             For Okta SSO authentication, edit the configuration file with these values:
@@ -149,11 +158,11 @@ class ConfigManager {
             
             After configuration, the application will open a browser for you to sign in through Okta,
             then guide you through copying the access token to complete the authentication.
-            """
+            """)
             
             loadPropertiesFromConfig()
         } catch (Exception e) {
-            println "Error creating default configuration: ${e.message}"
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error creating default configuration: ${e.message}")
         }
     }
     
@@ -179,7 +188,7 @@ class ConfigManager {
         try {
             alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"))
         } catch (NumberFormatException e) {
-            println "Invalid alertMinutes value, using default: ${e.message}"
+            LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid alertMinutes value, using default: ${e.message}")
         }
         defaultIgnoreCertValidation = Boolean.parseBoolean(properties.getProperty("defaultIgnoreCertValidation", "false"))
         ignoreCertValidation = Boolean.parseBoolean(properties.getProperty("ignoreCertValidation", "false"))
@@ -188,22 +197,22 @@ class ConfigManager {
         try {
             flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"))
         } catch (NumberFormatException e) {
-            println "Invalid flashOpacity value, using default: ${e.message}"
+            LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid flashOpacity value, using default: ${e.message}")
         }
         try {
             flashDurationSeconds = Integer.parseInt(properties.getProperty("flashDurationSeconds", "5"))
         } catch (NumberFormatException e) {
-            println "Invalid flashDurationSeconds value, using default: ${e.message}"
+            LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid flashDurationSeconds value, using default: ${e.message}")
         }
         try {
             resyncIntervalMinutes = Integer.parseInt(properties.getProperty("resyncIntervalMinutes", "240"))
         } catch (NumberFormatException e) {
-            println "Invalid resyncIntervalMinutes value, using default: ${e.message}"
+            LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid resyncIntervalMinutes value, using default: ${e.message}")
         }
         try {
             alertBeepCount = Integer.parseInt(properties.getProperty("alertBeepCount", "5"))
         } catch (NumberFormatException e) {
-            println "Invalid alertBeepCount value, using default: ${e.message}"
+            LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid alertBeepCount value, using default: ${e.message}")
         }
         alertBeepAfterFlash = Boolean.parseBoolean(properties.getProperty("alertBeepAfterFlash", "false"))
 
@@ -257,9 +266,9 @@ class ConfigManager {
             } finally {
                 fos.close()
             }
-            println "Configuration saved to ${configFilePath}"
+            LogManager.getInstance().info(LogCategory.GENERAL, "Configuration saved to ${configFilePath}")
         } catch (Exception e) {
-            println "Error saving configuration: ${e.message}"
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error saving configuration: ${e.message}")
         }
     }
     

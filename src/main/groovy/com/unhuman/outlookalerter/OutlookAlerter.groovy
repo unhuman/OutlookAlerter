@@ -8,6 +8,8 @@ import javax.swing.JOptionPane
 
 import com.unhuman.outlookalerter.core.SingleInstanceManager
 import com.unhuman.outlookalerter.ui.OutlookAlerterUI
+import com.unhuman.outlookalerter.util.LogManager
+import com.unhuman.outlookalerter.util.LogCategory
 import com.unhuman.outlookalerter.ui.OutlookAlerterConsole
 
 /**
@@ -24,7 +26,7 @@ class OutlookAlerter {
         SingleInstanceManager instanceManager = new SingleInstanceManager()
         if (!instanceManager.tryAcquireLock()) {
             String message = "Another instance of Outlook Alerter is already running."
-            println message
+            LogManager.getInstance().info(LogCategory.GENERAL, message)
             
             // Show error dialog if not in console mode
             if (!args.contains("--console")) {
@@ -54,7 +56,7 @@ class OutlookAlerter {
             } else if (args[i] == "--timezone" && i < args.length - 1) {
                 timezoneOverride = args[i + 1]
                 i++
-                println "Timezone override: ${timezoneOverride}"
+                LogManager.getInstance().info(LogCategory.GENERAL, "Timezone override: ${timezoneOverride}")
             } else if (args[i] == "--help") {
                 printUsage()
                 return
@@ -77,7 +79,7 @@ class OutlookAlerter {
                 // Set system look and feel
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
             } catch (Exception e) {
-                println "Could not set system look and feel: ${e.message}"
+                LogManager.getInstance().warn(LogCategory.GENERAL, "Could not set system look and feel: ${e.message}")
             }
             
             // Start the UI application
