@@ -1502,6 +1502,29 @@ class OutlookAlerterUI extends JFrame {
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Starting flashMultiple for ${events.size()} events")
                     screenFlasher.flashMultiple(events)
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Finished flashMultiple")
+                    // Post-flash beep if enabled — wait for the flash duration first
+                    // since flashMultiple() returns immediately (non-blocking)
+                    if (configManager.getAlertBeepAfterFlash()) {
+                        int flashDurationMs = configManager.getFlashDurationSeconds() * 1000
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Waiting ${flashDurationMs}ms for flash to complete before post-flash beep")
+                        Thread.sleep(flashDurationMs)
+                        int postBeepCount = Math.max(0, configManager.getAlertBeepCount())
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting post-flash beep sequence (count: ${postBeepCount})")
+                        for (int i = 0; i < postBeepCount; i++) {
+                            try {
+                                Toolkit.getDefaultToolkit().beep()
+                                if (i < postBeepCount - 1) {
+                                    Thread.sleep(250)
+                                }
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt()
+                                break
+                            } catch (Exception bex) {
+                                LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Post-flash beep error: " + bex.getMessage())
+                            }
+                        }
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Post-flash beep sequence completed")
+                    }
                 } catch (Exception ex) {
                     LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Exception during flashMultiple: " + ex.getMessage())
                     ex.printStackTrace()

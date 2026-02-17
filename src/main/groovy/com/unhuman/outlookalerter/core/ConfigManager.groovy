@@ -42,6 +42,7 @@ class ConfigManager {
     private int flashDurationSeconds = 5 // Default to 5 seconds
     private int resyncIntervalMinutes = 240; // Default to 4 hours
     private int alertBeepCount = 5 // Default number of alert beeps
+    private boolean alertBeepAfterFlash = false // Default: no beep after flash
 
     // SSO related properties
     private String signInUrl
@@ -119,6 +120,7 @@ class ConfigManager {
         properties.setProperty("flashDurationSeconds", "5")
         properties.setProperty("resyncIntervalMinutes", "240")
         properties.setProperty("alertBeepCount", "5")
+        properties.setProperty("alertBeepAfterFlash", "false")
 
         // Save to file
         try {
@@ -203,6 +205,7 @@ class ConfigManager {
         } catch (NumberFormatException e) {
             println "Invalid alertBeepCount value, using default: ${e.message}"
         }
+        alertBeepAfterFlash = Boolean.parseBoolean(properties.getProperty("alertBeepAfterFlash", "false"))
 
         accessToken = properties.getProperty("accessToken")
         refreshToken = properties.getProperty("refreshToken")
@@ -236,6 +239,7 @@ class ConfigManager {
             properties.setProperty("flashDurationSeconds", String.valueOf(flashDurationSeconds))
             properties.setProperty("resyncIntervalMinutes", String.valueOf(resyncIntervalMinutes))
             properties.setProperty("alertBeepCount", String.valueOf(alertBeepCount))
+            properties.setProperty("alertBeepAfterFlash", String.valueOf(alertBeepAfterFlash))
 
             if (accessToken) {
                 properties.setProperty("accessToken", accessToken)
@@ -299,6 +303,7 @@ class ConfigManager {
     int getFlashDurationSeconds() { return flashDurationSeconds }
     int getResyncIntervalMinutes() { return resyncIntervalMinutes; }
     int getAlertBeepCount() { return alertBeepCount }
+    boolean getAlertBeepAfterFlash() { return alertBeepAfterFlash }
 
     /**
      * Updates the preferred timezone setting
@@ -385,6 +390,11 @@ class ConfigManager {
      */
     void updateAlertBeepCount(int count) {
         this.alertBeepCount = count
+        saveConfiguration()
+    }
+
+    void updateAlertBeepAfterFlash(boolean enabled) {
+        this.alertBeepAfterFlash = enabled
         saveConfiguration()
     }
 }
