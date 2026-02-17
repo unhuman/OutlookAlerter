@@ -14,12 +14,15 @@ mvn clean compile package
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}Build successful!${NC}"
-    echo -e "${BLUE}The application jar is available at: target/OutlookAlerter-1.0-SNAPSHOT-jar-with-dependencies.jar${NC}"
+
+    # Discover the built jar dynamically so the version is never hardcoded
+    JAR_PATH=$(ls target/OutlookAlerter-*-jar-with-dependencies.jar 2>/dev/null | head -n 1)
+    echo -e "${BLUE}The application jar is available at: ${JAR_PATH}${NC}"
     
     # Create link to jar in dist directory for backwards compatibility
     mkdir -p dist
     rm -f dist/OutlookAlerter.jar
-    ln -s ../target/OutlookAlerter-1.0-SNAPSHOT-jar-with-dependencies.jar dist/OutlookAlerter.jar
+    ln -s "../${JAR_PATH}" dist/OutlookAlerter.jar
     
     echo -e "${YELLOW}To run the application:${NC}"
     echo -e "1. ${GREEN}./run.sh${NC} - For console mode"

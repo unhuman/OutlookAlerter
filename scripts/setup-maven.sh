@@ -23,4 +23,4 @@ rm -rf src/com
 
 echo "Maven directory structure setup complete"
 echo "You can now build with: mvn clean package"
-echo "The executable JAR will be in target/outlookalerter-1.0-SNAPSHOT-jar-with-dependencies.jar"
+echo "The executable JAR will be in target/OutlookAlerter-*-jar-with-dependencies.jar"
