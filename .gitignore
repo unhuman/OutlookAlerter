@@ -4,9 +4,11 @@
 build/
 dist/
 lib/
+logs/
 target/
 diagnostics-*/
 **/nohup.out
 **/*.class
 **/*.log
 **/*.zip
+calendar-events-report.txt

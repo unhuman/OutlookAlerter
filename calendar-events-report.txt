@@ -1,2 +1,0 @@
-Error: Could not find or load main class CalendarEventsTest
-Caused by: java.lang.ClassNotFoundException: CalendarEventsTest
