@@ -162,6 +162,10 @@ class OutlookAlerterUI extends JFrame {
     
     // Store last fetched events to avoid frequent API calls (volatile for cross-thread visibility)
     private volatile List<CalendarEvent> lastFetchedEvents = []
+
+    // Throttle token validation checks (every 5 minutes instead of every minute)
+    private volatile long lastTokenValidationTime = 0L
+    private static final long TOKEN_VALIDATION_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
     
     // Track last calendar refresh time
     private volatile ZonedDateTime lastCalendarRefresh = null
@@ -900,98 +904,15 @@ class OutlookAlerterUI extends JFrame {
     }
     
     /**
-     * Updates the events list in the UI
+     * Updates the events list in the UI (fallback for when full display is not needed).
+     * Delegates to updateEventsDisplay() to avoid duplicating display logic.
      * @param events List of CalendarEvent objects to display
      */
     private void updateEventsList(List<CalendarEvent> events) {
-        if (events == null || events.isEmpty()) {
-            eventsTextArea.setText("No upcoming calendar events found.")
-            return
-        }
-        
-        // Clear existing text
-        eventsTextArea.setText("")
-        
-        // Sort events by time
-        events = events.sort { CalendarEvent a, CalendarEvent b ->
-            a.startTime <=> b.startTime
-        }
-        
-        // Format each event
-        StringBuilder sb = new StringBuilder()
-        sb.append("Upcoming meetings (next 24 hours):\n\n")
-        
-        ZoneId preferredZone = null
-        try {
-            if (configManager.preferredTimezone) {
-                preferredZone = ZoneId.of(configManager.preferredTimezone)
-            }
-        } catch (Exception e) {
-            System.err.println("Error parsing preferred timezone: " + e.getMessage())
-        }
-        
-        ZoneId displayZone = preferredZone ?: ZoneId.systemDefault()
-        
-        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
-        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("E, MMM d")
-        
-        String currentDate = null
-        
-        for (CalendarEvent event : events) {
-            try {
-                // Convert to preferred timezone if set
-                ZonedDateTime startTime = event.startTime
-                ZonedDateTime endTime = event.endTime
-                
-                if (preferredZone != null) {
-                    startTime = event.startTime.withZoneSameInstant(preferredZone)
-                    endTime = event.endTime.withZoneSameInstant(preferredZone)
-                }
-                
-                // Format date header if this is a new date
-                String eventDate = dateFormatter.format(startTime)
-                if (currentDate == null || !currentDate.equals(eventDate)) {
-                    if (currentDate != null) {
-                        sb.append("\n")
-                    }
-                    sb.append("=== ").append(eventDate).append(" ===\n")
-                    currentDate = eventDate
-                }
-                
-                // Format the event details
-                sb.append(timeFormatter.format(startTime))
-                    .append(" - ")
-                    .append(timeFormatter.format(endTime))
-                    .append(": ")
-                    .append(event.subject)
-                
-                // Add location if available
-                if (event.location && !event.location.isEmpty() && event.location != "null") {
-                    sb.append(" (").append(event.location).append(")")
-                }
-                
-                // Add calendar name if multiple calendars
-                if (event.calendarName && event.calendarName != "Calendar" && event.calendarName != "null") {
-                    sb.append(" [").append(event.calendarName).append("]")
-                }
-                
-                // Add online meeting info
-                if (event.isOnlineMeeting) {
-                    sb.append(" [Online Meeting]")
-                }
-                
-                sb.append("\n")
-            } catch (Exception e) {
-                // If one event has issues, log it but continue with the others
-                System.err.println("Error formatting event: " + e.getMessage())
-                sb.append("[Error formatting event: ").append(event.subject ?: "unknown").append("]\n")
-            }
-        }
-        
-        // Update the text area
-        eventsTextArea.setText(sb.toString())
-        eventsTextArea.setCaretPosition(0) // Scroll to top
+        updateEventsDisplay(events ?: [])
     }
+
+
     
     /**
      * Check for events that need alerts
@@ -1059,23 +980,26 @@ class OutlookAlerterUI extends JFrame {
             performFullAlert(bannerText, notificationTitle, notificationMessage, eventsToAlert)
         }
 
-        // Check token validity after alerting, and prompt if needed.
-        // IMPORTANT: hasValidToken() does an HTTP call, so it MUST NOT run on the EDT.
-        // promptForTokens() internally calls SimpleTokenDialog.show() which uses invokeAndWait,
-        // so it MUST NOT be called from the EDT (deadlock).
-        // Use the existing alertScheduler instead of spawning a new Thread every minute.
-        alertScheduler.submit({
-            try {
-                if (!outlookClient.hasValidToken()) {
-                    System.out.println("Token is invalid or expired. Prompting for new token.");
-                    if (!isTokenDialogActive) {
-                        promptForTokens(configManager.getSignInUrl())
+        // Check token validity periodically (throttled to every 5 minutes to avoid
+        // ~1,440 HTTP calls/day). hasValidToken() makes an HTTP call to /me.
+        // IMPORTANT: MUST NOT run on the EDT — hasValidToken() is blocking HTTP,
+        // and promptForTokens() uses invokeAndWait internally.
+        long now = System.currentTimeMillis()
+        if (now - lastTokenValidationTime >= TOKEN_VALIDATION_INTERVAL_MS) {
+            lastTokenValidationTime = now
+            alertScheduler.submit({
+                try {
+                    if (!outlookClient.hasValidToken()) {
+                        System.out.println("Token is invalid or expired. Prompting for new token.");
+                        if (!isTokenDialogActive) {
+                            promptForTokens(configManager.getSignInUrl())
+                        }
                     }
+                } catch (Exception ex) {
+                    System.err.println("Error checking token validity: " + ex.getMessage())
                 }
-            } catch (Exception ex) {
-                System.err.println("Error checking token validity: " + ex.getMessage())
-            }
-        } as Runnable)
+            } as Runnable)
+        }
 
         // Clean up alerted events list periodically
         if (alertedEventIds.size() > 100) {
@@ -1110,11 +1034,8 @@ class OutlookAlerterUI extends JFrame {
                 return
             }
             
-            // Calculate updated times for events but reuse other data
-            final List<CalendarEvent> updatedEvents = lastFetchedEvents.collect { event ->
-                // MinutesToStart will be recalculated when accessed since it uses current time
-                return event
-            }
+            // Snapshot the cached events for thread-safe iteration
+            final List<CalendarEvent> updatedEvents = new ArrayList<CalendarEvent>(lastFetchedEvents)
             
             // Update UI and check alerts on the EDT since we're accessing Swing components
             SwingUtilities.invokeLater({
@@ -1157,20 +1078,9 @@ class OutlookAlerterUI extends JFrame {
                 }
             });
 
-            // Request user attention on macOS
+            // On macOS, use always-on-top temporarily to help bring focus
             if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-                try {
-                    Taskbar taskbar = Taskbar.getTaskbar();
-                    // Fallback: Print a message to the console to indicate user attention is needed
-                    // System.out.println("[INFO] Requesting user attention for settings dialog.");
-                } catch (UnsupportedOperationException | SecurityException ex) {
-                    System.err.println("Unable to request user attention: " + ex.getMessage());
-                }
-
-                // Set window always-on-top temporarily to help with focus
                 settingsDialog.setAlwaysOnTop(true)
-                
-                // First focus attempt
                 settingsDialog.toFront()
                 settingsDialog.requestFocusInWindow()
             }
@@ -1358,30 +1268,6 @@ class OutlookAlerterUI extends JFrame {
                     toFront()
                     requestFocusInWindow()
                     
-                    // Request user attention via Taskbar API
-                    Timer attentionTimer = new Timer(100, new ActionListener() {
-                        int attempts = 0
-                        @Override
-                        void actionPerformed(ActionEvent e) {
-                            try {
-                                Class<?> taskbarClass = Class.forName("java.awt.Taskbar")
-                                Object taskbar = taskbarClass.getMethod("getTaskbar").invoke(null)
-                                // Fallback: Print a message to the console to indicate user attention is needed
-                                // System.out.println("[INFO] Requesting user attention for application window.");
-                                
-                                attempts++
-                                if (attempts >= 3) {
-                                    ((Timer)e.getSource()).stop()
-                                }
-                            } catch (Exception ex) {
-                                System.err.println("Could not request macOS user attention: " + ex.getMessage())
-                                ((Timer)e.getSource()).stop()
-                            }
-                        }
-                    })
-                    attentionTimer.setInitialDelay(0)
-                    attentionTimer.start()
-                    
                     // Multiple focus requests with delays to ensure window stays on top
                     Timer focusTimer = new Timer(50, { e ->
                         toFront()
@@ -1548,7 +1434,7 @@ class OutlookAlerterUI extends JFrame {
         System.out.println("performFullAlert: banner='" + bannerText + "' events=" + (events != null ? events.size() : 0))
 
         // ========== ALERT COMPONENT 1: Audio beep (highest priority, separate thread) ==========
-        new Thread({
+        Thread beepThread = new Thread({
             try {
                 int count = Math.max(0, configManager.getAlertBeepCount())
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting beep sequence (count: ${count})")
@@ -1572,7 +1458,9 @@ class OutlookAlerterUI extends JFrame {
             } catch (Exception ex) {
                 LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBeep: Error in beep sequence: " + ex.getMessage())
             }
-        }, "AlertBeepThread").start()
+        }, "AlertBeepThread")
+        beepThread.setDaemon(true)
+        beepThread.start()
 
         // ========== ALERT COMPONENT 3: Banner frame (shown once flash is visible) ==========
         final String bannerTextFinal = bannerText
@@ -1745,7 +1633,9 @@ class OutlookAlerterUI extends JFrame {
 
                 int bannerDurationMs = configManager.getFlashDurationSeconds() * 1000
                 Timer hideTimer = new Timer(bannerDurationMs, { e ->
-                    MacScreenFlasher.clearOverlayWindows()
+                    if (screenFlasher instanceof MacScreenFlasher) {
+                        MacScreenFlasher.clearOverlayWindows()
+                    }
                     alertBannerWindows.each { it.dispose() }
                     alertBannerWindows.clear()
                 } as ActionListener)

@@ -73,7 +73,7 @@ class IconManager {
      * @param size The size of the icon (16 or 32)
      * @param isTokenInvalid If true, inverts the blue and red colors
      */
-    private static BufferedImage createIconImage(int size, boolean isTokenInvalid) {
+    static BufferedImage createIconImage(int size, boolean isTokenInvalid) {
         // System.out.println("ICON: Creating new icon with size=${size}, isTokenInvalid=${isTokenInvalid}")
         BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
         Graphics2D g = img.createGraphics()

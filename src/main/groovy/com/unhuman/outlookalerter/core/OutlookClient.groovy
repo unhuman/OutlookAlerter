@@ -331,14 +331,21 @@ class OutlookClient {
             String accessToken = null
             long expiryTime = 0
             
-            while (true) {
+            int validationAttempts = 0
+            final int MAX_VALIDATION_ATTEMPTS = 3
+            while (validationAttempts < MAX_VALIDATION_ATTEMPTS) {
+                validationAttempts++
                 // Validate the received token with Microsoft's server before accepting it
                 accessToken = tokens.accessToken
                 
-                println "Validating token with Microsoft's server..."
+                println "Validating token with Microsoft's server... (attempt ${validationAttempts}/${MAX_VALIDATION_ATTEMPTS})"
                 boolean isValid = validateTokenWithServer(accessToken)
 
                 if (!isValid) {
+                    if (validationAttempts >= MAX_VALIDATION_ATTEMPTS) {
+                        println "Token validation failed after ${MAX_VALIDATION_ATTEMPTS} attempts."
+                        throw new AuthenticationCancelledException("Token validation failed after ${MAX_VALIDATION_ATTEMPTS} attempts", "validation_exhausted")
+                    }
                     println "Token validation failed. The token appears to be invalid. Requesting a new token..."
                     JOptionPane.showMessageDialog(
                         null,
@@ -410,12 +417,6 @@ class OutlookClient {
         return null
     }
     
-    /**
-     * Execute a request and handle 401 errors by re-authenticating and retrying once
-     * @param request The HTTP request to execute
-     * @param uri The URI for retry (needed if we need to rebuild the request)
-     * @return Response from the server, either from first attempt or retry
-     */
     /**
      * Execute a request and handle 401 Unauthorized or 403 Forbidden errors by re-authenticating and retrying once
      * @param request The HTTP request to execute
@@ -1017,14 +1018,16 @@ class OutlookClient {
                             [tokenEvent])
                     } else {
                         // Console mode fallback — flash only
-                        new Thread(() -> {
+                        Thread flashThread = new Thread(() -> {
                             try {
                                 ScreenFlasher screenFlasher = ScreenFlasherFactory.createScreenFlasher()
                                 screenFlasher.flash(tokenEvent)
                             } catch (Exception e) {
                                 System.err.println("[ERROR] Token alert flash error: " + e.getMessage())
                             }
-                        }).start()
+                        }, "TokenAlertFlashThread")
+                        flashThread.setDaemon(true)
+                        flashThread.start()
                     }
                 }
 

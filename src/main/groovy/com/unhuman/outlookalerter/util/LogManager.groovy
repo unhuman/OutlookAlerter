@@ -362,7 +362,12 @@ class LogManager {
                     sb.append(entry.formattedMessage).append("\n")
                 }
             }
-            textArea.setText(sb.toString())
+            String text = sb.toString()
+            if (SwingUtilities.isEventDispatchThread()) {
+                textArea.setText(text)
+            } else {
+                SwingUtilities.invokeLater({ textArea.setText(text) } as Runnable)
+            }
         }
     }
     

@@ -117,6 +117,7 @@ class ConfigManager {
         properties.setProperty("flashTextColor", "#ffffff")
         properties.setProperty("flashOpacity", "1.0")
         properties.setProperty("flashDurationSeconds", "5")
+        properties.setProperty("resyncIntervalMinutes", "240")
         properties.setProperty("alertBeepCount", "5")
 
         // Save to file
