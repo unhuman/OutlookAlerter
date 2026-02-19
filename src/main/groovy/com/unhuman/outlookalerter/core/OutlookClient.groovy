@@ -38,6 +38,9 @@ class OutlookClient {
     // HTTP client for API requests
     private HttpClient httpClient
     
+    // Request timeout for individual HTTP calls (prevents indefinite hangs on read)
+    private static final java.time.Duration REQUEST_TIMEOUT = java.time.Duration.ofSeconds(60)
+    
     // Configuration manager
     private final ConfigManager configManager
     
@@ -235,6 +238,7 @@ class OutlookClient {
                 .uri(URI.create(tokenUrl))
                 .header('Content-Type', 'application/x-www-form-urlencoded')
                 .header('Accept', 'application/json')
+                .timeout(REQUEST_TIMEOUT)
                 .POST(ofFormData(formData))
                 .build()
             
@@ -440,6 +444,7 @@ class OutlookClient {
                     .uri(uri)
                     .header("Authorization", "Bearer ${newToken}")
                     .header("Accept", "application/json")
+                    .timeout(REQUEST_TIMEOUT)
                     .GET()
                     .build()
 
@@ -584,6 +589,7 @@ class OutlookClient {
                 .uri(new URI(url))
                 .header("Authorization", "Bearer ${accessToken}")
                 .header("Accept", "application/json")
+                .timeout(REQUEST_TIMEOUT)
                 .GET()
                 .build()
             
@@ -632,6 +638,7 @@ class OutlookClient {
                 .uri(URI.create("${GRAPH_ENDPOINT}/me"))
                 .header("Authorization", "Bearer ${token}")
                 .header("Accept", "application/json")
+                .timeout(REQUEST_TIMEOUT)
                 .GET()
                 .build()
 

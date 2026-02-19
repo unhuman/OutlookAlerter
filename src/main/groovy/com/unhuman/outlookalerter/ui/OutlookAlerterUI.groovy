@@ -173,6 +173,10 @@ class OutlookAlerterUI extends JFrame {
     // Guard against overlapping calendar fetch threads
     private final java.util.concurrent.atomic.AtomicBoolean fetchInProgress = new java.util.concurrent.atomic.AtomicBoolean(false)
     
+    // Track when the current fetch started (for stale-fetch watchdog)
+    private volatile long fetchStartTimeMs = 0L
+    private static final long FETCH_TIMEOUT_MS = 5 * 60 * 1000L // 5 minutes max for a fetch
+    
     // Track the current icon state
     private Boolean currentIconInvalidState = null
 
@@ -555,7 +559,7 @@ class OutlookAlerterUI extends JFrame {
             // Schedule calendar refreshes using the configured interval
             int resyncIntervalSeconds = configManager.getResyncIntervalMinutes() * 60;
             calendarScheduler.scheduleAtFixedRate(
-                { refreshCalendarEvents() } as Runnable,
+                { safeRunScheduledTask("CalendarRefresh") { refreshCalendarEvents() } } as Runnable,
                 0, // Start immediately
                 resyncIntervalSeconds,
                 TimeUnit.SECONDS
@@ -563,7 +567,7 @@ class OutlookAlerterUI extends JFrame {
             
             // Schedule alert checks (every minute)
             alertScheduler.scheduleAtFixedRate(
-                { checkAlertsFromCache() } as Runnable,
+                { safeRunScheduledTask("AlertCheck") { checkAlertsFromCache() } } as Runnable,
                 initialDelay, // Start immediately
                 POLLING_INTERVAL_SECONDS,
                 TimeUnit.SECONDS
@@ -624,10 +628,22 @@ class OutlookAlerterUI extends JFrame {
      */
     private void refreshCalendarEvents() {
         // Prevent overlapping fetch threads — if one is already running, skip
+        // But also check for stale fetches that may have gotten stuck
         if (!fetchInProgress.compareAndSet(false, true)) {
-            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Calendar refresh already in progress, skipping")
-            return
+            long elapsed = System.currentTimeMillis() - fetchStartTimeMs
+            if (elapsed > FETCH_TIMEOUT_MS) {
+                LogManager.getInstance().warn(LogCategory.DATA_FETCH, "Calendar fetch appears stuck (running for ${elapsed / 1000}s). Force-resetting fetchInProgress flag.")
+                fetchInProgress.set(false)
+                if (!fetchInProgress.compareAndSet(false, true)) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "Calendar refresh already in progress after reset, skipping")
+                    return
+                }
+            } else {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Calendar refresh already in progress (${elapsed / 1000}s elapsed), skipping")
+                return
+            }
         }
+        fetchStartTimeMs = System.currentTimeMillis()
 
         LogManager.getInstance().info(LogCategory.DATA_FETCH, "Starting calendar refresh...")
 
@@ -720,23 +736,24 @@ class OutlookAlerterUI extends JFrame {
                 // Handle specific network errors more gracefully
                 String errorMsg
                 if (e.message?.contains("Connection refused") || e.message?.contains("UnknownHostException")) {
-                    errorMsg = "Network error: Cannot connect to Microsoft servers.\nPlease check your internet connection."
+                    errorMsg = "Network error: Cannot connect to Microsoft servers."
                 } else if (e.message?.contains("authentication") || e.message?.contains("401")) {
-                    errorMsg = "Authentication error: Token may be invalid.\nPlease click Refresh to re-authenticate."
+                    errorMsg = "Authentication error: Token may be invalid."
+                } else if (e.message?.contains("request timed out") || e.message?.contains("HttpTimeoutException")) {
+                    errorMsg = "Request timed out. Will retry on next refresh."
                 } else {
                     errorMsg = "Error refreshing calendar: " + e.message
                 }
                 
+                // Use non-blocking status update instead of modal dialog
+                // Modal JOptionPane can block the EDT and go unseen when minimized to tray
+                final String statusMsg = errorMsg
                 SwingUtilities.invokeLater({
-                    statusLabel.setText("Status: Error - " + e.message)
+                    statusLabel.setText("Status: " + statusMsg)
                     refreshButton.setEnabled(true)
                     
-                    JOptionPane.showMessageDialog(
-                        this,
-                        errorMsg,
-                        "Calendar Refresh Error",
-                        JOptionPane.ERROR_MESSAGE
-                    )
+                    // Show tray notification instead of blocking modal dialog
+                    showTrayNotification("Calendar Refresh Error", statusMsg, TrayIcon.MessageType.ERROR)
                 } as Runnable)
             } finally {
                 // Always release the fetch guard so future refreshes can proceed
@@ -1015,6 +1032,19 @@ class OutlookAlerterUI extends JFrame {
         try {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "=== Checking Alerts (using cached events) ===")
 
+            // Watchdog: detect and recover from stuck fetch threads
+            if (fetchInProgress.get()) {
+                long elapsed = System.currentTimeMillis() - fetchStartTimeMs
+                if (elapsed > FETCH_TIMEOUT_MS) {
+                    LogManager.getInstance().warn(LogCategory.DATA_FETCH, "Watchdog: fetch has been stuck for ${elapsed / 1000}s. Force-resetting fetchInProgress and updating UI.")
+                    fetchInProgress.set(false)
+                    SwingUtilities.invokeLater({
+                        statusLabel.setText("Status: Refresh recovered from timeout")
+                        refreshButton.setEnabled(true)
+                    } as Runnable)
+                }
+            }
+
             // Check if refresh needed (more than resyncInterval since last refresh)
             // this is to capture if device has been asleep for some time (ie weekend)
             long resyncMinutes = (long) configManager.getResyncIntervalMinutes()
@@ -1167,7 +1197,7 @@ class OutlookAlerterUI extends JFrame {
 
         // Schedule periodic calendar data refresh
         calendarScheduler.scheduleAtFixedRate(
-            { refreshCalendarEvents() } as Runnable,
+            { safeRunScheduledTask("CalendarRefresh") { refreshCalendarEvents() } } as Runnable,
             resyncIntervalSeconds,
             resyncIntervalSeconds,
             TimeUnit.SECONDS
@@ -1175,7 +1205,7 @@ class OutlookAlerterUI extends JFrame {
 
         // Schedule alert checks (every minute)
         alertScheduler.scheduleAtFixedRate(
-            { checkAlertsFromCache() } as Runnable,
+            { safeRunScheduledTask("AlertCheck") { checkAlertsFromCache() } } as Runnable,
             POLLING_INTERVAL_SECONDS,
             POLLING_INTERVAL_SECONDS,
             TimeUnit.SECONDS
@@ -1241,6 +1271,22 @@ class OutlookAlerterUI extends JFrame {
 
         schedulersRunning = false;
         LogManager.getInstance().info(LogCategory.GENERAL, "Schedulers stopped");
+    }
+
+    /**
+     * Wrapper for scheduled tasks that catches ALL Throwable (including Error).
+     * ScheduledExecutorService.scheduleAtFixedRate() silently cancels future executions
+     * if the Runnable throws any uncaught exception. This wrapper prevents that.
+     */
+    private void safeRunScheduledTask(String taskName, Closure task) {
+        try {
+            task.call()
+        } catch (Throwable t) {
+            // Catch Throwable (not just Exception) to prevent silent scheduler death.
+            // ScheduledExecutorService will cancel future executions on uncaught exceptions.
+            LogManager.getInstance().error(LogCategory.GENERAL, "[${taskName}] Uncaught error in scheduled task (scheduler will continue): " + t.getMessage())
+            t.printStackTrace()
+        }
     }
 
     /**
