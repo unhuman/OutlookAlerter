@@ -19,6 +19,9 @@ public class LogManager {
     private static LogManager instance;
     private static final int MAX_LOG_LINES = 2000;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+    private static final String LEVEL_INFO = "INFO";
+    private static final String LEVEL_WARN = "WARN";
+    private static final String LEVEL_ERROR = "ERROR";
     private final ConcurrentLinkedDeque<LogEntry> logBuffer = new ConcurrentLinkedDeque<>();
     private final Set<LogCategory> activeFilters = EnumSet.allOf(LogCategory.class);
     private JTextArea logTextArea = null;
@@ -33,27 +36,27 @@ public class LogManager {
     }
 
     public void info(String message) {
-        log("INFO", message, LogCategory.GENERAL);
+        log(LEVEL_INFO, message, LogCategory.GENERAL);
     }
 
     public void info(LogCategory category, String message) {
-        log("INFO", message, category);
+        log(LEVEL_INFO, message, category);
     }
 
     public void warn(String message) {
-        log("WARN", message, LogCategory.GENERAL);
+        log(LEVEL_WARN, message, LogCategory.GENERAL);
     }
 
     public void warn(LogCategory category, String message) {
-        log("WARN", message, category);
+        log(LEVEL_WARN, message, category);
     }
 
     public void error(String message) {
-        log("ERROR", message, LogCategory.GENERAL);
+        log(LEVEL_ERROR, message, LogCategory.GENERAL);
     }
 
     public void error(LogCategory category, String message) {
-        log("ERROR", message, category);
+        log(LEVEL_ERROR, message, category);
     }
 
     public void error(String message, Throwable e) {
@@ -67,13 +70,13 @@ public class LogManager {
         PrintWriter pw = new PrintWriter(sw);
         e.printStackTrace(pw);
         sb.append("\n").append(sw.toString());
-        log("ERROR", sb.toString(), category);
+        log(LEVEL_ERROR, sb.toString(), category);
     }
 
     private static final ThreadLocal<Boolean> isLogging = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     private void log(String level, String message, LogCategory category) {
-        if (isLogging.get()) {
+        if (Boolean.TRUE.equals(isLogging.get())) {
             return;
         }
         isLogging.set(Boolean.TRUE);
@@ -81,7 +84,7 @@ public class LogManager {
             String timestamp = DATE_FORMAT.format(LocalDateTime.now());
             LogEntry entry = new LogEntry(timestamp, level, message, category);
 
-            PrintStream outputStream = ("ERROR".equals(level))
+            PrintStream outputStream = (LEVEL_ERROR.equals(level))
                 ? getOriginalErrStream()
                 : getOriginalOutStream();
 

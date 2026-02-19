@@ -71,7 +71,7 @@ class HtmlUtilTest {
         @Test
         @DisplayName("handles HTML entities that are already escaped (double-escaping)")
         void alreadyEscaped() {
-            // If input already has &amp; it should become &amp;amp;
+            // Already-escaped entities should get double-escaped
             assertEquals("&amp;amp;", HtmlUtil.escapeHtml("&amp;"));
         }
 

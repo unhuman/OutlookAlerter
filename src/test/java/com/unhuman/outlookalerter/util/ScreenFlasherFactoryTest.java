@@ -62,13 +62,13 @@ class ScreenFlasherFactoryTest {
             // Create a minimal implementation and verify default doesn't throw
             ScreenFlasher minimal = new ScreenFlasher() {
                 @Override
-                public void flash(CalendarEvent event) {}
+                public void flash(CalendarEvent event) { /* no-op */ }
                 @Override
-                public void flashMultiple(List<CalendarEvent> events) {}
+                public void flashMultiple(List<CalendarEvent> events) { /* no-op */ }
                 @Override
-                public void forceCleanup() {}
+                public void forceCleanup() { /* no-op */ }
             };
-            assertDoesNotThrow(() -> minimal.forceCleanup());
+            assertDoesNotThrow(minimal::forceCleanup);
         }
     }
 }

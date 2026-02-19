@@ -6,9 +6,9 @@ The alert system notifies users of upcoming calendar events (and token entry req
 
 ## Entry Point: `performFullAlert()`
 
-**Location:** `OutlookAlerterUI.groovy`  
+**Location:** `OutlookAlerterUI.java`  
 **Signature:**
-```groovy
+```java
 void performFullAlert(String bannerText, String notificationTitle,
                       String notificationMessage, List<CalendarEvent> events)
 ```
@@ -54,7 +54,7 @@ performFullAlert()
 
 ### Interface
 
-```groovy
+```java
 interface ScreenFlasher {
     void flash(CalendarEvent event)
     void flashMultiple(List<CalendarEvent> events)
@@ -119,7 +119,7 @@ Ensures flash windows remain visible above other applications.
 
 Allows banner windows to coexist above flash windows without timer conflicts.
 
-```groovy
+```java
 // Static shared state in MacScreenFlasher
 private static final List<JFrame> overlayWindows = new CopyOnWriteArrayList<JFrame>()
 
@@ -134,7 +134,7 @@ static void clearOverlayWindows()
 
 ### onFlashReady Callback
 
-```groovy
+```java
 private static volatile Runnable onFlashReady = null
 static void setOnFlashReady(Runnable callback)
 ```
@@ -182,7 +182,7 @@ One transparent `JFrame` per screen, painting only a red border frame:
 
 ### Menu Bar Offset
 
-```groovy
+```java
 Insets screenInsets = Toolkit.getDefaultToolkit().getScreenInsets(screen.getDefaultConfiguration())
 int frameY = bounds.y + screenInsets.top      // below menu bar
 int frameH = bounds.height - screenInsets.top  // reduced height
@@ -192,7 +192,7 @@ On macOS, `screenInsets.top` is the menu bar height (typically 25px). The banner
 
 ### Border Thickness Calculation
 
-```groovy
+```java
 JLabel sizeRef = new JLabel("X")
 sizeRef.setFont(sizeRef.getFont().deriveFont(Font.BOLD, 18f))
 sizeRef.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20))
@@ -217,7 +217,7 @@ Dynamic — adapts to font metrics. Typically ~45px.
 
 ## Component 4: Tray Notification
 
-```groovy
+```java
 showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO)
 ```
 
@@ -256,7 +256,7 @@ for each event:
 **Location:** `OutlookClient.getTokensFromUser()`
 
 On the first attempt (of up to 3), creates a synthetic `CalendarEvent`:
-```groovy
+```java
 CalendarEvent tokenEvent = new CalendarEvent(
     subject: "⚠️ TOKEN ENTRY REQUIRED ⚠️",
     startTime: ZonedDateTime.now(),
@@ -268,7 +268,7 @@ CalendarEvent tokenEvent = new CalendarEvent(
 ```
 
 Then calls:
-```groovy
+```java
 outlookAlerterUI.performFullAlert(
     "⚠️ Token Entry Required - Please enter your OAuth tokens",
     "Token Entry Required",

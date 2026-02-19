@@ -45,7 +45,7 @@ public class SingleInstanceManager {
             }
 
             lockAcquired = true;
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> releaseLock()));
+            Runtime.getRuntime().addShutdownHook(new Thread(this::releaseLock));
 
             return true;
         } catch (Exception e) {

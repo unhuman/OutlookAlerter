@@ -8,6 +8,10 @@ import java.awt.image.BufferedImage;
  * Manages custom icon generation for OutlookAlerter
  */
 public class IconManager {
+    private IconManager() {
+        // Utility class
+    }
+
     private static final Color OUTLOOK_BLUE = new Color(0, 114, 198);
     private static final Color ALERT_RED = new Color(220, 0, 0);
     private static BufferedImage iconCache;
@@ -71,9 +75,9 @@ public class IconManager {
             float sirenSize = 6.0f * scale;
 
             g.setColor(isTokenInvalid ? ALERT_RED : OUTLOOK_BLUE);
-            float y = (float)(margin + sirenSize / 2.0f);
-            float w = (float)(size - 2.0f * margin);
-            float h = (float)(size - 2.0f * margin - sirenSize / 2.0f);
+            float y = margin + sirenSize / 2.0f;
+            float w = size - 2.0f * margin;
+            float h = size - 2.0f * margin - sirenSize / 2.0f;
             RoundRectangle2D.Float baseRect = new RoundRectangle2D.Float(
                 margin, y, w, h, cornerRadius, cornerRadius
             );
@@ -91,7 +95,7 @@ public class IconManager {
 
             g.setColor(isTokenInvalid ? OUTLOOK_BLUE : ALERT_RED);
             Arc2D.Float sirenArc = new Arc2D.Float(
-                (float)((size - sirenSize) / 2),
+                (size - sirenSize) / 2,
                 margin,
                 sirenSize,
                 sirenSize,
@@ -104,7 +108,7 @@ public class IconManager {
             g.setColor(new Color(255, 255, 255, 100));
             float shineSize = sirenSize * 0.6f;
             Arc2D.Float shineArc = new Arc2D.Float(
-                (float)((size - shineSize) / 2),
+                (size - shineSize) / 2,
                 margin + 1.0f,
                 shineSize,
                 shineSize,

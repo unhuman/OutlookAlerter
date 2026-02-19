@@ -40,7 +40,7 @@ public class CalendarEvent {
     public boolean getIsOnlineMeeting() { return isOnlineMeeting; }
     public void setIsOnlineMeeting(boolean isOnlineMeeting) { this.isOnlineMeeting = isOnlineMeeting; }
     // Convenience alias
-    public boolean isOnlineMeeting() { return isOnlineMeeting; }
+    public boolean isOnlineMeeting() { return getIsOnlineMeeting(); }
 
     public String getOnlineMeetingUrl() { return onlineMeetingUrl; }
     public void setOnlineMeetingUrl(String onlineMeetingUrl) { this.onlineMeetingUrl = onlineMeetingUrl; }

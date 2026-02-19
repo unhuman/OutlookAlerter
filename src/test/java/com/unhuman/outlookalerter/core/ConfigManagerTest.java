@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -352,6 +353,66 @@ class ConfigManagerTest {
             String url = configManager.getSignInUrl();
             assertNotNull(url);
             assertFalse(url.trim().isEmpty());
+        }
+    }
+
+    // ───────── Property Key Constants ─────────
+
+    @Nested
+    @DisplayName("property key constants")
+    class PropertyKeyConstants {
+
+        @Test
+        @DisplayName("saved config file uses expected property key names")
+        void savedFileUsesCorrectKeys() throws IOException {
+            configManager.loadConfiguration();
+            configManager.updateAlertMinutes(3);
+            configManager.updateFlashColor("#00FF00");
+            configManager.updateTokens("testAccess", "testRefresh", true);
+
+            // Read the raw properties file to verify key names
+            Properties raw = new Properties();
+            try (FileInputStream fis = new FileInputStream(configPath)) {
+                raw.load(fis);
+            }
+
+            // Verify expected key names exist (not the old names or typos)
+            assertEquals("3", raw.getProperty("alertMinutes"));
+            assertEquals("#00FF00", raw.getProperty("flashColor"));
+            assertEquals("testAccess", raw.getProperty("accessToken"));
+            assertEquals("testRefresh", raw.getProperty("refreshToken"));
+            assertEquals("true", raw.getProperty("ignoreCertValidation"));
+            assertEquals("common", raw.getProperty("tenantId"));
+            assertEquals("http://localhost:8888/redirect", raw.getProperty("redirectUri"));
+            assertEquals("#ffffff", raw.getProperty("flashTextColor"));
+            assertEquals("5", raw.getProperty("flashDurationSeconds"));
+            assertEquals("240", raw.getProperty("resyncIntervalMinutes"));
+            assertEquals("5", raw.getProperty("alertBeepCount"));
+            assertEquals("false", raw.getProperty("alertBeepAfterFlash"));
+        }
+
+        @Test
+        @DisplayName("default config file uses expected property key names")
+        void defaultConfigUsesCorrectKeys() throws IOException {
+            configManager.loadConfiguration();
+
+            Properties raw = new Properties();
+            try (FileInputStream fis = new FileInputStream(configPath)) {
+                raw.load(fis);
+            }
+
+            // All expected keys should be present in the default config
+            assertNotNull(raw.getProperty("clientId"));
+            assertNotNull(raw.getProperty("clientSecret"));
+            assertNotNull(raw.getProperty("tenantId"));
+            assertNotNull(raw.getProperty("redirectUri"));
+            assertNotNull(raw.getProperty("alertMinutes"));
+            assertNotNull(raw.getProperty("flashColor"));
+            assertNotNull(raw.getProperty("flashTextColor"));
+            assertNotNull(raw.getProperty("flashOpacity"));
+            assertNotNull(raw.getProperty("flashDurationSeconds"));
+            assertNotNull(raw.getProperty("resyncIntervalMinutes"));
+            assertNotNull(raw.getProperty("alertBeepCount"));
         }
     }
 }

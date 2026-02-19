@@ -45,7 +45,7 @@ public class MacSleepWakeMonitor {
         });
 
         monitorExecutor.scheduleAtFixedRate(
-            () -> checkForWakeEvent(),
+            this::checkForWakeEvent,
             30,
             30,
             TimeUnit.SECONDS
@@ -68,6 +68,7 @@ public class MacSleepWakeMonitor {
                     monitorExecutor.shutdownNow();
                 }
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 monitorExecutor.shutdownNow();
             }
             monitorExecutor = null;

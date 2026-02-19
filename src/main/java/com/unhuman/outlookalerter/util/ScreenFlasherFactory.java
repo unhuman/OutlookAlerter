@@ -1,8 +1,5 @@
 package com.unhuman.outlookalerter.util;
 
-import com.unhuman.outlookalerter.util.LogManager;
-import com.unhuman.outlookalerter.util.LogCategory;
-
 /**
  * Factory to create the appropriate ScreenFlasher for the current operating system
  */

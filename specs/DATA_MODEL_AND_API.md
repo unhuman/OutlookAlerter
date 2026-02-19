@@ -24,7 +24,7 @@
 
 | Method | Returns | Logic |
 |---|---|---|
-| `getMinutesToStart()` | `int` | `(startTime.toInstant().toEpochMilli() - ZonedDateTime.now(startTime.zone).toInstant().toEpochMilli()) / 60000`. Returns `-999` if `startTime` is null. |
+| `getMinutesToStart()` | `int` | `(startTime.toInstant().toEpochMilli() - ZonedDateTime.now(startTime.zone).toInstant().toEpochMilli()) / 60000`. Returns `Integer.MIN_VALUE` if `startTime` is null. |
 | `isInProgress()` | `boolean` | `now` is after `startTime` and before `endTime` (compared as instants) |
 | `hasEnded()` | `boolean` | `now` is after `endTime.toInstant()` |
 
@@ -37,6 +37,12 @@
 **Location:** `com.unhuman.outlookalerter.core.ConfigManager`  
 **Pattern:** Singleton  
 **Storage:** `~/.outlookalerter/config.properties` (Java Properties format)
+
+### Constants
+
+All property keys and default values are defined as `private static final String` constants:
+- **Key constants** (`KEY_*`): `KEY_CLIENT_ID`, `KEY_CLIENT_SECRET`, `KEY_TENANT_ID`, `KEY_REDIRECT_URI`, `KEY_SIGN_IN_URL`, `KEY_TOKEN_ENDPOINT`, `KEY_LOGIN_HINT`, `KEY_PREFERRED_TIMEZONE`, `KEY_ALERT_MINUTES`, `KEY_DEFAULT_IGNORE_CERT`, `KEY_IGNORE_CERT`, `KEY_FLASH_COLOR`, `KEY_FLASH_TEXT_COLOR`, `KEY_FLASH_OPACITY`, `KEY_FLASH_DURATION`, `KEY_RESYNC_INTERVAL`, `KEY_ALERT_BEEP_COUNT`, `KEY_ALERT_BEEP_AFTER_FLASH`, `KEY_ACCESS_TOKEN`, `KEY_REFRESH_TOKEN`
+- **Default constants** (`DEFAULT_*`): `DEFAULT_TENANT_ID`, `DEFAULT_REDIRECT_URI`, `DEFAULT_FLASH_COLOR`, `DEFAULT_FLASH_TEXT_COLOR`, `DEFAULT_FLASH_OPACITY`, `DEFAULT_ALERT_MINUTES`, `DEFAULT_FLASH_DURATION`, `DEFAULT_RESYNC_INTERVAL`, `DEFAULT_ALERT_BEEP_COUNT`, `DEFAULT_FALSE`
 
 ### All Properties
 
@@ -72,7 +78,7 @@
 
 All `update*()` methods set the field and call `saveConfiguration()` immediately:
 
-```groovy
+```java
 void updateTokens(String accessToken, String refreshToken, boolean ignoreCertValidation)
 void updatePreferredTimezone(String timezone)
 void updateAlertMinutes(int minutes)
@@ -184,6 +190,11 @@ Validation is throttled: skips server check if last validation was < 15 minutes 
 **Location:** `com.unhuman.outlookalerter.util.LogManager`  
 **Pattern:** Singleton with in-memory buffer
 
+### Constants
+
+Log level strings are defined as `private static final String` constants:
+- `LEVEL_INFO`, `LEVEL_WARN`, `LEVEL_ERROR`
+
 ### LogCategory Enum
 
 | Value | Description |
@@ -195,7 +206,7 @@ Validation is throttled: skips server check if last validation was < 15 minutes 
 
 ### Methods
 
-```groovy
+```java
 void info(LogCategory category, String message)
 void error(LogCategory category, String message)
 void warn(LogCategory category, String message)
@@ -218,10 +229,10 @@ String getLogsAsString()                // for save-to-file
 
 **Location:** `com.unhuman.outlookalerter.util.MacSleepWakeMonitor`  
 **Pattern:** Singleton  
-**Detection:** Polls system time every 5 seconds; if gap > 30 seconds → wake event
+**Detection:** Polls system time every 30 seconds; if gap > 65 seconds → wake event
 
-```groovy
-static MacSleepWakeMonitor getInstance()
+```java
+static synchronized MacSleepWakeMonitor getInstance()
 void startMonitoring()
 void addWakeListener(Runnable listener)   // called on wake
 ```
@@ -233,16 +244,16 @@ void addWakeListener(Runnable listener)   // called on wake
 **Location:** `com.unhuman.outlookalerter.core.SingleInstanceManager`  
 **Mechanism:** File lock on `~/.outlookalerter/outlookalerter.lock`
 
-```groovy
-static boolean tryAcquireLock()   // returns false if already locked
-static void releaseLock()
+```java
+boolean tryAcquireLock()   // returns false if already locked
+void releaseLock()
 ```
 
 ### SSLUtils
 
 **Location:** `com.unhuman.outlookalerter.core.SSLUtils`
 
-```groovy
+```java
 static void initializeSSLContext()
 static SSLContext createPermissiveSSLContext()   // for ignoreCertValidation
 ```

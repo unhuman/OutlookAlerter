@@ -356,4 +356,29 @@ class CalendarEventTest {
             assertFalse(event.isInProgress());
         }
     }
+
+    // ───────── isOnlineMeeting alias ─────────
+
+    @Nested
+    @DisplayName("isOnlineMeeting alias")
+    class OnlineMeetingAlias {
+
+        @Test
+        @DisplayName("isOnlineMeeting() delegates to getIsOnlineMeeting() when true")
+        void aliasTrueCase() {
+            CalendarEvent event = new CalendarEvent();
+            event.setIsOnlineMeeting(true);
+            assertEquals(event.getIsOnlineMeeting(), event.isOnlineMeeting());
+            assertTrue(event.isOnlineMeeting());
+        }
+
+        @Test
+        @DisplayName("isOnlineMeeting() delegates to getIsOnlineMeeting() when false")
+        void aliasFalseCase() {
+            CalendarEvent event = new CalendarEvent();
+            event.setIsOnlineMeeting(false);
+            assertEquals(event.getIsOnlineMeeting(), event.isOnlineMeeting());
+            assertFalse(event.isOnlineMeeting());
+        }
+    }
 }

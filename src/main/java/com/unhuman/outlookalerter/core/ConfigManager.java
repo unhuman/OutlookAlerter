@@ -18,6 +18,40 @@ public class ConfigManager {
         return instance;
     }
 
+    // ── Property key constants ────────────────────────────────────────────
+    private static final String KEY_CLIENT_ID = "clientId";
+    private static final String KEY_CLIENT_SECRET = "clientSecret";
+    private static final String KEY_TENANT_ID = "tenantId";
+    private static final String KEY_REDIRECT_URI = "redirectUri";
+    private static final String KEY_SIGN_IN_URL = "signInUrl";
+    private static final String KEY_TOKEN_ENDPOINT = "tokenEndpoint";
+    private static final String KEY_LOGIN_HINT = "loginHint";
+    private static final String KEY_PREFERRED_TIMEZONE = "preferredTimezone";
+    private static final String KEY_ALERT_MINUTES = "alertMinutes";
+    private static final String KEY_DEFAULT_IGNORE_CERT = "defaultIgnoreCertValidation";
+    private static final String KEY_IGNORE_CERT = "ignoreCertValidation";
+    private static final String KEY_FLASH_COLOR = "flashColor";
+    private static final String KEY_FLASH_TEXT_COLOR = "flashTextColor";
+    private static final String KEY_FLASH_OPACITY = "flashOpacity";
+    private static final String KEY_FLASH_DURATION = "flashDurationSeconds";
+    private static final String KEY_RESYNC_INTERVAL = "resyncIntervalMinutes";
+    private static final String KEY_ALERT_BEEP_COUNT = "alertBeepCount";
+    private static final String KEY_ALERT_BEEP_AFTER_FLASH = "alertBeepAfterFlash";
+    private static final String KEY_ACCESS_TOKEN = "accessToken";
+    private static final String KEY_REFRESH_TOKEN = "refreshToken";
+
+    // ── Default value constants ───────────────────────────────────────────
+    private static final String DEFAULT_TENANT_ID = "common";
+    private static final String DEFAULT_REDIRECT_URI = "http://localhost:8888/redirect";
+    private static final String DEFAULT_FLASH_COLOR = "#800000";
+    private static final String DEFAULT_FLASH_TEXT_COLOR = "#ffffff";
+    private static final String DEFAULT_FLASH_OPACITY = "1.0";
+    private static final String DEFAULT_ALERT_MINUTES = "1";
+    private static final String DEFAULT_FLASH_DURATION = "5";
+    private static final String DEFAULT_RESYNC_INTERVAL = "240";
+    private static final String DEFAULT_ALERT_BEEP_COUNT = "5";
+    private static final String DEFAULT_FALSE = "false";
+
     private String configFilePath;
     private Properties properties = new Properties();
     private String clientId;
@@ -30,8 +64,8 @@ public class ConfigManager {
     private int alertMinutes = 1;
     private boolean defaultIgnoreCertValidation = false;
     private boolean ignoreCertValidation;
-    private String flashColor = "#800000";
-    private String flashTextColor = "#ffffff";
+    private String flashColor = DEFAULT_FLASH_COLOR;
+    private String flashTextColor = DEFAULT_FLASH_TEXT_COLOR;
     private double flashOpacity = 1.0d;
     private int flashDurationSeconds = 5;
     private int resyncIntervalMinutes = 240;
@@ -56,13 +90,8 @@ public class ConfigManager {
             configDir.mkdirs();
         }
         if (configFile.exists()) {
-            try {
-                FileInputStream fis = new FileInputStream(configFile);
-                try {
-                    properties.load(fis);
-                } finally {
-                    fis.close();
-                }
+            try (FileInputStream fis = new FileInputStream(configFile)) {
+                properties.load(fis);
                 loadPropertiesFromConfig();
                 LogManager.getInstance().info(LogCategory.GENERAL, "Configuration loaded from " + configFilePath);
             } catch (Exception e) {
@@ -76,31 +105,26 @@ public class ConfigManager {
 
     private void createDefaultConfig(File configFile) {
         LogManager.getInstance().info(LogCategory.GENERAL, "Creating default configuration at " + configFile.getAbsolutePath());
-        properties.setProperty("clientId", "");
-        properties.setProperty("clientSecret", "");
-        properties.setProperty("tenantId", "common");
-        properties.setProperty("redirectUri", "http://localhost:8888/redirect");
-        properties.setProperty("signInUrl", SimpleTokenDialog.DEFAULT_GRAPH_URL);
-        properties.setProperty("tokenEndpoint", "");
-        properties.setProperty("loginHint", "");
-        properties.setProperty("preferredTimezone", "");
-        properties.setProperty("alertMinutes", "1");
-        properties.setProperty("defaultIgnoreCertValidation", "false");
-        properties.setProperty("ignoreCertValidation", "false");
-        properties.setProperty("flashColor", "#800000");
-        properties.setProperty("flashTextColor", "#ffffff");
-        properties.setProperty("flashOpacity", "1.0");
-        properties.setProperty("flashDurationSeconds", "5");
-        properties.setProperty("resyncIntervalMinutes", "240");
-        properties.setProperty("alertBeepCount", "5");
-        properties.setProperty("alertBeepAfterFlash", "false");
-        try {
-            FileOutputStream fos = new FileOutputStream(configFile);
-            try {
-                properties.store(fos, "Outlook Alerter Configuration");
-            } finally {
-                fos.close();
-            }
+        properties.setProperty(KEY_CLIENT_ID, "");
+        properties.setProperty(KEY_CLIENT_SECRET, "");
+        properties.setProperty(KEY_TENANT_ID, DEFAULT_TENANT_ID);
+        properties.setProperty(KEY_REDIRECT_URI, DEFAULT_REDIRECT_URI);
+        properties.setProperty(KEY_SIGN_IN_URL, SimpleTokenDialog.DEFAULT_GRAPH_URL);
+        properties.setProperty(KEY_TOKEN_ENDPOINT, "");
+        properties.setProperty(KEY_LOGIN_HINT, "");
+        properties.setProperty(KEY_PREFERRED_TIMEZONE, "");
+        properties.setProperty(KEY_ALERT_MINUTES, DEFAULT_ALERT_MINUTES);
+        properties.setProperty(KEY_DEFAULT_IGNORE_CERT, DEFAULT_FALSE);
+        properties.setProperty(KEY_IGNORE_CERT, DEFAULT_FALSE);
+        properties.setProperty(KEY_FLASH_COLOR, DEFAULT_FLASH_COLOR);
+        properties.setProperty(KEY_FLASH_TEXT_COLOR, DEFAULT_FLASH_TEXT_COLOR);
+        properties.setProperty(KEY_FLASH_OPACITY, DEFAULT_FLASH_OPACITY);
+        properties.setProperty(KEY_FLASH_DURATION, DEFAULT_FLASH_DURATION);
+        properties.setProperty(KEY_RESYNC_INTERVAL, DEFAULT_RESYNC_INTERVAL);
+        properties.setProperty(KEY_ALERT_BEEP_COUNT, DEFAULT_ALERT_BEEP_COUNT);
+        properties.setProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE);
+        try (FileOutputStream fos = new FileOutputStream(configFile)) {
+            properties.store(fos, "Outlook Alerter Configuration");
             LogManager.getInstance().info(LogCategory.GENERAL,
                 "Configuration file created at " + configFile.getAbsolutePath() + "\n\n" +
                 "For Okta SSO authentication, edit the configuration file with these values:\n\n" +
@@ -125,80 +149,77 @@ public class ConfigManager {
     }
 
     private void loadPropertiesFromConfig() {
-        clientId = properties.getProperty("clientId");
-        clientSecret = properties.getProperty("clientSecret");
-        tenantId = properties.getProperty("tenantId", "common");
-        redirectUri = properties.getProperty("redirectUri", "http://localhost:8888/redirect");
-        signInUrl = properties.getProperty("signInUrl");
-        tokenEndpoint = properties.getProperty("tokenEndpoint");
-        loginHint = properties.getProperty("loginHint");
-        preferredTimezone = properties.getProperty("preferredTimezone");
+        clientId = properties.getProperty(KEY_CLIENT_ID);
+        clientSecret = properties.getProperty(KEY_CLIENT_SECRET);
+        tenantId = properties.getProperty(KEY_TENANT_ID, DEFAULT_TENANT_ID);
+        redirectUri = properties.getProperty(KEY_REDIRECT_URI, DEFAULT_REDIRECT_URI);
+        signInUrl = properties.getProperty(KEY_SIGN_IN_URL);
+        tokenEndpoint = properties.getProperty(KEY_TOKEN_ENDPOINT);
+        loginHint = properties.getProperty(KEY_LOGIN_HINT);
+        preferredTimezone = properties.getProperty(KEY_PREFERRED_TIMEZONE);
         try {
-            alertMinutes = Integer.parseInt(properties.getProperty("alertMinutes", "1"));
+            alertMinutes = Integer.parseInt(properties.getProperty(KEY_ALERT_MINUTES, DEFAULT_ALERT_MINUTES));
         } catch (NumberFormatException e) {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid alertMinutes value, using default: " + e.getMessage());
         }
-        defaultIgnoreCertValidation = Boolean.parseBoolean(properties.getProperty("defaultIgnoreCertValidation", "false"));
-        ignoreCertValidation = Boolean.parseBoolean(properties.getProperty("ignoreCertValidation", "false"));
-        flashColor = properties.getProperty("flashColor", "#800000");
-        flashTextColor = properties.getProperty("flashTextColor", "#ffffff");
+        defaultIgnoreCertValidation = Boolean.parseBoolean(properties.getProperty(KEY_DEFAULT_IGNORE_CERT, DEFAULT_FALSE));
+        ignoreCertValidation = Boolean.parseBoolean(properties.getProperty(KEY_IGNORE_CERT, DEFAULT_FALSE));
+        flashColor = properties.getProperty(KEY_FLASH_COLOR, DEFAULT_FLASH_COLOR);
+        flashTextColor = properties.getProperty(KEY_FLASH_TEXT_COLOR, DEFAULT_FLASH_TEXT_COLOR);
         try {
-            flashOpacity = Double.parseDouble(properties.getProperty("flashOpacity", "1.0"));
+            flashOpacity = Double.parseDouble(properties.getProperty(KEY_FLASH_OPACITY, DEFAULT_FLASH_OPACITY));
         } catch (NumberFormatException e) {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid flashOpacity value, using default: " + e.getMessage());
         }
         try {
-            flashDurationSeconds = Integer.parseInt(properties.getProperty("flashDurationSeconds", "5"));
+            flashDurationSeconds = Integer.parseInt(properties.getProperty(KEY_FLASH_DURATION, DEFAULT_FLASH_DURATION));
         } catch (NumberFormatException e) {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid flashDurationSeconds value, using default: " + e.getMessage());
         }
         try {
-            resyncIntervalMinutes = Integer.parseInt(properties.getProperty("resyncIntervalMinutes", "240"));
+            resyncIntervalMinutes = Integer.parseInt(properties.getProperty(KEY_RESYNC_INTERVAL, DEFAULT_RESYNC_INTERVAL));
         } catch (NumberFormatException e) {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid resyncIntervalMinutes value, using default: " + e.getMessage());
         }
         try {
-            alertBeepCount = Integer.parseInt(properties.getProperty("alertBeepCount", "5"));
+            alertBeepCount = Integer.parseInt(properties.getProperty(KEY_ALERT_BEEP_COUNT, DEFAULT_ALERT_BEEP_COUNT));
         } catch (NumberFormatException e) {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid alertBeepCount value, using default: " + e.getMessage());
         }
-        alertBeepAfterFlash = Boolean.parseBoolean(properties.getProperty("alertBeepAfterFlash", "false"));
-        accessToken = properties.getProperty("accessToken");
-        refreshToken = properties.getProperty("refreshToken");
+        alertBeepAfterFlash = Boolean.parseBoolean(properties.getProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE));
+        accessToken = properties.getProperty(KEY_ACCESS_TOKEN);
+        refreshToken = properties.getProperty(KEY_REFRESH_TOKEN);
     }
 
     public synchronized void saveConfiguration() {
         try {
-            properties.setProperty("clientId", clientId != null ? clientId : "");
-            properties.setProperty("clientSecret", clientSecret != null ? clientSecret : "");
-            properties.setProperty("tenantId", tenantId != null ? tenantId : "common");
-            properties.setProperty("redirectUri", redirectUri != null ? redirectUri : "http://localhost:8888/redirect");
-            properties.setProperty("signInUrl", signInUrl != null ? signInUrl : "");
-            properties.setProperty("tokenEndpoint", tokenEndpoint != null ? tokenEndpoint : "");
-            properties.setProperty("loginHint", loginHint != null ? loginHint : "");
-            properties.setProperty("preferredTimezone", preferredTimezone != null ? preferredTimezone : "");
-            properties.setProperty("alertMinutes", String.valueOf(alertMinutes));
-            properties.setProperty("defaultIgnoreCertValidation", String.valueOf(defaultIgnoreCertValidation));
-            properties.setProperty("ignoreCertValidation", String.valueOf(ignoreCertValidation));
-            properties.setProperty("flashColor", flashColor != null ? flashColor : "#800000");
-            properties.setProperty("flashTextColor", flashTextColor != null ? flashTextColor : "#ffffff");
-            properties.setProperty("flashOpacity", String.valueOf(flashOpacity));
-            properties.setProperty("flashDurationSeconds", String.valueOf(flashDurationSeconds));
-            properties.setProperty("resyncIntervalMinutes", String.valueOf(resyncIntervalMinutes));
-            properties.setProperty("alertBeepCount", String.valueOf(alertBeepCount));
-            properties.setProperty("alertBeepAfterFlash", String.valueOf(alertBeepAfterFlash));
+            properties.setProperty(KEY_CLIENT_ID, clientId != null ? clientId : "");
+            properties.setProperty(KEY_CLIENT_SECRET, clientSecret != null ? clientSecret : "");
+            properties.setProperty(KEY_TENANT_ID, tenantId != null ? tenantId : DEFAULT_TENANT_ID);
+            properties.setProperty(KEY_REDIRECT_URI, redirectUri != null ? redirectUri : DEFAULT_REDIRECT_URI);
+            properties.setProperty(KEY_SIGN_IN_URL, signInUrl != null ? signInUrl : "");
+            properties.setProperty(KEY_TOKEN_ENDPOINT, tokenEndpoint != null ? tokenEndpoint : "");
+            properties.setProperty(KEY_LOGIN_HINT, loginHint != null ? loginHint : "");
+            properties.setProperty(KEY_PREFERRED_TIMEZONE, preferredTimezone != null ? preferredTimezone : "");
+            properties.setProperty(KEY_ALERT_MINUTES, String.valueOf(alertMinutes));
+            properties.setProperty(KEY_DEFAULT_IGNORE_CERT, String.valueOf(defaultIgnoreCertValidation));
+            properties.setProperty(KEY_IGNORE_CERT, String.valueOf(ignoreCertValidation));
+            properties.setProperty(KEY_FLASH_COLOR, flashColor != null ? flashColor : DEFAULT_FLASH_COLOR);
+            properties.setProperty(KEY_FLASH_TEXT_COLOR, flashTextColor != null ? flashTextColor : DEFAULT_FLASH_TEXT_COLOR);
+            properties.setProperty(KEY_FLASH_OPACITY, String.valueOf(flashOpacity));
+            properties.setProperty(KEY_FLASH_DURATION, String.valueOf(flashDurationSeconds));
+            properties.setProperty(KEY_RESYNC_INTERVAL, String.valueOf(resyncIntervalMinutes));
+            properties.setProperty(KEY_ALERT_BEEP_COUNT, String.valueOf(alertBeepCount));
+            properties.setProperty(KEY_ALERT_BEEP_AFTER_FLASH, String.valueOf(alertBeepAfterFlash));
             if (accessToken != null && !accessToken.isEmpty()) {
-                properties.setProperty("accessToken", accessToken);
+                properties.setProperty(KEY_ACCESS_TOKEN, accessToken);
             }
             if (refreshToken != null && !refreshToken.isEmpty()) {
-                properties.setProperty("refreshToken", refreshToken);
+                properties.setProperty(KEY_REFRESH_TOKEN, refreshToken);
             }
             File configFile = new File(configFilePath);
-            FileOutputStream fos = new FileOutputStream(configFile);
-            try {
+            try (FileOutputStream fos = new FileOutputStream(configFile)) {
                 properties.store(fos, "Outlook Alerter Configuration");
-            } finally {
-                fos.close();
             }
             LogManager.getInstance().info(LogCategory.GENERAL, "Configuration saved to " + configFilePath);
         } catch (Exception e) {
