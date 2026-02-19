@@ -26,6 +26,7 @@ public class SettingsDialog extends JDialog {
     private JSpinner alertMinutesSpinner;
     private JSpinner resyncIntervalSpinner;
     private JSpinner flashDurationSpinner;
+    private JSpinner flashOpacitySpinner;
     private JSpinner alertBeepCountSpinner;
     private JCheckBox alertBeepAfterFlashCheckbox;
     private JTextField signInUrlField;
@@ -121,9 +122,25 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 3;
         formPanel.add(flashDurationSpinner, gbc);
 
-        // Alert beep count setting
+        // Flash opacity setting
         gbc.gridx = 0;
         gbc.gridy = 4;
+        formPanel.add(new JLabel("Screen Flash Opacity (%):"), gbc);
+
+        SpinnerNumberModel flashOpacityModel = new SpinnerNumberModel(
+            (int) Math.round(configManager.getFlashOpacity() * 100),  // convert decimal to percentage
+            10,                              // min (10%)
+            100,                             // max (100%)
+            10                               // step
+        );
+        flashOpacitySpinner = new JSpinner(flashOpacityModel);
+        gbc.gridx = 1;
+        gbc.gridy = 4;
+        formPanel.add(flashOpacitySpinner, gbc);
+
+        // Alert beep count setting
+        gbc.gridx = 0;
+        gbc.gridy = 5;
         formPanel.add(new JLabel("Alert Beep Count:"), gbc);
 
         SpinnerNumberModel beepCountModel = new SpinnerNumberModel(
@@ -134,38 +151,38 @@ public class SettingsDialog extends JDialog {
         );
         alertBeepCountSpinner = new JSpinner(beepCountModel);
         gbc.gridx = 1;
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         formPanel.add(alertBeepCountSpinner, gbc);
 
         // Alert beep after flash setting
         gbc.gridx = 0;
-        gbc.gridy = 5;
+        gbc.gridy = 6;
         formPanel.add(new JLabel("Alert Beep Again After Flash:"), gbc);
 
         alertBeepAfterFlashCheckbox = new JCheckBox("", configManager.getAlertBeepAfterFlash());
         gbc.gridx = 1;
-        gbc.gridy = 5;
+        gbc.gridy = 6;
         formPanel.add(alertBeepAfterFlashCheckbox, gbc);
 
         // Sign-in URL setting
         gbc.gridx = 0;
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         formPanel.add(new JLabel("Sign-in URL:"), gbc);
 
         signInUrlField = new JTextField(configManager.getSignInUrl() != null ? configManager.getSignInUrl() : "", 20);
         gbc.gridx = 1;
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         formPanel.add(signInUrlField, gbc);
 
         // Default Ignore SSL certificate validation setting
         gbc.gridx = 0;
-        gbc.gridy = 7;
+        gbc.gridy = 8;
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc);
 
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation());
         // No longer update immediately when checkbox changes
         gbc.gridx = 1;
-        gbc.gridy = 7;
+        gbc.gridy = 8;
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc);
 
         // Button panel
@@ -233,6 +250,10 @@ public class SettingsDialog extends JDialog {
             // Save flash duration
             int flashDuration = (Integer) flashDurationSpinner.getValue();
             configManager.updateFlashDurationSeconds(flashDuration);
+
+            // Save flash opacity (convert percentage to decimal)
+            int flashOpacityPercent = (Integer) flashOpacitySpinner.getValue();
+            configManager.updateFlashOpacity(flashOpacityPercent / 100.0);
 
             // Save alert beep count
             int beepCount = (Integer) alertBeepCountSpinner.getValue();

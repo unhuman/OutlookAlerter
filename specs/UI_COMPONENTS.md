@@ -134,7 +134,9 @@ refreshCalendarEvents()  [daemon thread]
 | Alert Minutes Before | `JSpinner` | 1–60 | `alertMinutes` |
 | Resync Interval (min) | `JSpinner` | 5–1440 | `resyncIntervalMinutes` |
 | Flash Duration (sec) | `JSpinner` | 1–30 | `flashDurationSeconds` |
+| Flash Opacity (%) | `JSpinner` | 10–100 (step 10) | `flashOpacity` |
 | Alert Beep Count | `JSpinner` | 0–20 | `alertBeepCount` |
+| Alert Beep After Flash | `JCheckBox` | boolean | `alertBeepAfterFlash` |
 | Sign-in URL | `JTextField` | URL | `signInUrl` |
 | Ignore SSL Cert | `JCheckBox` | boolean | `defaultIgnoreCertValidation` |
 
