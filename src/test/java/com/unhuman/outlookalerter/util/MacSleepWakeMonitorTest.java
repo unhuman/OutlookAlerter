@@ -1,27 +1,26 @@
-package com.unhuman.outlookalerter.util
+package com.unhuman.outlookalerter.util;
 
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Nested
-import org.junit.jupiter.api.function.Executable
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 
-import static org.junit.jupiter.api.Assertions.*
+import static org.junit.jupiter.api.Assertions.*;
 
 class MacSleepWakeMonitorTest {
 
-    private MacSleepWakeMonitor monitor
+    private MacSleepWakeMonitor monitor;
 
     @BeforeEach
     void setup() {
-        monitor = MacSleepWakeMonitor.getInstance()
-        monitor.stopMonitoring()
+        monitor = MacSleepWakeMonitor.getInstance();
+        monitor.stopMonitoring();
     }
 
     @AfterEach
     void teardown() {
-        monitor.stopMonitoring()
+        monitor.stopMonitoring();
     }
 
     // ───────── Singleton ─────────
@@ -33,13 +32,13 @@ class MacSleepWakeMonitorTest {
         @Test
         @DisplayName("getInstance returns same instance")
         void sameInstance() {
-            assertSame(MacSleepWakeMonitor.getInstance(), MacSleepWakeMonitor.getInstance())
+            assertSame(MacSleepWakeMonitor.getInstance(), MacSleepWakeMonitor.getInstance());
         }
 
         @Test
         @DisplayName("is never null")
         void notNull() {
-            assertNotNull(MacSleepWakeMonitor.getInstance())
+            assertNotNull(MacSleepWakeMonitor.getInstance());
         }
     }
 
@@ -52,28 +51,28 @@ class MacSleepWakeMonitorTest {
         @Test
         @DisplayName("startMonitoring does not throw")
         void startDoesNotThrow() {
-            assertDoesNotThrow({ monitor.startMonitoring() } as Executable)
+            assertDoesNotThrow(() -> monitor.startMonitoring());
         }
 
         @Test
         @DisplayName("stopMonitoring does not throw when not monitoring")
         void stopWhenNotMonitoring() {
-            assertDoesNotThrow({ monitor.stopMonitoring() } as Executable)
+            assertDoesNotThrow(() -> monitor.stopMonitoring());
         }
 
         @Test
         @DisplayName("double start does not throw")
         void doubleStart() {
-            monitor.startMonitoring()
-            assertDoesNotThrow({ monitor.startMonitoring() } as Executable)
+            monitor.startMonitoring();
+            assertDoesNotThrow(() -> monitor.startMonitoring());
         }
 
         @Test
         @DisplayName("start after stop works")
         void startAfterStop() {
-            monitor.startMonitoring()
-            monitor.stopMonitoring()
-            assertDoesNotThrow({ monitor.startMonitoring() } as Executable)
+            monitor.startMonitoring();
+            monitor.stopMonitoring();
+            assertDoesNotThrow(() -> monitor.startMonitoring());
         }
     }
 
@@ -86,15 +85,13 @@ class MacSleepWakeMonitorTest {
         @Test
         @DisplayName("addWakeListener with null does not throw")
         void nullListener() {
-            assertDoesNotThrow({ monitor.addWakeListener(null) } as Executable)
+            assertDoesNotThrow(() -> monitor.addWakeListener(null));
         }
 
         @Test
         @DisplayName("addWakeListener accepts a runnable")
         void addListener() {
-            assertDoesNotThrow({
-                monitor.addWakeListener({ /* no-op */ } as Runnable)
-            } as Executable)
+            assertDoesNotThrow(() -> monitor.addWakeListener(() -> { /* no-op */ }));
         }
     }
 
@@ -107,7 +104,7 @@ class MacSleepWakeMonitorTest {
         @Test
         @DisplayName("returns non-negative value")
         void nonNegative() {
-            assertTrue(monitor.getTimeSinceWake() >= 0)
+            assertTrue(monitor.getTimeSinceWake() >= 0);
         }
     }
 }

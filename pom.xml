@@ -80,12 +80,7 @@
             <version>5.11.4</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy-test</artifactId>
-            <version>${groovy.version}</version>
-            <scope>test</scope>
-        </dependency>
+
     </dependencies>
 
     <build>
@@ -107,7 +102,6 @@
                                         <versionRange>[1.0,)</versionRange>
                                         <goals>
                                             <goal>compile</goal>
-                                            <goal>compileTests</goal>
                                         </goals>
                                     </pluginExecutionFilter>
                                     <action>
@@ -148,7 +142,6 @@
                     <execution>
                         <goals>
                             <goal>compile</goal>
-                            <goal>compileTests</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -163,14 +156,7 @@
                             </includes>
                         </source>
                     </sources>
-                    <testSources>
-                        <testSource>
-                            <directory>${project.basedir}/src/test/groovy</directory>
-                            <includes>
-                                <include>**/*.groovy</include>
-                            </includes>
-                        </testSource>
-                    </testSources>
+
                 </configuration>
             </plugin>
 

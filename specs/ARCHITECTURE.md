@@ -23,7 +23,7 @@ OutlookAlerter is a macOS/Windows desktop application (Groovy/Java Swing) that m
 - **Apache Groovy 4.0.27** — `groovy`, `groovy-json`, `groovy-dateutil`
 - **JNA 5.17.0** — `jna`, `jna-platform` (native OS access, Windows flash)
 - **JUnit Jupiter 5.11.4** — unit test framework (test scope)
-- **groovy-test 4.0.27** — Groovy test support (test scope)
+- **groovy-test 4.0.27** — Groovy test support (test scope) — _removed: tests converted to Java_
 
 ## Package Structure
 
@@ -177,13 +177,12 @@ OutlookClient.authenticate()
 | Framework | Version | Notes |
 |---|---|---|
 | JUnit Jupiter | 5.11.4 | Test runtime |
-| groovy-test | 4.0.27 | Groovy test support |
 | maven-surefire-plugin | 3.5.2 | `-Djava.awt.headless=true` |
 
 ### Test Structure
 
 ```
-src/test/groovy/com/unhuman/outlookalerter/
+src/test/java/com/unhuman/outlookalerter/
 ├── model/
 │   └── CalendarEventTest          # 24 tests — time math, state, properties, edge cases
 ├── core/
@@ -199,9 +198,9 @@ src/test/groovy/com/unhuman/outlookalerter/
     └── MacSleepWakeMonitorTest     #  9 tests — singleton, lifecycle, listeners
 ```
 
-Total: **124 tests** — all pure unit tests, no mocking frameworks required.
+Total: **124 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
 
-Groovy closures passed to `assertDoesNotThrow` must be explicitly cast to `Executable` to avoid Groovy's ambiguous method resolution between `Executable` and `ThrowingSupplier`.
+Tests call Groovy-compiled source classes directly from Java. Private Groovy fields (e.g., `OutlookClient.GRAPH_ENDPOINT`) are accessed via reflection where necessary.
 
 ### Running Tests
 

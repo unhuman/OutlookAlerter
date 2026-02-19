@@ -161,7 +161,7 @@ All diagnostic and troubleshooting scripts are in the `scripts/` directory. See 
 Outlook Alerter uses Maven for dependency management and building. The project's key dependencies are managed through the `pom.xml` file:
 - Groovy 4.x (core, json, and dateutil modules)
 - JNA 5.17.0 for native system access
-- JUnit Jupiter 5.11.4 + groovy-test (test scope)
+- JUnit Jupiter 5.11.4 (test scope)
 
 ## Testing
 
