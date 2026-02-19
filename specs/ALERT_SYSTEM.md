@@ -313,3 +313,40 @@ outlookAlerterUI.performFullAlert(
                     │ • hide timer (5s)   │
                     └─────────────────────┘
 ```
+
+---
+
+## Test Coverage
+
+**File:** `OutlookAlerterUIAlertTest.java`
+
+Uses `sun.misc.Unsafe.allocateInstance()` to create a minimal `OutlookAlerterUI` without the heavy constructor (no `OutlookClient`, OAuth, or Swing frame). A `RecordingScreenFlasher` captures all flash calls instead of creating windows.
+
+### performFullAlert() tests
+| Test | Verifies |
+|------|----------|
+| invokesFlash | `flashMultiple` called once with correct event subject |
+| handlesMultipleEvents | Two events passed in single batch |
+| handlesNullEvents | Null events list does not throw |
+| handlesEmptyEvents | Empty list produces no flash |
+| beepThreadRuns | Beep thread concurrent with flash (headless: audio is no-op) |
+
+### Screen flash tests
+| Test | Verifies |
+|------|----------|
+| flashReceivesCorrectEventData | Subject, organizer, online-meeting flag preserved |
+| flashReceivesAllEventsInSingleBatch | Three events arrive in one `flashMultiple` call, in order |
+| flashNotTriggeredForNull | Null events → no `flash()` or `flashMultiple()` calls |
+| flashNotTriggeredForEmpty | Empty events list → no flash calls |
+| flashPreservedThroughPipeline | Full `checkForEventAlerts` → `performFullAlert` → `flashMultiple` path preserves event data |
+| forceCleanupSafe | `forceCleanup()` callable without error |
+| separateFlashBatches | Two `performFullAlert` calls produce two distinct flash batches |
+
+### checkForEventAlerts() tests
+| Test | Verifies |
+|------|----------|
+| alertsWithinThreshold | Event within alert-minutes fires flash |
+| doesNotAlertOutsideThreshold | Event far in future produces no alert |
+| noDuplicateAlerts | Same event checked twice only fires one alert |
+| cleansUpEndedEvents | Ended events removed from `alertedEventIds` |
+| alertsMultipleEvents | Multiple qualifying events batched into single alert |
