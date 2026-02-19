@@ -22,6 +22,8 @@ OutlookAlerter is a macOS/Windows desktop application (Groovy/Java Swing) that m
 
 - **Apache Groovy 4.0.27** — `groovy`, `groovy-json`, `groovy-dateutil`
 - **JNA 5.17.0** — `jna`, `jna-platform` (native OS access, Windows flash)
+- **JUnit Jupiter 5.11.4** — unit test framework (test scope)
+- **groovy-test 4.0.27** — Groovy test support (test scope)
 
 ## Package Structure
 
@@ -80,6 +82,31 @@ main(args)
 - Both schedulers use `ScheduledExecutorService` with daemon threads.
 - Sleep/wake detection (`MacSleepWakeMonitor`) restarts schedulers on wake.
 - Alert cache refresh triggered if > 4 hours stale.
+- All scheduled tasks are wrapped with `safeRunScheduledTask()` to catch and log exceptions, preventing silent scheduler death from unhandled `RuntimeException`.
+
+## Reliability & Recovery
+
+The application is designed for long-running, unattended operation (days/weeks). Multiple independent recovery mechanisms ensure it survives network failures, laptop sleep/wake cycles, and transient errors:
+
+### HTTP Timeouts
+All Graph API requests use a 30-second read timeout (`REQUEST_TIMEOUT`). This prevents the HTTP client from hanging indefinitely on stale TCP connections after network changes or sleep/wake.
+
+### Stale-Fetch Detection
+`refreshCalendarEvents()` records `fetchStartTimeMs` at entry. If a new refresh is requested while an old one appears stuck (>`FETCH_TIMEOUT_MS` = 45s), the stale `fetchInProgress` flag is forcibly cleared and the new fetch proceeds. The flag is always reset in a `finally` block.
+
+### Alert-Scheduler Watchdog
+`checkAlertsFromCache()` (runs every 60s) checks whether `lastFetchedEvents` is older than `MAX_CACHE_AGE_MS` (4 hours). If so, it triggers a fresh fetch, acting as a backup if the calendar scheduler has silently died.
+
+### Exception-Safe Scheduling
+All `ScheduledExecutorService` tasks are wrapped with `safeRunScheduledTask(name, closure)` which catches any `Throwable`, logs it, and returns normally — preventing `ScheduledExecutorService` from cancelling future executions after a single failure.
+
+### Non-Blocking UI
+- Token validation errors use tray notifications instead of modal `JOptionPane` dialogs, preventing EDT blocking.
+- `hasValidToken()` checks during tray icon setup run asynchronously off the EDT.
+- Authentication prompts during direct auth use tray notifications instead of blocking dialogs.
+
+### Sleep/Wake Recovery
+`MacSleepWakeMonitor` detects sleep via time-jump polling (threshold: 65s). On wake, registered listeners restart both schedulers and trigger an immediate calendar refresh.
 
 ## Data Flow
 
@@ -125,6 +152,8 @@ OutlookClient.authenticate()
 
 **Critical rule:** All Swing component creation/manipulation MUST happen on the EDT. `MacScreenFlasher.flashMultiple()` uses `SwingUtilities.invokeAndWait()` for window creation.
 
+**Non-blocking rule:** No modal `JOptionPane` dialogs are used on the EDT from background threads. Token validation errors and authentication prompts use non-blocking tray notifications to prevent UI freezes.
+
 ## Configuration Properties
 
 | Property | Type | Default | Description |
@@ -142,6 +171,47 @@ OutlookClient.authenticate()
 | `defaultIgnoreCertValidation` | boolean | false | Skip SSL cert validation |
 | `clientId`, `clientSecret`, `tenantId`, `redirectUri` | String | (empty) | OAuth app registration |
 | `accessToken`, `refreshToken` | String | (empty) | Stored OAuth tokens |
+
+## Testing
+
+| Framework | Version | Notes |
+|---|---|---|
+| JUnit Jupiter | 5.11.4 | Test runtime |
+| groovy-test | 4.0.27 | Groovy test support |
+| maven-surefire-plugin | 3.5.2 | `-Djava.awt.headless=true` |
+
+### Test Structure
+
+```
+src/test/groovy/com/unhuman/outlookalerter/
+├── model/
+│   └── CalendarEventTest          # 24 tests — time math, state, properties, edge cases
+├── core/
+│   ├── ConfigManagerTest           # 24 tests — singleton, load/save, all update methods
+│   ├── OutlookClientTest           # 11 tests — exception types, constants, constructors
+│   └── SingleInstanceManagerTest   #  6 tests — file lock acquire/release/exclusive
+├── ui/
+│   └── IconManagerTest             # 12 tests — icon generation, caching, valid/invalid
+└── util/
+    ├── HtmlUtilTest                # 11 tests — HTML escaping, null, XSS, unicode
+    ├── LogManagerTest              # 22 tests — singleton, levels, buffer, filtering
+    ├── ScreenFlasherFactoryTest    #  5 tests — platform factory, interface contract
+    └── MacSleepWakeMonitorTest     #  9 tests — singleton, lifecycle, listeners
+```
+
+Total: **124 tests** — all pure unit tests, no mocking frameworks required.
+
+Groovy closures passed to `assertDoesNotThrow` must be explicitly cast to `Executable` to avoid Groovy's ambiguous method resolution between `Executable` and `ThrowingSupplier`.
+
+### Running Tests
+
+```bash
+# Tests run automatically as part of the build
+mvn package
+
+# Tests only
+mvn test
+```
 
 ## Build & Run
 

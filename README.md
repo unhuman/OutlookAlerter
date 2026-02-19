@@ -25,6 +25,13 @@ A Groovy application that monitors your Microsoft Outlook/Office 365 calendar an
 - Console mode support for command-line operation
 - Robust timezone handling with configurable preferences
 - Extensive diagnostic and troubleshooting tools (see `scripts/`)
+- Reliability hardening for long-running operation:
+  - HTTP read timeouts (30s) on all Graph API requests prevent hung connections
+  - Stale-fetch detection automatically recovers from stuck refresh cycles
+  - Alert-scheduler watchdog triggers a fresh fetch if the calendar scheduler silently dies
+  - All scheduled tasks wrapped in exception-safe runners to prevent silent scheduler death
+  - Non-blocking tray notifications replace modal dialogs that could freeze the UI
+  - Sleep/wake detection restarts schedulers after laptop resume
 
 ## Authentication and Token Refresh
 
@@ -154,6 +161,35 @@ All diagnostic and troubleshooting scripts are in the `scripts/` directory. See 
 Outlook Alerter uses Maven for dependency management and building. The project's key dependencies are managed through the `pom.xml` file:
 - Groovy 4.x (core, json, and dateutil modules)
 - JNA 5.17.0 for native system access
+- JUnit Jupiter 5.11.4 + groovy-test (test scope)
+
+## Testing
+
+The project includes a comprehensive JUnit 5 test suite covering model, utility, core, and UI classes. All tests run in headless mode for CI compatibility.
+
+### Running Tests
+
+```zsh
+# Run tests as part of the full build
+mvn package
+
+# Run tests only
+mvn test
+```
+
+### Test Coverage
+
+| Test Class | Package | Tests | What's Covered |
+|---|---|---:|---|
+| `CalendarEventTest` | model | 24 | `getMinutesToStart`, `isInProgress`, `hasEnded`, properties, `toString`, edge cases |
+| `HtmlUtilTest` | util | 11 | HTML entity escaping, null/empty handling, XSS patterns, unicode |
+| `LogManagerTest` | util | 22 | Singleton, all log levels, formatting, buffer management, category filtering |
+| `ConfigManagerTest` | core | 24 | Singleton, defaults, load/save, all update methods, malformed values |
+| `IconManagerTest` | ui | 12 | Icon generation, sizes, valid/invalid states, caching |
+| `OutlookClientTest` | core | 11 | `AuthenticationCancelledException`, token constants, constructors |
+| `ScreenFlasherFactoryTest` | util | 5 | Platform factory, interface contract |
+| `SingleInstanceManagerTest` | core | 6 | File lock acquire/release/exclusive |
+| `MacSleepWakeMonitorTest` | util | 9 | Singleton, lifecycle, wake listeners |
 
 ---
 
