@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<jpackage-state version="21.0.4" platform="macOS">
+  <app-version>1.0</app-version>
+  <main-launcher>OutlookAlerter</main-launcher>
+  <main-class>com.unhuman.outlookalerter.OutlookAlerter</main-class>
+  <signed>false</signed>
+  <app-store>false</app-store></jpackage-state>

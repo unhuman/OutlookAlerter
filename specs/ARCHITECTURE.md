@@ -2,7 +2,7 @@
 
 ## Overview
 
-OutlookAlerter is a macOS/Windows desktop application (Groovy/Java Swing) that monitors Microsoft Outlook calendar events via the Microsoft Graph API and alerts users when meetings are about to start. It runs as a system tray application with periodic polling.
+OutlookAlerter is a macOS/Windows desktop application (Java Swing) that monitors Microsoft Outlook calendar events via the Microsoft Graph API and alerts users when meetings are about to start. It runs as a system tray application with periodic polling.
 
 ## Project Metadata
 
@@ -12,7 +12,7 @@ OutlookAlerter is a macOS/Windows desktop application (Groovy/Java Swing) that m
 | Artifact ID | `OutlookAlerter` |
 | Version | `1.0.0-SNAPSHOT` |
 | Java Target | 21 (minimum 11) |
-| Language | Groovy 4.0.27 (statically compiled) |
+| Language | Java 21 |
 | Build | Maven (`mvn package`) |
 | Main Class | `com.unhuman.outlookalerter.OutlookAlerter` |
 | macOS Bundle | jpackage → `target/OutlookAlerter.app` |
@@ -20,10 +20,9 @@ OutlookAlerter is a macOS/Windows desktop application (Groovy/Java Swing) that m
 
 ## Dependencies
 
-- **Apache Groovy 4.0.27** — `groovy`, `groovy-json`, `groovy-dateutil`
+- **org.json 20240303** — JSON parsing
 - **JNA 5.17.0** — `jna`, `jna-platform` (native OS access, Windows flash)
 - **JUnit Jupiter 5.11.4** — unit test framework (test scope)
-- **groovy-test 4.0.27** — Groovy test support (test scope) — _removed: tests converted to Java_
 
 ## Package Structure
 
@@ -200,7 +199,7 @@ src/test/java/com/unhuman/outlookalerter/
 
 Total: **124 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
 
-Tests call Groovy-compiled source classes directly from Java. Private Groovy fields (e.g., `OutlookClient.GRAPH_ENDPOINT`) are accessed via reflection where necessary.
+Tests call Java source classes directly. Private fields (e.g., `OutlookClient.GRAPH_ENDPOINT`) are accessed via reflection where necessary.
 
 ### Running Tests
 

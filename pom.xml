@@ -10,13 +10,12 @@
     <packaging>jar</packaging>
 
     <name>OutlookAlerter</name>
-    <description>A Groovy application that monitors your Microsoft Outlook/Office 365 calendar and alerts you when meetings are about to start.</description>
+    <description>A Java application that monitors your Microsoft Outlook/Office 365 calendar and alerts you when meetings are about to start.</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <groovy.version>4.0.27</groovy.version>
         <jna.version>5.17.0</jna.version>
         <!-- Default: skip jpackage on non-macOS; overridden by mac profile -->
         <skip.jpackage>true</skip.jpackage>
@@ -44,23 +43,6 @@
     </repositories>
 
     <dependencies>
-        <!-- Groovy Dependencies -->
-        <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy</artifactId>
-            <version>${groovy.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy-json</artifactId>
-            <version>${groovy.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.groovy</groupId>
-            <artifactId>groovy-dateutil</artifactId>
-            <version>${groovy.version}</version>
-        </dependency>
-
         <!-- JNA for native system access -->
         <dependency>
             <groupId>net.java.dev.jna</groupId>
@@ -71,6 +53,13 @@
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna-platform</artifactId>
             <version>${jna.version}</version>
+        </dependency>
+
+        <!-- JSON parsing (replaces groovy-json in Java conversions) -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20240303</version>
         </dependency>
 
         <!-- Test Dependencies -->
@@ -84,39 +73,34 @@
     </dependencies>
 
     <build>
-        <sourceDirectory>src/main/groovy</sourceDirectory>
-        <pluginManagement>
-            <plugins>
-                <!-- Tell M2E (Eclipse/VS Code) to execute gmavenplus goals -->
-                <plugin>
-                    <groupId>org.eclipse.m2e</groupId>
-                    <artifactId>lifecycle-mapping</artifactId>
-                    <version>1.0.0</version>
-                    <configuration>
-                        <lifecycleMappingMetadata>
-                            <pluginExecutions>
-                                <pluginExecution>
-                                    <pluginExecutionFilter>
-                                        <groupId>org.codehaus.gmavenplus</groupId>
-                                        <artifactId>gmavenplus-plugin</artifactId>
-                                        <versionRange>[1.0,)</versionRange>
-                                        <goals>
-                                            <goal>compile</goal>
-                                        </goals>
-                                    </pluginExecutionFilter>
-                                    <action>
-                                        <execute>
-                                            <runOnIncremental>false</runOnIncremental>
-                                        </execute>
-                                    </action>
-                                </pluginExecution>
-                            </pluginExecutions>
-                        </lifecycleMappingMetadata>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
+        <sourceDirectory>src/main/java</sourceDirectory>
+        <testSourceDirectory>src/test/java</testSourceDirectory>
         <plugins>
+            <!-- JaCoCo for bytecode-level code coverage -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                        <configuration>
+                            <sourceEncoding>UTF-8</sourceEncoding>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Maven Surefire Plugin for JUnit 5 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -129,34 +113,7 @@
                         <include>**/*Spec.java</include>
                     </includes>
                     <!-- Run tests in headless mode for CI compatibility -->
-                    <argLine>-Djava.awt.headless=true</argLine>
-                </configuration>
-            </plugin>
-
-            <!-- Groovy Maven Plugin -->
-            <plugin>
-                <groupId>org.codehaus.gmavenplus</groupId>
-                <artifactId>gmavenplus-plugin</artifactId>
-                <version>4.2.0</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <source>21</source>
-                    <target>21</target>
-                    <sources>
-                        <source>
-                            <directory>${project.basedir}/src/main/groovy</directory>
-                            <includes>
-                                <include>**/*.groovy</include>
-                            </includes>
-                        </source>
-                    </sources>
-
+                    <argLine>@{argLine} -Djava.awt.headless=true</argLine>
                 </configuration>
             </plugin>
 

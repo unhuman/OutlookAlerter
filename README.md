@@ -1,6 +1,6 @@
 # Outlook Alerter
 
-A Groovy application that monitors your Microsoft Outlook/Office 365 calendar and alerts you when meetings are about to start by flashing the screen.
+A Java application that monitors your Microsoft Outlook/Office 365 calendar and alerts you when meetings are about to start by flashing the screen.
 
 ## Features
 
@@ -159,7 +159,7 @@ All diagnostic and troubleshooting scripts are in the `scripts/` directory. See 
 ## Build System
 
 Outlook Alerter uses Maven for dependency management and building. The project's key dependencies are managed through the `pom.xml` file:
-- Groovy 4.x (core, json, and dateutil modules)
+- org.json for JSON parsing
 - JNA 5.17.0 for native system access
 - JUnit Jupiter 5.11.4 (test scope)
 
