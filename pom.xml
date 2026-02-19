@@ -19,6 +19,8 @@
         <jna.version>5.17.0</jna.version>
         <!-- Default: skip jpackage on non-macOS; overridden by mac profile -->
         <skip.jpackage>true</skip.jpackage>
+        <!-- Default: run tests headless. Use -Dheadless=false to see visual alerts -->
+        <headless>true</headless>
     </properties>
 
     <profiles>
@@ -112,8 +114,10 @@
                         <include>**/*Tests.java</include>
                         <include>**/*Spec.java</include>
                     </includes>
-                    <!-- Run tests in headless mode for CI compatibility -->
-                    <argLine>@{argLine} -Djava.awt.headless=true</argLine>
+                    <!-- Run tests in headless mode for CI compatibility.
+                         Override with -Dheadless=false to see visual alerts locally:
+                         mvn package -Dheadless=false -->
+                    <argLine>@{argLine} -Djava.awt.headless=${headless}</argLine>
                 </configuration>
             </plugin>
 

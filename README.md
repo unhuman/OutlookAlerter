@@ -170,11 +170,14 @@ The project includes a comprehensive JUnit 5 test suite covering model, utility,
 ### Running Tests
 
 ```zsh
-# Run tests as part of the full build
+# Run tests as part of the full build (headless — no visual output)
 mvn package
 
-# Run tests only
+# Run tests only (headless)
 mvn test
+
+# Run with visual alerts (see screen flash, banners, hear beeps)
+mvn package -Dheadless=false
 ```
 
 ### Test Coverage
@@ -188,6 +191,7 @@ mvn test
 | `IconManagerTest` | ui | 12 | Icon generation, sizes, valid/invalid states, caching |
 | `OutlookClientTest` | core | 11 | `AuthenticationCancelledException`, token constants, constructors |
 | `ScreenFlasherFactoryTest` | util | 5 | Platform factory, interface contract |
+| `OutlookAlerterUIAlertTest` | ui | 17 | `performFullAlert`, screen flash, beep thread, `checkForEventAlerts`, dedup, cleanup |
 | `SingleInstanceManagerTest` | core | 6 | File lock acquire/release/exclusive |
 | `MacSleepWakeMonitorTest` | util | 9 | Singleton, lifecycle, wake listeners |
 
