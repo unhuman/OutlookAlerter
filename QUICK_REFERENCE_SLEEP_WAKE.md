@@ -97,5 +97,5 @@ No configuration changes needed - the fixes work automatically on macOS.
 ## Build Info
 - Built: November 17, 2025
 - Status: ✅ SUCCESS
-- JAR: `target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar`
+- JAR: `target/OutlookAlerter-2.0.0-jar-with-dependencies.jar`
 

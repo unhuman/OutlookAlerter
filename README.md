@@ -81,12 +81,12 @@ You can run Outlook Alerter in two modes, either using the JAR directly or using
 
 #### GUI Mode (Default)
 ```zsh
-java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar
 ```
 
 #### Console Mode
 ```zsh
-java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar --console
+java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar --console
 ```
 
 ### Using Shell Scripts

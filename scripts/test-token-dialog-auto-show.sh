@@ -19,7 +19,7 @@ echo "signInUrl=https://developer.microsoft.com/en-us/graph" >> ~/.config/Outloo
 echo "ignoreCertValidation=false" >> ~/.config/OutlookAlerter/config.properties
 
 echo "Running OutlookAlerter with missing token - dialog should automatically appear..."
-java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar
 
 echo "Test complete - restoring original settings..."
 if [ -f ~/.config/OutlookAlerter/config.properties.bak ]; then

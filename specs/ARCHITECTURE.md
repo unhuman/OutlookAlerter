@@ -10,7 +10,7 @@ OutlookAlerter is a macOS/Windows desktop application (Java Swing) that monitors
 |---|---|
 | Group ID | `com.unhuman` |
 | Artifact ID | `OutlookAlerter` |
-| Version | `1.0.0-SNAPSHOT` |
+| Version | `2.0.0` |
 | Java Target | 21 (minimum 11) |
 | Language | Java 21 |
 | Build | Maven (`mvn package`) |
@@ -218,10 +218,10 @@ mvn test
 mvn package
 
 # Run (GUI mode, default)
-java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar
 
 # Run (console mode)
-java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar --console
+java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar --console
 
 # macOS app bundle is at: target/OutlookAlerter.app
 ```

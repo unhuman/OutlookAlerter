@@ -72,4 +72,4 @@ println "Test completed"
 EOL
 
 # Run the test
-java -cp "target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar" groovy.ui.GroovyMain /tmp/TestExactFlashDuration.groovy
+java -cp "target/OutlookAlerter-2.0.0-jar-with-dependencies.jar" groovy.ui.GroovyMain /tmp/TestExactFlashDuration.groovy

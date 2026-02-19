@@ -16,7 +16,7 @@ echo "Removing configuration to test default URL handling..."
 rm -f ~/.config/OutlookAlerter/config.properties
 
 echo "Running OutlookAlerter with no configuration - dialog should show with default URL..."
-java -jar target/OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar
+java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar
 
 echo "Test complete - restoring original settings..."
 if [ -f ~/.config/OutlookAlerter/config.properties.bak ]; then

@@ -24,7 +24,7 @@ fi
 echo -e "${YELLOW}Running screen flash test...${NC}"
 
 # No need to build again, just ensure package exists
-JAR_NAME="OutlookAlerter-1.0.0-SNAPSHOT-jar-with-dependencies.jar"
+JAR_NAME="OutlookAlerter-2.0.0-jar-with-dependencies.jar"
 JAR_PATH="target/$JAR_NAME"
 if [ ! -f "$JAR_PATH" ]; then
     echo -e "${YELLOW}Jar not found, running mvn package...${NC}"
