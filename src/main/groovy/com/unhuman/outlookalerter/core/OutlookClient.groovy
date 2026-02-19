@@ -16,6 +16,7 @@ import com.unhuman.outlookalerter.util.LogCategory
 import com.unhuman.outlookalerter.util.ScreenFlasher
 import com.unhuman.outlookalerter.util.ScreenFlasherFactory
 import javax.swing.JOptionPane
+import java.awt.TrayIcon
 import java.net.URI
 
 // Imports for SSL/TLS certificate handling
@@ -351,13 +352,16 @@ class OutlookClient {
                         LogManager.getInstance().error(LogCategory.GENERAL, "Token validation failed after ${MAX_VALIDATION_ATTEMPTS} attempts.")
                         throw new AuthenticationCancelledException("Token validation failed after ${MAX_VALIDATION_ATTEMPTS} attempts", "validation_exhausted")
                     }
-                    LogManager.getInstance().info(LogCategory.GENERAL, "Token validation failed. The token appears to be invalid. Requesting a new token...")
-                    JOptionPane.showMessageDialog(
-                        null,
-                        "The provided token was rejected by Microsoft's server. Please get a new token and try again.",
-                        "Invalid Token",
-                        JOptionPane.ERROR_MESSAGE
-                    )
+                    LogManager.getInstance().warn(LogCategory.GENERAL, "Token validation failed (attempt ${validationAttempts}). The token appears to be invalid. Requesting a new token...")
+                    // Non-blocking notification instead of modal JOptionPane that can
+                    // block the CalendarFetchThread indefinitely when minimized to tray
+                    if (outlookAlerterUI != null) {
+                        outlookAlerterUI.showTrayNotification(
+                            "Invalid Token",
+                            "The provided token was rejected by Microsoft's server. Please get a new token.",
+                            TrayIcon.MessageType.ERROR
+                        )
+                    }
                     // Get new tokens from user by showing the dialog again
                     tokens = getTokensFromUser()
                     if (tokens == null) {

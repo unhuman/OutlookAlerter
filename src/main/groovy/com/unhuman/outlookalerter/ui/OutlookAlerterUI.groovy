@@ -344,9 +344,10 @@ class OutlookAlerterUI extends JFrame {
                         trayIcon = null
                     }
                     
-                    // Create icon based on token validity
-                    boolean tokenInvalid = !outlookClient.hasValidToken()
-                    Image trayIconImage = IconManager.getIconImage(tokenInvalid)
+                    // Use optimistic default (valid) to avoid blocking EDT with HTTP call.
+                    // hasValidToken() makes a blocking HTTP request to /me (up to 60s).
+                    // The real token state will be checked asynchronously below.
+                    Image trayIconImage = IconManager.getIconImage(false)
                     
                     trayIcon = new TrayIcon(trayIconImage, "Outlook Alerter - Meeting Alerts", popup)
                     trayIcon.setImageAutoSize(true)
@@ -378,6 +379,19 @@ class OutlookAlerterUI extends JFrame {
                     
                     // Note: Default close operation is already set in constructor
                     LogManager.getInstance().info(LogCategory.GENERAL, "System tray integration enabled successfully")
+
+                    // Async token check: validate off-EDT and update the tray icon
+                    calendarScheduler.submit({
+                        try {
+                            boolean tokenInvalid = !outlookClient.hasValidToken()
+                            if (tokenInvalid) {
+                                SwingUtilities.invokeLater({ updateIcons(true) } as Runnable)
+                            }
+                        } catch (Exception ex) {
+                            LogManager.getInstance().error(LogCategory.GENERAL,
+                                "Error checking initial token validity: " + ex.getMessage())
+                        }
+                    } as Runnable)
                 } catch (Exception e) {
                     LogManager.getInstance().error(LogCategory.GENERAL, "Error adding system tray icon: " + e.getMessage(), e)
                     LogManager.getInstance().info(LogCategory.GENERAL, "Will continue without system tray integration")
@@ -394,7 +408,7 @@ class OutlookAlerterUI extends JFrame {
     /**
      * Display a notification message in the system tray
      */
-    private void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
+    void showTrayNotification(String title, String message, TrayIcon.MessageType type) {
         if (trayIcon != null) {
             try {
                 trayIcon.displayMessage(title, message, type)
