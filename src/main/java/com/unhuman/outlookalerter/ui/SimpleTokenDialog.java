@@ -129,23 +129,22 @@ public class SimpleTokenDialog {
      */
     private void createUI() {
         try {
-            // Get active window to use as parent
-            Window activeWindow = FocusManager.getCurrentManager().getActiveWindow();
-            if (activeWindow == null) {
-                // Fall back to focused window
-                activeWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
-            }
-            if (activeWindow == null) {
-                // Last resort - get all frames
-                Frame[] frames = Frame.getFrames();
-                for (Frame f : frames) {
-                    if (f.isVisible()) {
-                        activeWindow = f;
+            // Find the main application frame as parent — avoid transient windows
+            // (flash overlays, alert banners) that may be disposed while this dialog
+            // is open, which would also dispose this modal dialog.
+            parentFrame = null;
+            Frame[] frames = Frame.getFrames();
+            for (Frame f : frames) {
+                if (f.isVisible() && f instanceof JFrame
+                        && f.getTitle() != null && f.getTitle().startsWith("Outlook Alerter")) {
+                    // Prefer the main application window (its title starts with "Outlook Alerter")
+                    // but NOT undecorated popup-type windows (banners/flash overlays)
+                    if (!((JFrame) f).isUndecorated()) {
+                        parentFrame = (JFrame) f;
                         break;
                     }
                 }
             }
-            parentFrame = activeWindow instanceof JFrame ? (JFrame) activeWindow : null;
 
             // Create modal dialog
             frame = new JDialog(parentFrame, "Outlook Alerter - Token Entry", true);

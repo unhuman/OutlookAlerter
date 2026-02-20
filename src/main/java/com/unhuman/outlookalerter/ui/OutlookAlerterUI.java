@@ -193,7 +193,9 @@ public class OutlookAlerterUI extends JFrame {
     private volatile boolean isTokenDialogActive = false;
 
     // Track last system wake time for safe UI display (volatile for cross-thread visibility)
-    private volatile long lastSystemWakeTime = System.currentTimeMillis();
+    // Initialized to 0 so that isSafeToShowUI() returns true at app startup.
+    // Only actual system wake events (from MacSleepWakeMonitor) update this value.
+    private volatile long lastSystemWakeTime = 0L;
 
     // Banner components (CopyOnWriteArrayList for thread-safe access from EDT and timer callbacks)
     private final List<JFrame> alertBannerWindows = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -346,10 +348,11 @@ public class OutlookAlerterUI extends JFrame {
                         trayIcon = null;
                     }
 
-                    // Use optimistic default (valid) to avoid blocking EDT with HTTP call.
-                    // hasValidToken() makes a blocking HTTP request to /me (up to 60s).
-                    // The real token state will be checked asynchronously below.
-                    Image trayIconImage = IconManager.getIconImage(false);
+                    // Use the token validity state already determined in the constructor
+                    // (stored in currentIconInvalidState) rather than an optimistic default.
+                    // This avoids a brief blue flash when the token is actually invalid.
+                    boolean trayIconInvalid = currentIconInvalidState != null ? currentIconInvalidState : false;
+                    Image trayIconImage = IconManager.getIconImage(trayIconInvalid);
 
                     trayIcon = new TrayIcon(trayIconImage, "Outlook Alerter - Meeting Alerts", popup);
                     trayIcon.setImageAutoSize(true);
@@ -780,6 +783,9 @@ public class OutlookAlerterUI extends JFrame {
             } finally {
                 // Always release the fetch guard so future refreshes can proceed
                 fetchInProgress.set(false);
+                // Always re-enable the refresh button — the catch blocks above
+                // already do this, but this covers unexpected Error types too.
+                SwingUtilities.invokeLater(() -> refreshButton.setEnabled(true));
             }
         }, "CalendarFetchThread");
 
@@ -1405,28 +1411,37 @@ public class OutlookAlerterUI extends JFrame {
      */
     public Map<String, String> promptForTokens(String signInUrl) {
         try {
-            // Check if it's safe to show UI
-            if (!isSafeToShowUI()) {
-                LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI: Delaying token dialog - system not ready");
-                // Schedule retry after delay
-                // Schedule retry on background thread (NOT EDT — promptForTokens uses invokeAndWait internally)
-                Timer retryTimer = new Timer(2000, (ActionEvent e) -> {
-                    new Thread(() -> {
-                        if (isSafeToShowUI()) {
-                            promptForTokens(signInUrl);
-                        }
-                    }, "TokenDialogRetryThread").start();
-                    ((Timer) e.getSource()).stop();
-                });
-                retryTimer.setRepeats(false);
-                retryTimer.start();
-                return null;
+            // Wait until it's safe to show UI (e.g., after system wake stabilizes).
+            // Block the calling thread instead of returning null, because returning
+            // null is treated as "user cancelled" by getTokensFromUser() and the
+            // dialog would never be shown.
+            int safetyWaitAttempts = 0;
+            while (!isSafeToShowUI() && safetyWaitAttempts < 10) {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                        "UI: Waiting for system to stabilize before showing token dialog (attempt " + (safetyWaitAttempts + 1) + ")");
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+                safetyWaitAttempts++;
             }
 
             // Check EDT responsiveness
-            if (!isEDTResponsive()) {
-                LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI: EDT is not responsive, cannot show token dialog");
-                return null;
+            // Wait for EDT to become responsive (flash/banner creation may temporarily
+            // saturate the EDT, but that's transient — wait rather than give up).
+            int edtWaitAttempts = 0;
+            while (!isEDTResponsive() && edtWaitAttempts < 5) {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                        "UI: EDT busy, waiting before showing token dialog (attempt " + (edtWaitAttempts + 1) + ")");
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+                edtWaitAttempts++;
             }
 
             isTokenDialogActive = true;
