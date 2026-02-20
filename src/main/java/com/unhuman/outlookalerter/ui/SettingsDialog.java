@@ -339,7 +339,7 @@ public class SettingsDialog extends JDialog {
                     "To get a Client ID:\n" +
                     "1. Go to portal.azure.com → Azure Active Directory → App registrations\n" +
                     "2. Click 'New registration'\n" +
-                    "3. Name: 'OutlookAlerter', Redirect URI: http://localhost:8888/redirect\n" +
+                    "3. Name: 'OutlookAlerter', Redirect URI: http://localhost:8888\n" +
                     "4. Copy the 'Application (client) ID'",
                     "Client ID Required",
                     JOptionPane.INFORMATION_MESSAGE);

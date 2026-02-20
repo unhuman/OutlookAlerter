@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Nested;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -169,6 +170,70 @@ class OutlookClientTest {
             Field field = OutlookClient.class.getDeclaredField("REQUEST_TIMEOUT");
             field.setAccessible(true);
             assertEquals(Duration.ofSeconds(60), field.get(null));
+        }
+    }
+
+    // ───────── Token Format Validation ─────────
+
+    @Nested
+    @DisplayName("isValidTokenFormat")
+    class TokenFormatValidation {
+
+        private boolean invokeIsValidTokenFormat(String token) throws Exception {
+            OutlookClient client = new OutlookClient(configManager);
+            Method method = OutlookClient.class.getDeclaredMethod("isValidTokenFormat", String.class);
+            method.setAccessible(true);
+            return (boolean) method.invoke(client, token);
+        }
+
+        @Test
+        @DisplayName("rejects null token")
+        void rejectsNull() throws Exception {
+            assertFalse(invokeIsValidTokenFormat(null));
+        }
+
+        @Test
+        @DisplayName("rejects empty token")
+        void rejectsEmpty() throws Exception {
+            assertFalse(invokeIsValidTokenFormat(""));
+        }
+
+        @Test
+        @DisplayName("rejects whitespace-only token")
+        void rejectsWhitespace() throws Exception {
+            assertFalse(invokeIsValidTokenFormat("   "));
+        }
+
+        @Test
+        @DisplayName("rejects very short token")
+        void rejectsShortToken() throws Exception {
+            assertFalse(invokeIsValidTokenFormat("abc"));
+        }
+
+        @Test
+        @DisplayName("accepts standard JWT token (3 dot-separated parts)")
+        void acceptsJwtToken() throws Exception {
+            assertTrue(invokeIsValidTokenFormat("eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signature123"));
+        }
+
+        @Test
+        @DisplayName("accepts MSAL compact/opaque token (no dots, starts with Ew)")
+        void acceptsMsalCompactToken() throws Exception {
+            // Simulating the format observed in real MSAL v2 tokens
+            assertTrue(invokeIsValidTokenFormat("EwBIBMl6BAAUu4TQbLz1234567890abcdefghijklmnop"));
+        }
+
+        @Test
+        @DisplayName("accepts long opaque token without dots")
+        void acceptsLongOpaqueToken() throws Exception {
+            String token = "a".repeat(1000);
+            assertTrue(invokeIsValidTokenFormat(token));
+        }
+
+        @Test
+        @DisplayName("rejects JWT with empty parts")
+        void rejectsJwtWithEmptyParts() throws Exception {
+            assertFalse(invokeIsValidTokenFormat("header..signature"));
         }
     }
 }

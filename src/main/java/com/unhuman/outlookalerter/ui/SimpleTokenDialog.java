@@ -27,6 +27,7 @@ public class SimpleTokenDialog {
     private static volatile boolean isShowing = false;
     private boolean isTokenSubmitted = false;  // Track if token was successfully submitted
     private boolean isExplicitCancel = false;  // Track if user explicitly cancelled
+    private boolean msalAuthenticated = false; // Skip JWT format validation for MSAL-acquired tokens
 
     // Lock object for thread safety
     private static final Object LOCK = new Object();
@@ -175,8 +176,9 @@ public class SimpleTokenDialog {
                 JPanel panel = new JPanel(new BorderLayout(10, 10));
                 panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-                // Instructions at top - adapt based on whether MSAL is configured
-                boolean msalEnabled = msalAuthProvider != null && msalAuthProvider.isConfigured();
+                // Instructions at top - adapt based on whether MSAL is available
+                // MSAL is available if the provider exists (default client ID can be used)
+                boolean msalEnabled = msalAuthProvider != null;
                 String instructionsHtml;
                 if (msalEnabled) {
                     instructionsHtml =
@@ -279,20 +281,37 @@ public class SimpleTokenDialog {
                 });
 
                 JButton openBrowserButton = new JButton(
-                        msalAuthProvider != null && msalAuthProvider.isConfigured()
+                        msalAuthProvider != null
                                 ? "Sign In with Browser"
                                 : "Open Sign-in Page");
                 openBrowserButton.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
-                        if (msalAuthProvider != null && msalAuthProvider.isConfigured()) {
+                        if (msalAuthProvider != null) {
+                            // Auto-configure default client ID if not explicitly set
+                            if (!msalAuthProvider.isConfigured()) {
+                                String defaultId = ConfigManager.getDefaultClientId();
+                                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                        "Auto-configuring default client ID for OAuth sign-in");
+                                ConfigManager.getInstance().updateClientId(defaultId);
+                            }
                             // MSAL interactive auth — opens browser, captures token automatically
                             performMsalInteractiveAuth(openBrowserButton);
                         } else {
-                            // Legacy: just open the sign-in URL in browser
+                            // Legacy: open the sign-in URL in browser.
+                            // If the signInUrl is a raw OAuth authorize endpoint (e.g. from
+                            // leftover config), fall back to Graph Explorer so the user can
+                            // manually obtain a token — a bare authorize endpoint will just
+                            // redirect to localhost where nothing is listening.
+                            String urlToOpen = signInUrl;
+                            if (urlToOpen != null && urlToOpen.contains("/oauth2/") && urlToOpen.contains("/authorize")) {
+                                urlToOpen = DEFAULT_GRAPH_URL + "/graph-explorer";
+                                LogManager.getInstance().warn(LogCategory.DATA_FETCH,
+                                        "Sign-in URL looks like a raw OAuth authorize endpoint; opening Graph Explorer instead: " + urlToOpen);
+                            }
                             try {
-                                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Opening browser for sign-in: " + signInUrl);
-                                Desktop.getDesktop().browse(new java.net.URI(signInUrl));
+                                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Opening browser for sign-in: " + urlToOpen);
+                                Desktop.getDesktop().browse(new java.net.URI(urlToOpen));
                             } catch (Exception ex) {
                                 LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error opening browser: " + ex.getMessage());
                                 JOptionPane.showMessageDialog(
@@ -517,15 +536,18 @@ public class SimpleTokenDialog {
                 }
 
                 // Validate token format - must contain two periods (JWT format)
-                String[] parts = token.split("\\.");
-                if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty() || parts[2].isEmpty()) {
-                    JOptionPane.showMessageDialog(
-                        frame,
-                        "The token does not appear to be valid. It should contain three parts separated by periods (.).",
-                        "Invalid Token Format",
-                        JOptionPane.ERROR_MESSAGE
-                    );
-                    return;
+                // Skip this check for MSAL browser-authenticated tokens (already validated by Microsoft)
+                if (!msalAuthenticated) {
+                    String[] parts = token.split("\\.");
+                    if (parts.length != 3 || parts[0].isEmpty() || parts[1].isEmpty() || parts[2].isEmpty()) {
+                        JOptionPane.showMessageDialog(
+                            frame,
+                            "The token does not appear to be valid. It should contain three parts separated by periods (.).",
+                            "Invalid Token Format",
+                            JOptionPane.ERROR_MESSAGE
+                        );
+                        return;
+                    }
                 }
 
                 // Get certificate validation setting directly from field
@@ -604,23 +626,49 @@ public class SimpleTokenDialog {
         // Disable button and show status
         SwingUtilities.invokeLater(() -> {
             triggerButton.setEnabled(false);
-            triggerButton.setText("Waiting for browser...");
+            triggerButton.setText("Cancel Sign-In");
+            triggerButton.setEnabled(true);  // Re-enable as a cancel button
             if (statusLabel != null) {
-                statusLabel.setText("Complete sign-in in your browser...");
+                statusLabel.setText("Browser opened — complete sign-in there...");
                 statusLabel.setForeground(Color.BLUE);
             }
         });
 
+        // Track whether auth was cancelled via the button
+        final boolean[] cancelled = {false};
+
         // Run MSAL interactive auth on a background thread to avoid blocking EDT
         Thread authThread = new Thread(() -> {
             try {
+                // Temporarily repurpose button as cancel
+                SwingUtilities.invokeLater(() -> {
+                    // Remove old listeners and add a cancel listener
+                    for (java.awt.event.ActionListener al : triggerButton.getActionListeners()) {
+                        triggerButton.removeActionListener(al);
+                    }
+                    triggerButton.addActionListener(ev -> {
+                        cancelled[0] = true;
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                "SimpleTokenDialog: User cancelled MSAL interactive auth");
+                        if (msalAuthProvider != null) {
+                            msalAuthProvider.cancelPendingAuth();
+                        }
+                        triggerButton.setEnabled(false);
+                        triggerButton.setText("Cancelling...");
+                        if (statusLabel != null) {
+                            statusLabel.setText("Cancelling sign-in...");
+                            statusLabel.setForeground(Color.ORANGE);
+                        }
+                    });
+                });
+
                 String accessToken = msalAuthProvider.acquireTokenInteractively();
 
                 if (accessToken != null && !accessToken.isEmpty()) {
                     LogManager.getInstance().info(LogCategory.DATA_FETCH,
                             "SimpleTokenDialog: MSAL interactive auth successful");
 
-                    // Auto-populate the token and submit
+                    // Auto-populate the token and submit (skip JWT format validation — MSAL token is trusted)
                     SwingUtilities.invokeLater(() -> {
                         if (tokenField != null) {
                             tokenField.setText(accessToken);
@@ -629,29 +677,41 @@ public class SimpleTokenDialog {
                             statusLabel.setText("Authentication successful!");
                             statusLabel.setForeground(new Color(0, 128, 0)); // dark green
                         }
-                        // Auto-submit the token
+                        // Restore button before submitting
+                        restoreSignInButton(triggerButton);
+                        // Submit directly, skipping JWT format validation since MSAL tokens are pre-validated
+                        msalAuthenticated = true;
                         submitToken();
+                        msalAuthenticated = false;
                     });
                 } else {
                     LogManager.getInstance().warn(LogCategory.DATA_FETCH,
                             "SimpleTokenDialog: MSAL interactive auth returned no token");
+                    final String msg = cancelled[0]
+                            ? "Sign-in cancelled."
+                            : "Sign-in timed out or failed. Your organization may require admin consent. Try Graph Explorer instead.";
                     SwingUtilities.invokeLater(() -> {
-                        triggerButton.setEnabled(true);
-                        triggerButton.setText("Sign In with Browser");
+                        restoreSignInButton(triggerButton);
                         if (statusLabel != null) {
-                            statusLabel.setText("Sign-in failed or was cancelled. Try again or use Graph Explorer.");
+                            statusLabel.setText(msg);
                             statusLabel.setForeground(Color.RED);
                         }
                     });
                 }
             } catch (Exception ex) {
+                // Unwrap to find root cause
+                Throwable cause = ex;
+                while (cause.getCause() != null && cause.getCause() != cause) {
+                    cause = cause.getCause();
+                }
+                String rootMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
                 LogManager.getInstance().error(LogCategory.DATA_FETCH,
-                        "SimpleTokenDialog: MSAL interactive auth error: " + ex.getMessage(), ex);
+                        "SimpleTokenDialog: MSAL interactive auth error: " + rootMsg, ex);
+                final String errorDisplay = rootMsg.length() > 120 ? rootMsg.substring(0, 120) + "..." : rootMsg;
                 SwingUtilities.invokeLater(() -> {
-                    triggerButton.setEnabled(true);
-                    triggerButton.setText("Sign In with Browser");
+                    restoreSignInButton(triggerButton);
                     if (statusLabel != null) {
-                        statusLabel.setText("Error: " + ex.getMessage());
+                        statusLabel.setText("Error: " + errorDisplay);
                         statusLabel.setForeground(Color.RED);
                     }
                 });
@@ -659,6 +719,28 @@ public class SimpleTokenDialog {
         }, "MsalInteractiveAuthThread");
         authThread.setDaemon(true);
         authThread.start();
+    }
+
+    /**
+     * Restore the Sign In button to its original state after MSAL auth completes or is cancelled.
+     */
+    private void restoreSignInButton(JButton button) {
+        for (java.awt.event.ActionListener al : button.getActionListeners()) {
+            button.removeActionListener(al);
+        }
+        button.addActionListener(e -> {
+            if (msalAuthProvider != null) {
+                if (!msalAuthProvider.isConfigured()) {
+                    String defaultId = ConfigManager.getDefaultClientId();
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                            "Auto-configuring default client ID for OAuth sign-in");
+                    ConfigManager.getInstance().updateClientId(defaultId);
+                }
+                performMsalInteractiveAuth(button);
+            }
+        });
+        button.setText("Sign In with Browser");
+        button.setEnabled(true);
     }
 
     /**

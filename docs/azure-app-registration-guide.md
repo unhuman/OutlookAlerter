@@ -10,7 +10,7 @@ OutlookAlerter ships with a pre-configured **multi-tenant** Azure AD application
 |---|---|
 | **Application (client) ID** | `ce88d638-d3c7-42fd-b46c-6b55e9decf12` |
 | **Supported account types** | Accounts in any organizational directory (multi-tenant) and personal Microsoft accounts |
-| **Redirect URI** | `http://localhost:8888/redirect` (Public client/native) |
+| **Redirect URI** | `http://localhost:8888` (Public client/native) |
 | **Public client flows** | Enabled (no client secret required) |
 
 ### API Permissions (Delegated)
@@ -27,7 +27,7 @@ OutlookAlerter ships with a pre-configured **multi-tenant** Azure AD application
 
 1. When authentication is needed, OutlookAlerter opens your system browser to Microsoft's login page
 2. You sign in with your Microsoft 365 credentials (including MFA if required)
-3. The browser redirects to `http://localhost:8888/redirect` — MSAL captures the authorization code automatically
+3. The browser redirects to `http://localhost:8888` — MSAL captures the authorization code automatically
 4. MSAL exchanges the code for access + refresh tokens
 5. Tokens are cached locally in `~/.outlookalerter/msal_token_cache.json` (owner-only permissions)
 6. On subsequent runs, MSAL silently refreshes the token using the cached refresh token — no browser needed
@@ -52,7 +52,7 @@ If you prefer to use your own Azure AD app registration instead of the built-in 
    - **Supported account types:** Select **"Accounts in any organizational directory (Any Azure AD directory - Multitenant) and personal Microsoft accounts"**
    - **Redirect URI:**
      - Platform: **Public client/native (mobile & desktop)**
-     - URI: `http://localhost:8888/redirect`
+     - URI: `http://localhost:8888`
    - Click **Register**
 
 4. **Copy the Application (client) ID** from the Overview page
@@ -82,7 +82,7 @@ If you prefer to use your own Azure AD app registration instead of the built-in 
 | "AADSTS65001: The user or administrator has not consented" | Organization requires admin consent | Ask your IT admin to grant consent for the app (see Admin Consent below), or use the Graph Explorer manual token flow instead |
 | "AADSTS65002: Consent between first party application..." | Tried using a Microsoft first-party app ID | Microsoft blocks third-party code from using first-party app IDs. Use a custom app registration instead |
 | "AADSTS700016: Application not found in directory" | Wrong tenant ID or app was deleted | Verify the Client ID is correct and the app exists in Azure Portal |
-| Browser opens but sign-in fails silently | Redirect URI mismatch | Ensure the app registration has exactly `http://localhost:8888/redirect` as a **Public client** redirect URI |
+| Browser opens but sign-in fails silently | Redirect URI mismatch | Ensure the app registration has exactly `http://localhost:8888` as a **Public client** redirect URI (no path component — MSAL4J only processes callbacks at the root path `/`) |
 
 ## Admin Consent
 

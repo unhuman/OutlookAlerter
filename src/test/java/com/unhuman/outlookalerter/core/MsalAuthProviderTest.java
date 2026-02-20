@@ -56,20 +56,20 @@ class MsalAuthProviderTest {
     class IsConfigured {
 
         @Test
-        @DisplayName("returns true when clientId is empty (uses default)")
-        void returnsTrueWhenClientIdEmptyUsesDefault() {
-            // Default client ID is baked in, so MSAL is always configured
+        @DisplayName("returns false when clientId is empty")
+        void returnsFalseWhenClientIdEmpty() {
+            // No default fallback - MSAL is not configured without explicit clientId
             MsalAuthProvider provider = new MsalAuthProvider(configManager);
-            assertTrue(provider.isConfigured());
+            assertFalse(provider.isConfigured());
         }
 
         @Test
-        @DisplayName("returns true when clientId is whitespace (uses default)")
-        void returnsTrueWhenClientIdWhitespaceUsesDefault() {
+        @DisplayName("returns false when clientId is whitespace")
+        void returnsFalseWhenClientIdWhitespace() {
             configManager.updateClientId("   ");
-            // Falls back to default client ID
+            // No default fallback
             MsalAuthProvider provider = new MsalAuthProvider(configManager);
-            assertTrue(provider.isConfigured());
+            assertFalse(provider.isConfigured());
         }
 
         @Test
@@ -81,12 +81,12 @@ class MsalAuthProviderTest {
         }
 
         @Test
-        @DisplayName("returns true when clientId is null (uses default)")
-        void returnsTrueWhenClientIdNullUsesDefault() {
+        @DisplayName("returns false when clientId is null")
+        void returnsFalseWhenClientIdNull() {
             configManager.updateClientId(null);
-            // Falls back to default client ID
+            // No default fallback
             MsalAuthProvider provider = new MsalAuthProvider(configManager);
-            assertTrue(provider.isConfigured());
+            assertFalse(provider.isConfigured());
         }
     }
 
@@ -200,12 +200,13 @@ class MsalAuthProviderTest {
         void multipleInstancesIndependent() {
             configManager.updateClientId("client-1");
             MsalAuthProvider provider1 = new MsalAuthProvider(configManager);
+            assertTrue(provider1.isConfigured());
 
             configManager.updateClientId("");
             MsalAuthProvider provider2 = new MsalAuthProvider(configManager);
 
-            // provider2 uses default client ID when explicit one is cleared
-            assertTrue(provider2.isConfigured());
+            // No default fallback - MSAL is not configured when clientId cleared
+            assertFalse(provider2.isConfigured());
         }
     }
 }

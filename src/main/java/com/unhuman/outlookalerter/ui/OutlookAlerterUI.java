@@ -655,6 +655,12 @@ public class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
+        // Suppress calendar refresh while token dialog is active (e.g., MSAL OAuth flow in progress)
+        if (isTokenDialogActive) {
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Skipping calendar refresh — token dialog is active");
+            return;
+        }
+
         // Prevent overlapping fetch threads — if one is already running, skip
         // But also check for stale fetches that may have gotten stuck
         if (!fetchInProgress.compareAndSet(false, true)) {
@@ -963,6 +969,12 @@ public class OutlookAlerterUI extends JFrame {
      * Check for events that need alerts
      */
     private void checkForEventAlerts(List<CalendarEvent> events) {
+        // Suppress alerts while the token dialog is active (e.g., MSAL OAuth flow in progress)
+        if (isTokenDialogActive) {
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Skipping alert check — token dialog is active");
+            return;
+        }
+
         // Debug log
         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Checking " + events.size() + " events for alerts...");
 

@@ -383,7 +383,7 @@ class ConfigManagerTest {
             assertEquals("testRefresh", raw.getProperty("refreshToken"));
             assertEquals("true", raw.getProperty("ignoreCertValidation"));
             assertEquals("common", raw.getProperty("tenantId"));
-            assertEquals("http://localhost:8888/redirect", raw.getProperty("redirectUri"));
+            assertEquals("http://localhost:8888", raw.getProperty("redirectUri"));
             assertEquals("#ffffff", raw.getProperty("flashTextColor"));
             assertEquals("5", raw.getProperty("flashDurationSeconds"));
             assertEquals("240", raw.getProperty("resyncIntervalMinutes"));

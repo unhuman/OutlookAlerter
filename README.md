@@ -131,7 +131,7 @@ flashOpacity=1.0                                            # Alert opacity (0.0
 clientId=                                                   # OAuth client ID
 clientSecret=                                               # OAuth client secret
 tenantId=common                                            # Azure AD tenant
-redirectUri=http://localhost:8888/redirect                 # OAuth redirect URI
+redirectUri=http://localhost:8888                          # OAuth redirect URI
 ```
 
 ### Settings Management

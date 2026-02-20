@@ -649,22 +649,31 @@ public class OutlookClient {
     // ── Token format validation ───────────────────────────────────────────
 
     /**
-     * Validates that a token has the basic JWT format (three parts separated by dots).
+     * Validates that a token has a plausible format.
+     * Accepts both traditional JWT tokens (three dot-separated parts) and
+     * MSAL compact/opaque tokens (e.g. Microsoft Graph v2 tokens that start
+     * with "Ew..." and contain no dots).
      */
     private boolean isValidTokenFormat(String token) {
-        if (token == null || token.isEmpty()) {
+        if (token == null || token.trim().isEmpty()) {
             return false;
         }
+        // JWT format: header.payload.signature
         String[] parts = token.split("\\.");
-        return parts.length == 3 && !parts[0].isEmpty() && !parts[1].isEmpty() && !parts[2].isEmpty();
+        if (parts.length == 3 && !parts[0].isEmpty() && !parts[1].isEmpty() && !parts[2].isEmpty()) {
+            return true;
+        }
+        // MSAL compact/opaque format: non-empty string of reasonable length
+        return token.length() >= 20;
     }
 
     /**
      * Validates token by making a lightweight request to Microsoft Graph API.
+     * Accepts any non-empty token string (JWT or MSAL compact/opaque format).
      * @return true if the token is valid according to Microsoft's server
      */
     private boolean validateTokenWithServer(String token) {
-        if (!isValidTokenFormat(token)) {
+        if (token == null || token.trim().isEmpty()) {
             return false;
         }
 
@@ -992,7 +1001,9 @@ public class OutlookClient {
 
     /**
      * Get tokens from user through UI or dialog.
-     * If MSAL is configured, tries interactive browser auth first.
+     * If MSAL is configured, the token dialog's "Sign In with Browser" button
+     * will handle interactive browser auth — we do NOT auto-launch it here so
+     * the user sees the alert + token dialog first.
      * @return Map containing tokens or null if cancelled
      */
     private Map<String, String> getTokensFromUser() {
@@ -1002,24 +1013,6 @@ public class OutlookClient {
         String signInUrl = configManager.getSignInUrl();
 
         try {
-            // Try MSAL interactive auth first (before showing dialog)
-            if (msalAuthProvider.isConfigured()) {
-                LogManager.getInstance().info(LogCategory.GENERAL,
-                        "Attempting MSAL interactive authentication before showing token dialog...");
-                String msalToken = msalAuthProvider.acquireTokenInteractively();
-                if (msalToken != null) {
-                    LogManager.getInstance().info(LogCategory.GENERAL,
-                            "MSAL interactive authentication successful — skipping token dialog");
-                    resultTokens = new HashMap<>();
-                    resultTokens.put("accessToken", msalToken);
-                    resultTokens.put("ignoreCertValidation",
-                            String.valueOf(configManager.getIgnoreCertValidation()));
-                    return resultTokens;
-                }
-                LogManager.getInstance().info(LogCategory.GENERAL,
-                        "MSAL interactive authentication failed — falling back to token dialog");
-            }
-
             while ((resultTokens == null || !resultTokens.containsKey("accessToken")
                     || resultTokens.get("accessToken") == null || resultTokens.get("accessToken").isEmpty())
                     && attempts < maxAttempts) {

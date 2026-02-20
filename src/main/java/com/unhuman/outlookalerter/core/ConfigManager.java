@@ -46,7 +46,7 @@ public class ConfigManager {
     // third-party apps will need an IT admin to approve this app once.
     private static final String DEFAULT_CLIENT_ID = "ce88d638-d3c7-42fd-b46c-6b55e9decf12";
     private static final String DEFAULT_TENANT_ID = "common";
-    private static final String DEFAULT_REDIRECT_URI = "http://localhost:8888/redirect";
+    private static final String DEFAULT_REDIRECT_URI = "http://localhost:8888";
     private static final String DEFAULT_FLASH_COLOR = "#800000";
     private static final String DEFAULT_FLASH_TEXT_COLOR = "#ffffff";
     private static final String DEFAULT_FLASH_OPACITY = "1.0";
@@ -109,7 +109,7 @@ public class ConfigManager {
 
     private void createDefaultConfig(File configFile) {
         LogManager.getInstance().info(LogCategory.GENERAL, "Creating default configuration at " + configFile.getAbsolutePath());
-        properties.setProperty(KEY_CLIENT_ID, DEFAULT_CLIENT_ID);
+        properties.setProperty(KEY_CLIENT_ID, "");
         properties.setProperty(KEY_CLIENT_SECRET, "");
         properties.setProperty(KEY_TENANT_ID, DEFAULT_TENANT_ID);
         properties.setProperty(KEY_REDIRECT_URI, DEFAULT_REDIRECT_URI);
@@ -239,7 +239,14 @@ public class ConfigManager {
     }
 
     public String getClientId() {
-        return (clientId != null && !clientId.trim().isEmpty()) ? clientId : DEFAULT_CLIENT_ID;
+        return (clientId != null && !clientId.trim().isEmpty()) ? clientId : null;
+    }
+
+    /**
+     * Returns the default client ID constant (for display in settings UI hints, etc.).
+     */
+    public static String getDefaultClientId() {
+        return DEFAULT_CLIENT_ID;
     }
     public String getClientSecret() { return clientSecret; }
     public String getTenantId() { return tenantId; }

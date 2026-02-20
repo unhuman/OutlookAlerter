@@ -51,7 +51,7 @@ All property keys and default values are defined as `private static final String
 | `clientId` | String | `""` | OAuth |
 | `clientSecret` | String | `""` | OAuth |
 | `tenantId` | String | `"common"` | OAuth |
-| `redirectUri` | String | `"http://localhost:8888/redirect"` | OAuth |
+| `redirectUri` | String | `"http://localhost:8888"` | OAuth |
 | `accessToken` | String | `""` | OAuth (persisted) |
 | `refreshToken` | String | `""` | OAuth (persisted) |
 | `tokenEndpoint` | String | `""` | OAuth |
