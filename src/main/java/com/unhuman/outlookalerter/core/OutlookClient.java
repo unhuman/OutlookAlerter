@@ -69,12 +69,16 @@ public class OutlookClient {
     // Reference to OutlookAlerterUI for token dialog handling
     private final OutlookAlerterUI outlookAlerterUI;
 
+    // MSAL authentication provider for OAuth2 browser-based auth
+    private final MsalAuthProvider msalAuthProvider;
+
     /**
      * Creates a new Outlook client with the given configuration and UI reference.
      */
     public OutlookClient(ConfigManager configManager, OutlookAlerterUI outlookAlerterUI) {
         this.configManager = configManager;
         this.outlookAlerterUI = outlookAlerterUI;
+        this.msalAuthProvider = new MsalAuthProvider(configManager);
         this.httpClient = createHttpClient();
     }
 
@@ -85,7 +89,16 @@ public class OutlookClient {
     public OutlookClient(ConfigManager configManager) {
         this.configManager = configManager;
         this.outlookAlerterUI = null;
+        this.msalAuthProvider = new MsalAuthProvider(configManager);
         this.httpClient = createHttpClient();
+    }
+
+    /**
+     * Get the MSAL authentication provider.
+     * @return The MsalAuthProvider instance
+     */
+    public MsalAuthProvider getMsalAuthProvider() {
+        return msalAuthProvider;
     }
 
     /**
@@ -156,6 +169,8 @@ public class OutlookClient {
 
     /**
      * Authenticate with Microsoft Graph API.
+     * Prefers MSAL OAuth (silent refresh) when configured, then falls back
+     * to legacy refresh token, and finally to manual token entry.
      * @return true if authentication was successful
      */
     public boolean authenticate() {
@@ -164,6 +179,18 @@ public class OutlookClient {
             return true;
         }
 
+        // Try MSAL silent refresh first (if configured)
+        if (msalAuthProvider.isConfigured()) {
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting MSAL silent token acquisition...");
+            String msalToken = msalAuthProvider.acquireTokenSilently();
+            if (msalToken != null) {
+                configManager.updateTokens(msalToken, null, configManager.getIgnoreCertValidation());
+                LogManager.getInstance().info(LogCategory.GENERAL, "MSAL silent token acquisition successful.");
+                return true;
+            }
+        }
+
+        // Fall back to legacy refresh token
         String refreshTokenValue = configManager.getRefreshToken();
         if (refreshTokenValue != null && !refreshTokenValue.isEmpty()) {
             LogManager.getInstance().info(LogCategory.GENERAL, "Attempting to refresh token...");
@@ -399,6 +426,7 @@ public class OutlookClient {
 
     /**
      * Handle a 401 Unauthorized or 403 Forbidden response by trying to re-authenticate.
+     * Tries MSAL silent refresh first, then legacy refresh, then manual auth.
      * @param statusCode The HTTP status code (401 or 403) that triggered this handler
      * @return A new valid access token, or null if re-authentication failed
      */
@@ -410,6 +438,18 @@ public class OutlookClient {
         configManager.updateTokens(configManager.getAccessToken(), configManager.getRefreshToken(),
                 configManager.getDefaultIgnoreCertValidation());
 
+        // Try MSAL silent refresh first
+        if (msalAuthProvider.isConfigured()) {
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting MSAL silent token refresh after " + errorType + "...");
+            String msalToken = msalAuthProvider.acquireTokenSilently();
+            if (msalToken != null) {
+                configManager.updateTokens(msalToken, null, configManager.getIgnoreCertValidation());
+                LogManager.getInstance().info(LogCategory.GENERAL, "MSAL silent refresh successful after " + errorType);
+                return msalToken;
+            }
+        }
+
+        // Fall back to legacy refresh
         String refreshTokenValue = configManager.getRefreshToken();
         if (refreshTokenValue != null && !refreshTokenValue.isEmpty() && refreshToken()) {
             LogManager.getInstance().info(LogCategory.GENERAL, "Successfully refreshed the token.");
@@ -952,6 +992,7 @@ public class OutlookClient {
 
     /**
      * Get tokens from user through UI or dialog.
+     * If MSAL is configured, tries interactive browser auth first.
      * @return Map containing tokens or null if cancelled
      */
     private Map<String, String> getTokensFromUser() {
@@ -961,6 +1002,24 @@ public class OutlookClient {
         String signInUrl = configManager.getSignInUrl();
 
         try {
+            // Try MSAL interactive auth first (before showing dialog)
+            if (msalAuthProvider.isConfigured()) {
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                        "Attempting MSAL interactive authentication before showing token dialog...");
+                String msalToken = msalAuthProvider.acquireTokenInteractively();
+                if (msalToken != null) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                            "MSAL interactive authentication successful — skipping token dialog");
+                    resultTokens = new HashMap<>();
+                    resultTokens.put("accessToken", msalToken);
+                    resultTokens.put("ignoreCertValidation",
+                            String.valueOf(configManager.getIgnoreCertValidation()));
+                    return resultTokens;
+                }
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                        "MSAL interactive authentication failed — falling back to token dialog");
+            }
+
             while ((resultTokens == null || !resultTokens.containsKey("accessToken")
                     || resultTokens.get("accessToken") == null || resultTokens.get("accessToken").isEmpty())
                     && attempts < maxAttempts) {
@@ -1001,9 +1060,9 @@ public class OutlookClient {
                 }
 
                 if (outlookAlerterUI != null) {
-                    resultTokens = outlookAlerterUI.promptForTokens(signInUrl);
+                    resultTokens = outlookAlerterUI.promptForTokens(signInUrl, msalAuthProvider);
                 } else {
-                    SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl);
+                    SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(signInUrl, msalAuthProvider);
                     dialog.show();
                     resultTokens = dialog.getTokens();
                 }

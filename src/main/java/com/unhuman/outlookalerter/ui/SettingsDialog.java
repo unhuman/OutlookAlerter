@@ -30,6 +30,8 @@ public class SettingsDialog extends JDialog {
     private JSpinner alertBeepCountSpinner;
     private JCheckBox alertBeepAfterFlashCheckbox;
     private JTextField signInUrlField;
+    private JTextField clientIdField;
+    private JTextField tenantIdField;
     private JCheckBox defaultIgnoreCertValidationCheckbox;
 
     /**
@@ -174,15 +176,49 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 7;
         formPanel.add(signInUrlField, gbc);
 
-        // Default Ignore SSL certificate validation setting
+        // OAuth Client ID setting
         gbc.gridx = 0;
         gbc.gridy = 8;
+        formPanel.add(new JLabel("Client ID (Azure AD App):"), gbc);
+
+        clientIdField = new JTextField(configManager.getClientId() != null ? configManager.getClientId() : "", 20);
+        clientIdField.setToolTipText("Register an app at portal.azure.com to enable automatic browser sign-in");
+        gbc.gridx = 1;
+        gbc.gridy = 8;
+        formPanel.add(clientIdField, gbc);
+
+        // OAuth Tenant ID setting
+        gbc.gridx = 0;
+        gbc.gridy = 9;
+        formPanel.add(new JLabel("Tenant ID (default: common):"), gbc);
+
+        tenantIdField = new JTextField(configManager.getTenantId() != null ? configManager.getTenantId() : "common", 20);
+        tenantIdField.setToolTipText("Your Azure AD tenant ID or 'common' for multi-tenant");
+        gbc.gridx = 1;
+        gbc.gridy = 9;
+        formPanel.add(tenantIdField, gbc);
+
+        // Test Sign In button
+        gbc.gridx = 0;
+        gbc.gridy = 10;
+        formPanel.add(new JLabel("Test OAuth Sign-in:"), gbc);
+
+        JButton testSignInButton = new JButton("Test Sign In");
+        testSignInButton.setToolTipText("Test MSAL browser sign-in with the configured Client ID");
+        testSignInButton.addActionListener(e -> testMsalSignIn(testSignInButton));
+        gbc.gridx = 1;
+        gbc.gridy = 10;
+        formPanel.add(testSignInButton, gbc);
+
+        // Default Ignore SSL certificate validation setting
+        gbc.gridx = 0;
+        gbc.gridy = 11;
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc);
 
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation());
         // No longer update immediately when checkbox changes
         gbc.gridx = 1;
-        gbc.gridy = 8;
+        gbc.gridy = 11;
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc);
 
         // Button panel
@@ -239,6 +275,17 @@ public class SettingsDialog extends JDialog {
                 configManager.updateSignInUrl(signInUrl);
             }
 
+            // Save Client ID
+            String clientId = clientIdField.getText().trim();
+            configManager.updateClientId(clientId);
+
+            // Save Tenant ID
+            String tenantId = tenantIdField.getText().trim();
+            if (tenantId.isEmpty()) {
+                tenantId = "common";
+            }
+            configManager.updateTenantId(tenantId);
+
             // Save alert minutes
             int alertMinutes = (Integer) alertMinutesSpinner.getValue();
             configManager.updateAlertMinutes(alertMinutes);
@@ -279,5 +326,71 @@ public class SettingsDialog extends JDialog {
             LogManager.getInstance().error(LogCategory.GENERAL, errorMessage);
             JOptionPane.showMessageDialog(this, errorMessage, "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Test MSAL browser sign-in with the currently entered Client ID and Tenant ID.
+     */
+    private void testMsalSignIn(JButton triggerButton) {
+        String clientId = clientIdField.getText().trim();
+        if (clientId.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "Please enter a Client ID first.\n\n" +
+                    "To get a Client ID:\n" +
+                    "1. Go to portal.azure.com → Azure Active Directory → App registrations\n" +
+                    "2. Click 'New registration'\n" +
+                    "3. Name: 'OutlookAlerter', Redirect URI: http://localhost:8888/redirect\n" +
+                    "4. Copy the 'Application (client) ID'",
+                    "Client ID Required",
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        // Temporarily save the config so MsalAuthProvider picks it up
+        configManager.updateClientId(clientId);
+        String tenantId = tenantIdField.getText().trim();
+        if (tenantId.isEmpty()) tenantId = "common";
+        configManager.updateTenantId(tenantId);
+
+        triggerButton.setEnabled(false);
+        triggerButton.setText("Waiting for browser...");
+
+        // Run on background thread
+        Thread testThread = new Thread(() -> {
+            try {
+                com.unhuman.outlookalerter.core.MsalAuthProvider testProvider =
+                        new com.unhuman.outlookalerter.core.MsalAuthProvider(configManager);
+                String token = testProvider.acquireTokenInteractively();
+
+                SwingUtilities.invokeLater(() -> {
+                    triggerButton.setEnabled(true);
+                    triggerButton.setText("Test Sign In");
+                    if (token != null && !token.isEmpty()) {
+                        JOptionPane.showMessageDialog(SettingsDialog.this,
+                                "Sign-in successful! OAuth is configured correctly.",
+                                "Success",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(SettingsDialog.this,
+                                "Sign-in failed or was cancelled.",
+                                "Test Failed",
+                                JOptionPane.WARNING_MESSAGE);
+                    }
+                });
+            } catch (Exception ex) {
+                LogManager.getInstance().error(LogCategory.GENERAL,
+                        "MSAL test sign-in failed: " + ex.getMessage(), ex);
+                SwingUtilities.invokeLater(() -> {
+                    triggerButton.setEnabled(true);
+                    triggerButton.setText("Test Sign In");
+                    JOptionPane.showMessageDialog(SettingsDialog.this,
+                            "Sign-in error: " + ex.getMessage(),
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE);
+                });
+            }
+        }, "MsalTestSignInThread");
+        testThread.setDaemon(true);
+        testThread.start();
     }
 }

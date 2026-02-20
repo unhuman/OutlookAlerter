@@ -8,6 +8,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import com.unhuman.outlookalerter.core.OutlookClient;
 import com.unhuman.outlookalerter.core.ConfigManager;
+import com.unhuman.outlookalerter.core.MsalAuthProvider;
 import com.unhuman.outlookalerter.util.LogManager;
 import com.unhuman.outlookalerter.util.LogCategory;
 import java.lang.reflect.InvocationTargetException;
@@ -40,28 +41,37 @@ public class SimpleTokenDialog {
     private CountDownLatch latch = new CountDownLatch(1);
     private Map<String, String> tokens;
     private final String signInUrl;
+    private final MsalAuthProvider msalAuthProvider;
     private JCheckBox ignoreCertCheckbox;  // stored as field for direct access
+    private JLabel statusLabel;  // status label for MSAL auth feedback
 
     /**
-     * Get or create singleton instance
+     * Get or create singleton instance (with MSAL provider)
      */
-    public static SimpleTokenDialog getInstance(String signInUrl) {
+    public static SimpleTokenDialog getInstance(String signInUrl, MsalAuthProvider msalAuthProvider) {
         synchronized (LOCK) {
             if (instance == null) {
-                // Use provided URL or default to Microsoft Graph developer site
                 String url = signInUrl != null ? signInUrl : DEFAULT_GRAPH_URL;
-                instance = new SimpleTokenDialog(url);
+                instance = new SimpleTokenDialog(url, msalAuthProvider);
             }
             return instance;
         }
     }
 
     /**
+     * Get or create singleton instance (without MSAL provider — backwards compatibility)
+     */
+    public static SimpleTokenDialog getInstance(String signInUrl) {
+        return getInstance(signInUrl, null);
+    }
+
+    /**
      * Private constructor to enforce singleton pattern
      */
-    private SimpleTokenDialog(String signInUrl) {
+    private SimpleTokenDialog(String signInUrl, MsalAuthProvider msalAuthProvider) {
         // Default to Microsoft Graph developer site if no URL provided
         this.signInUrl = signInUrl != null ? signInUrl : DEFAULT_GRAPH_URL;
+        this.msalAuthProvider = msalAuthProvider;
     }
 
     /**
@@ -166,25 +176,44 @@ public class SimpleTokenDialog {
                 JPanel panel = new JPanel(new BorderLayout(10, 10));
                 panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-                // Instructions at top - simplified to avoid HTML rendering issues
-                JLabel instructionsLabel = new JLabel(
-                    "<html><div style='width: 400px'>" +
-                    "<h2>Outlook Alerter Authentication</h2>" +
-                    "<p><b>Recommended Method:</b> Use Microsoft Graph Explorer to get your token:</p>" +
-                    "<ol>" +
-                    "<li>Click the 'Open Graph Explorer' button below</li>" +
-                    "<li>Sign in with your Microsoft account</li>" +
-                    "<li>Click your profile picture → 'Access token' tab</li>" +
-                    "<li>Copy the displayed token</li>" +
-                    "</ol>" +
-                    "<p><b>Alternative Method:</b> If Graph Explorer doesn't work, you can use the legacy method:</p>" +
-                    "<ol>" +
-                    "<li>Click 'Open Sign-in Page' and complete the sign-in</li>" +
-                    "<li>Open Developer Tools (F12) → Application/Storage tab</li>" +
-                    "<li>Find the access token in Local Storage (typically starts with 'eyJ')</li>" +
-                    "</ol>" +
-                    "</div></html>"
-                );
+                // Instructions at top - adapt based on whether MSAL is configured
+                boolean msalEnabled = msalAuthProvider != null && msalAuthProvider.isConfigured();
+                String instructionsHtml;
+                if (msalEnabled) {
+                    instructionsHtml =
+                        "<html><div style='width: 400px'>" +
+                        "<h2>Outlook Alerter Authentication</h2>" +
+                        "<p><b>Recommended:</b> Click <b>'Sign In with Browser'</b> below to sign in automatically.</p>" +
+                        "<p>Your browser will open for Microsoft login. Once complete, the token will be captured automatically.</p>" +
+                        "<hr>" +
+                        "<p><b>Manual Method:</b> If browser sign-in doesn't work, use Graph Explorer:</p>" +
+                        "<ol>" +
+                        "<li>Click 'Open Graph Explorer' and sign in</li>" +
+                        "<li>Click your profile picture &rarr; 'Access token' tab</li>" +
+                        "<li>Copy and paste the token below</li>" +
+                        "</ol>" +
+                        "</div></html>";
+                } else {
+                    instructionsHtml =
+                        "<html><div style='width: 400px'>" +
+                        "<h2>Outlook Alerter Authentication</h2>" +
+                        "<p><b>Recommended Method:</b> Use Microsoft Graph Explorer to get your token:</p>" +
+                        "<ol>" +
+                        "<li>Click the 'Open Graph Explorer' button below</li>" +
+                        "<li>Sign in with your Microsoft account</li>" +
+                        "<li>Click your profile picture &rarr; 'Access token' tab</li>" +
+                        "<li>Copy the displayed token</li>" +
+                        "</ol>" +
+                        "<p><b>Alternative Method:</b> If Graph Explorer doesn't work, you can use the legacy method:</p>" +
+                        "<ol>" +
+                        "<li>Click 'Open Sign-in Page' and complete the sign-in</li>" +
+                        "<li>Open Developer Tools (F12) &rarr; Application/Storage tab</li>" +
+                        "<li>Find the access token in Local Storage (typically starts with 'eyJ')</li>" +
+                        "</ol>" +
+                        "<p><i>Tip: Configure a Client ID in Settings to enable automatic browser sign-in.</i></p>" +
+                        "</div></html>";
+                }
+                JLabel instructionsLabel = new JLabel(instructionsHtml);
                 panel.add(instructionsLabel, BorderLayout.NORTH);
 
                 // Form in center with more spacing
@@ -250,24 +279,37 @@ public class SimpleTokenDialog {
                     }
                 });
 
-                JButton openBrowserButton = new JButton("Open Sign-in Page");
+                JButton openBrowserButton = new JButton(
+                        msalAuthProvider != null && msalAuthProvider.isConfigured()
+                                ? "Sign In with Browser"
+                                : "Open Sign-in Page");
                 openBrowserButton.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
-                        try {
-                            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Opening browser for sign-in: " + signInUrl);
-                            Desktop.getDesktop().browse(new java.net.URI(signInUrl));
-                        } catch (Exception ex) {
-                            LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error opening browser: " + ex.getMessage());
-                            JOptionPane.showMessageDialog(
-                                frame,
-                                "Error opening browser: " + ex.getMessage(),
-                                "Error",
-                                JOptionPane.ERROR_MESSAGE
-                            );
+                        if (msalAuthProvider != null && msalAuthProvider.isConfigured()) {
+                            // MSAL interactive auth — opens browser, captures token automatically
+                            performMsalInteractiveAuth(openBrowserButton);
+                        } else {
+                            // Legacy: just open the sign-in URL in browser
+                            try {
+                                LogManager.getInstance().info(LogCategory.DATA_FETCH, "Opening browser for sign-in: " + signInUrl);
+                                Desktop.getDesktop().browse(new java.net.URI(signInUrl));
+                            } catch (Exception ex) {
+                                LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error opening browser: " + ex.getMessage());
+                                JOptionPane.showMessageDialog(
+                                    frame,
+                                    "Error opening browser: " + ex.getMessage(),
+                                    "Error",
+                                    JOptionPane.ERROR_MESSAGE
+                                );
+                            }
                         }
                     }
                 });
+                // Make the browser sign-in button bold when MSAL is configured
+                if (msalAuthProvider != null && msalAuthProvider.isConfigured()) {
+                    openBrowserButton.setFont(openBrowserButton.getFont().deriveFont(Font.BOLD));
+                }
 
                 JButton submitButton = new JButton("Submit");
                 submitButton.addActionListener(new ActionListener() {
@@ -280,6 +322,11 @@ public class SimpleTokenDialog {
                 buttonPanel.add(openBrowserButton);  // Then sign-in page button
                 buttonPanel.add(submitButton);       // Then submit
 
+                // Status label for MSAL auth feedback
+                statusLabel = new JLabel(" ");
+                statusLabel.setHorizontalAlignment(SwingConstants.CENTER);
+                statusLabel.setForeground(Color.BLUE);
+
                 JButton cancelButton = new JButton("Cancel");
                 cancelButton.addActionListener(new ActionListener() {
                     @Override
@@ -289,7 +336,12 @@ public class SimpleTokenDialog {
                 });
                 buttonPanel.add(cancelButton);      // Cancel button last
 
-                panel.add(buttonPanel, BorderLayout.SOUTH);
+                // Add status label between buttons and content
+                JPanel southPanel = new JPanel(new BorderLayout(5, 5));
+                southPanel.add(statusLabel, BorderLayout.NORTH);
+                southPanel.add(buttonPanel, BorderLayout.CENTER);
+
+                panel.add(southPanel, BorderLayout.SOUTH);
 
                 // Set content and show
                 frame.setContentPane(panel);
@@ -543,6 +595,71 @@ public class SimpleTokenDialog {
             tokens = null;
             latch.countDown();
         }
+    }
+
+    /**
+     * Perform MSAL interactive authentication on a background thread.
+     * Opens the system browser for Microsoft login and captures the token automatically.
+     */
+    private void performMsalInteractiveAuth(JButton triggerButton) {
+        // Disable button and show status
+        SwingUtilities.invokeLater(() -> {
+            triggerButton.setEnabled(false);
+            triggerButton.setText("Waiting for browser...");
+            if (statusLabel != null) {
+                statusLabel.setText("Complete sign-in in your browser...");
+                statusLabel.setForeground(Color.BLUE);
+            }
+        });
+
+        // Run MSAL interactive auth on a background thread to avoid blocking EDT
+        Thread authThread = new Thread(() -> {
+            try {
+                String accessToken = msalAuthProvider.acquireTokenInteractively();
+
+                if (accessToken != null && !accessToken.isEmpty()) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                            "SimpleTokenDialog: MSAL interactive auth successful");
+
+                    // Auto-populate the token and submit
+                    SwingUtilities.invokeLater(() -> {
+                        if (tokenField != null) {
+                            tokenField.setText(accessToken);
+                        }
+                        if (statusLabel != null) {
+                            statusLabel.setText("Authentication successful!");
+                            statusLabel.setForeground(new Color(0, 128, 0)); // dark green
+                        }
+                        // Auto-submit the token
+                        submitToken();
+                    });
+                } else {
+                    LogManager.getInstance().warn(LogCategory.DATA_FETCH,
+                            "SimpleTokenDialog: MSAL interactive auth returned no token");
+                    SwingUtilities.invokeLater(() -> {
+                        triggerButton.setEnabled(true);
+                        triggerButton.setText("Sign In with Browser");
+                        if (statusLabel != null) {
+                            statusLabel.setText("Sign-in failed or was cancelled. Try again or use Graph Explorer.");
+                            statusLabel.setForeground(Color.RED);
+                        }
+                    });
+                }
+            } catch (Exception ex) {
+                LogManager.getInstance().error(LogCategory.DATA_FETCH,
+                        "SimpleTokenDialog: MSAL interactive auth error: " + ex.getMessage(), ex);
+                SwingUtilities.invokeLater(() -> {
+                    triggerButton.setEnabled(true);
+                    triggerButton.setText("Sign In with Browser");
+                    if (statusLabel != null) {
+                        statusLabel.setText("Error: " + ex.getMessage());
+                        statusLabel.setForeground(Color.RED);
+                    }
+                });
+            }
+        }, "MsalInteractiveAuthThread");
+        authThread.setDaemon(true);
+        authThread.start();
     }
 
     /**

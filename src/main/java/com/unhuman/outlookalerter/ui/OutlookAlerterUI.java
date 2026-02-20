@@ -1400,10 +1400,21 @@ public class OutlookAlerterUI extends JFrame {
 
     /**
      * Prompt the user for tokens using the SimpleTokenDialog.
+     * Backwards-compatible overload without MSAL provider.
      * @param signInUrl The URL for signing in.
      * @return A map containing the tokens, or null if the user cancels.
      */
     public Map<String, String> promptForTokens(String signInUrl) {
+        return promptForTokens(signInUrl, null);
+    }
+
+    /**
+     * Prompt the user for tokens using the SimpleTokenDialog.
+     * @param signInUrl The URL for signing in.
+     * @param msalAuthProvider The MSAL authentication provider (may be null).
+     * @return A map containing the tokens, or null if the user cancels.
+     */
+    public Map<String, String> promptForTokens(String signInUrl, com.unhuman.outlookalerter.core.MsalAuthProvider msalAuthProvider) {
         try {
             // Check if it's safe to show UI
             if (!isSafeToShowUI()) {
@@ -1413,7 +1424,7 @@ public class OutlookAlerterUI extends JFrame {
                 Timer retryTimer = new Timer(2000, (ActionEvent e) -> {
                     new Thread(() -> {
                         if (isSafeToShowUI()) {
-                            promptForTokens(signInUrl);
+                            promptForTokens(signInUrl, msalAuthProvider);
                         }
                     }, "TokenDialogRetryThread").start();
                     ((Timer) e.getSource()).stop();
@@ -1439,7 +1450,7 @@ public class OutlookAlerterUI extends JFrame {
                 LogManager.getInstance().info(LogCategory.DATA_FETCH, "UI mode: Using default sign-in URL: " + effectiveSignInUrl);
             }
 
-            SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(effectiveSignInUrl);
+            SimpleTokenDialog dialog = SimpleTokenDialog.getInstance(effectiveSignInUrl, msalAuthProvider);
             dialog.show();
             Map<String, String> tokens = dialog.getTokens();
 

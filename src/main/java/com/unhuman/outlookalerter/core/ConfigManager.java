@@ -41,6 +41,10 @@ public class ConfigManager {
     private static final String KEY_REFRESH_TOKEN = "refreshToken";
 
     // ── Default value constants ───────────────────────────────────────────
+    // User-registered multi-tenant Azure AD app. First-party Microsoft app IDs
+    // cannot be used (AADSTS65002). Organizations that require admin consent for
+    // third-party apps will need an IT admin to approve this app once.
+    private static final String DEFAULT_CLIENT_ID = "ce88d638-d3c7-42fd-b46c-6b55e9decf12";
     private static final String DEFAULT_TENANT_ID = "common";
     private static final String DEFAULT_REDIRECT_URI = "http://localhost:8888/redirect";
     private static final String DEFAULT_FLASH_COLOR = "#800000";
@@ -105,7 +109,7 @@ public class ConfigManager {
 
     private void createDefaultConfig(File configFile) {
         LogManager.getInstance().info(LogCategory.GENERAL, "Creating default configuration at " + configFile.getAbsolutePath());
-        properties.setProperty(KEY_CLIENT_ID, "");
+        properties.setProperty(KEY_CLIENT_ID, DEFAULT_CLIENT_ID);
         properties.setProperty(KEY_CLIENT_SECRET, "");
         properties.setProperty(KEY_TENANT_ID, DEFAULT_TENANT_ID);
         properties.setProperty(KEY_REDIRECT_URI, DEFAULT_REDIRECT_URI);
@@ -234,7 +238,9 @@ public class ConfigManager {
         saveConfiguration();
     }
 
-    public String getClientId() { return clientId; }
+    public String getClientId() {
+        return (clientId != null && !clientId.trim().isEmpty()) ? clientId : DEFAULT_CLIENT_ID;
+    }
     public String getClientSecret() { return clientSecret; }
     public String getTenantId() { return tenantId; }
     public String getRedirectUri() { return redirectUri; }
@@ -263,6 +269,8 @@ public class ConfigManager {
     public void updateDefaultIgnoreCertValidation(boolean ignore) { this.defaultIgnoreCertValidation = ignore; saveConfiguration(); }
     public void updateIgnoreCertValidation(boolean ignore) { this.ignoreCertValidation = ignore; saveConfiguration(); }
     public void updateFlashDurationSeconds(int seconds) { this.flashDurationSeconds = seconds; saveConfiguration(); }
+    public void updateClientId(String clientId) { this.clientId = clientId; saveConfiguration(); }
+    public void updateTenantId(String tenantId) { this.tenantId = tenantId; saveConfiguration(); }
     public void updateSignInUrl(String url) { this.signInUrl = url; saveConfiguration(); }
     public void updateFlashColor(String color) { this.flashColor = color; saveConfiguration(); }
     public void updateFlashTextColor(String color) { this.flashTextColor = color; saveConfiguration(); }
