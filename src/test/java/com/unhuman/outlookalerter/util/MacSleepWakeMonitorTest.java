@@ -106,5 +106,15 @@ class MacSleepWakeMonitorTest {
         void nonNegative() {
             assertTrue(monitor.getTimeSinceWake() >= 0);
         }
+
+        @Test
+        @DisplayName("returns large value at startup (no false wake-delay)")
+        void largeAtStartup() {
+            // lastWakeTime is initialized to 0, so getTimeSinceWake() should return
+            // a value close to System.currentTimeMillis() — i.e. well over 10 seconds.
+            // This ensures the wake-delay guard does NOT trigger at app startup.
+            assertTrue(monitor.getTimeSinceWake() > 10_000,
+                    "getTimeSinceWake() should be > 10s at startup to avoid false wake guard");
+        }
     }
 }

@@ -14,7 +14,9 @@ public class MacSleepWakeMonitor {
 
     private static MacSleepWakeMonitor instance;
     private final AtomicLong lastCheckTime = new AtomicLong(System.currentTimeMillis());
-    private final AtomicLong lastWakeTime = new AtomicLong(System.currentTimeMillis());
+    // Initialized to 0 so getTimeSinceWake() returns a large value at app startup.
+    // Only actual system wake events update this, avoiding false "recently woke" delays at startup.
+    private final AtomicLong lastWakeTime = new AtomicLong(0L);
     private final List<Runnable> wakeListeners = new CopyOnWriteArrayList<>();
     private ScheduledExecutorService monitorExecutor;
     private volatile boolean monitoring = false;

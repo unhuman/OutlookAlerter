@@ -12,3 +12,5 @@ diagnostics-*/
 **/*.log
 **/*.zip
 calendar-events-report.txt
+**/*.app
+**/*.exe
