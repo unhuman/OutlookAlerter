@@ -177,7 +177,7 @@ Save button →
 
 - **Size:** 550×400, always on top, modal
 - **Shown via:** `invokeAndWait(createUI())` (EDT-safe)
-- **Token validation:** Non-empty, JWT 3-part format (contains 2+ dots), strips "Bearer " prefix
+- **Token validation:** Non-empty, strips "Bearer " prefix; manual entry requires JWT 3-part format, MSAL-acquired tokens (compact/opaque) are accepted without format check
 
 ### Token Retrieval Flow
 

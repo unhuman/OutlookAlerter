@@ -56,6 +56,8 @@ List<CalendarEvent> getUpcomingEventsWithTimezonePreference(String preferredTime
         String accessToken = configManager.accessToken
         if (!isValidTokenFormat(accessToken)) {
             // Re-authentication logic...
+            // isValidTokenFormat() accepts both JWT (3 dot-separated parts)
+            // and MSAL compact/opaque tokens (no dots, ≥ 20 chars)
         }
         
         // Standard event endpoint
