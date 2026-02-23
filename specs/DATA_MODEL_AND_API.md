@@ -15,8 +15,9 @@
 | `location` | `String` | `location.displayName` |
 | `organizer` | `String` | `organizer.emailAddress.name` |
 | `isOnlineMeeting` | `boolean` | `isOnlineMeeting` |
-| `onlineMeetingUrl` | `String` | `onlineMeeting.joinUrl` |
-| `bodyPreview` | `String` | `bodyPreview` |
+| `onlineMeetingUrl` | `String` | `onlineMeeting.joinUrl` (populated regardless of `isOnlineMeeting` flag) |
+| `bodyPreview` | `String` | `bodyPreview` (truncated ~255 chars plain text) |
+| `bodyHtml` | `String` | `body.content` (full HTML body, used for meeting URL extraction) |
 | `calendarName` | `String` | Set by caller (multi-calendar) |
 | `responseStatus` | `String` | `responseStatus.response` |
 

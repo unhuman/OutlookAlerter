@@ -99,17 +99,39 @@ refreshCalendarEvents()  [daemon thread]
 
 ## System Tray
 
-**Setup:** `setupSystemTray()`
+**Setup:** `setupSystemTray()`  
+**Popup field:** `trayPopupMenu` (instance field, rebuilt on every event update)
 
-### Tray Menu Items
+### Tray Menu Structure
 
-| Item | Action |
-|---|---|
-| Show Outlook Alerter | `showAndActivateWindow()` |
-| Refresh Calendar | `refreshCalendarEvents()` |
-| Settings | `showSettingsDialog()` |
-| ─── separator ─── | |
-| Exit | `shutdown()` |
+The menu is fully rebuilt each time events are refreshed (every fetch and every 60 s cache check).
+
+```
+Show Outlook Alerter
+Refresh Calendar
+─── separator ───           (only present when ≥1 meeting qualifies)
+Meeting A (now)             clickable — opens join URL in browser
+Meeting B (in 7m)           clickable — opens join URL in browser
+Meeting C (now) (No Link)   disabled — no join URL found
+─── separator ───
+Settings
+─── separator ───
+Exit
+```
+
+**Meeting items appear when:** `!hasEnded()` AND (`isInProgress()` OR `getMinutesToStart() <= 10`)
+
+**Join URL lookup priority (`getEffectiveJoinUrl`):**
+1. `onlineMeeting.joinUrl` from Graph API
+2. `location` field, if it starts with `http`
+3. First Zoom/Teams `href` link extracted from full body HTML
+4. First bare URL found in `bodyPreview` plain text
+
+**Sorting:** by `startTime` ascending, then subject alphabetically for ties
+
+**Label format:** `Subject (now)` or `Subject (in Xm)` — subject truncated to 35 chars with `…`
+
+**No-link items:** label appended with ` (No Link)`, `setEnabled(false)`
 
 ### Tray Icon
 

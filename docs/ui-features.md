@@ -27,12 +27,21 @@ The main window displays:
 OutlookAlerter can run in the background via system tray:
 - Meeting alerts appear as system tray notifications
 - Right-click menu provides quick access to:
-  - Show application window
-  - Refresh calendar
-  - Settings
-  - Exit application
+  - **Show application window**
+  - **Refresh calendar**
+  - **Meeting join links** — active and imminent meetings (starting within 10 minutes) appear as clickable items that open the join URL directly in your browser. Meetings without a join link are shown disabled with `(No Link)`. The section is separated from the static items and updates every minute.
+  - **Settings**
+  - **Exit application**
 - Double-click on the tray icon to show the main window
 - Close button minimizes to tray instead of quitting
+
+### Meeting join URL resolution
+
+For each meeting the app searches for a join URL in this order:
+1. Graph API `onlineMeeting.joinUrl` (Teams / Zoom "Make Online" meetings)
+2. `location` field, if it is an HTTP URL
+3. First Zoom or Teams `href` link found in the full meeting body HTML (captures "Click Here to Join" buttons, including Zoom URLs with embedded `?pwd=`)
+4. First bare URL found in the `bodyPreview` plain-text fallback
 
 ## Token Entry UI
 
