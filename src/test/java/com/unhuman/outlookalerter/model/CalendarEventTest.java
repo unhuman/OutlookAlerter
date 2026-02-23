@@ -235,6 +235,7 @@ class CalendarEventTest {
             event.setIsOnlineMeeting(true);
             event.setOnlineMeetingUrl("https://teams.microsoft.com/meet/123");
             event.setBodyPreview("Discuss sprint goals");
+            event.setBodyHtml("<html><body><a href='https://zoom.us/j/999'>Join</a></body></html>");
             event.setCalendarName("Work");
             event.setResponseStatus("tentativelyAccepted");
 
@@ -247,6 +248,7 @@ class CalendarEventTest {
             assertTrue(event.getIsOnlineMeeting());
             assertEquals("https://teams.microsoft.com/meet/123", event.getOnlineMeetingUrl());
             assertEquals("Discuss sprint goals", event.getBodyPreview());
+            assertEquals("<html><body><a href='https://zoom.us/j/999'>Join</a></body></html>", event.getBodyHtml());
             assertEquals("Work", event.getCalendarName());
             assertEquals("tentativelyAccepted", event.getResponseStatus());
         }
@@ -264,6 +266,7 @@ class CalendarEventTest {
             assertFalse(event.getIsOnlineMeeting());
             assertNull(event.getOnlineMeetingUrl());
             assertNull(event.getBodyPreview());
+            assertNull(event.getBodyHtml());
             assertNull(event.getCalendarName());
             assertNull(event.getResponseStatus());
         }
