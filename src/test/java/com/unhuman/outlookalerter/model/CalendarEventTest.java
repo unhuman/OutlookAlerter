@@ -384,4 +384,75 @@ class CalendarEventTest {
             assertFalse(event.isOnlineMeeting());
         }
     }
+
+    // ───────── isCancelled ─────────
+
+    @Nested
+    @DisplayName("isCancelled()")
+    class IsCancelled {
+
+        @Test
+        @DisplayName("returns false by default")
+        void defaultFalse() {
+            CalendarEvent event = new CalendarEvent();
+            assertFalse(event.isCancelled());
+        }
+
+        @Test
+        @DisplayName("returns true when cancelledByOrganizer flag is set")
+        void trueWhenFlagSet() {
+            CalendarEvent event = new CalendarEvent();
+            event.setCancelledByOrganizer(true);
+            assertTrue(event.isCancelled());
+        }
+
+        @Test
+        @DisplayName("returns false when cancelledByOrganizer flag is explicitly false")
+        void falseWhenFlagClear() {
+            CalendarEvent event = new CalendarEvent();
+            event.setCancelledByOrganizer(false);
+            event.setSubject("Normal Meeting");
+            assertFalse(event.isCancelled());
+        }
+
+        @Test
+        @DisplayName("returns true for subject prefixed with 'Cancelled:'")
+        void trueForCancelledPrefix() {
+            CalendarEvent event = new CalendarEvent();
+            event.setSubject("Cancelled: Team Standup");
+            assertTrue(event.isCancelled());
+        }
+
+        @Test
+        @DisplayName("returns true for subject prefixed with 'Canceled:' (single-l variant)")
+        void trueForCanceledPrefix() {
+            CalendarEvent event = new CalendarEvent();
+            event.setSubject("Canceled: Team Standup");
+            assertTrue(event.isCancelled());
+        }
+
+        @Test
+        @DisplayName("prefix check is case-insensitive")
+        void prefixCaseInsensitive() {
+            CalendarEvent event = new CalendarEvent();
+            event.setSubject("CANCELLED: Budget Review");
+            assertTrue(event.isCancelled());
+        }
+
+        @Test
+        @DisplayName("returns false when subject contains 'cancelled' but not as a prefix")
+        void falseWhenNotPrefix() {
+            CalendarEvent event = new CalendarEvent();
+            event.setSubject("Review cancelled items");
+            assertFalse(event.isCancelled());
+        }
+
+        @Test
+        @DisplayName("returns false when subject is null")
+        void falseWhenSubjectNull() {
+            CalendarEvent event = new CalendarEvent();
+            event.setSubject(null);
+            assertFalse(event.isCancelled());
+        }
+    }
 }

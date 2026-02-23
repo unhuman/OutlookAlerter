@@ -18,6 +18,7 @@ public class CalendarEvent {
     private String bodyHtml;
     private String calendarName;
     private String responseStatus;
+    private boolean cancelledByOrganizer;
 
     // Getters and setters
     public String getId() { return id; }
@@ -57,6 +58,20 @@ public class CalendarEvent {
 
     public String getResponseStatus() { return responseStatus; }
     public void setResponseStatus(String responseStatus) { this.responseStatus = responseStatus; }
+
+    public boolean getCancelledByOrganizer() { return cancelledByOrganizer; }
+    public void setCancelledByOrganizer(boolean cancelledByOrganizer) { this.cancelledByOrganizer = cancelledByOrganizer; }
+
+    /**
+     * Returns true if this event has been cancelled — either via the Graph API
+     * isCancelled flag, or by a subject prefix of "Cancelled:" / "Canceled:".
+     */
+    public boolean isCancelled() {
+        if (cancelledByOrganizer) return true;
+        if (subject == null) return false;
+        String lower = subject.toLowerCase();
+        return lower.startsWith("cancelled:") || lower.startsWith("canceled:");
+    }
 
     /**
      * Calculate minutes until this event starts

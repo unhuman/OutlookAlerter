@@ -863,6 +863,15 @@ public class OutlookClient {
                     event.setResponseStatus(responseStatusObj.optString("response", null));
                 }
 
+                event.setCancelledByOrganizer(eventObj.optBoolean("isCancelled", false));
+
+                // Skip cancelled/canceled events entirely — they must not appear anywhere in the UI
+                if (event.isCancelled()) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                            "Skipping cancelled event: " + event.getSubject());
+                    continue;
+                }
+
                 events.add(event);
             }
         } catch (Exception e) {
