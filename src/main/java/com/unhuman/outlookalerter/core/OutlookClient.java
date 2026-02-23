@@ -611,8 +611,7 @@ public class OutlookClient {
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
             urlBuilder.append("?startDateTime=").append(URLEncoder.encode(startParam, "UTF-8"));
             urlBuilder.append("&endDateTime=").append(URLEncoder.encode(endParam, "UTF-8"));
-            urlBuilder.append("&$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview");
-            urlBuilder.append("&$orderby=").append(URLEncoder.encode("start/dateTime asc", "UTF-8"));
+            urlBuilder.append("&$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body");
             urlBuilder.append("&$top=50");
 
             String url = urlBuilder.toString();
@@ -706,7 +705,7 @@ public class OutlookClient {
             endTime = cleanDateTimeForFilter(endTime);
 
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
-            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,responseStatus");
+            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus");
 
             String filterParam = "start/dateTime ge '" + startTime + "' and start/dateTime le '" + endTime + "'";
             urlBuilder.append("&$filter=").append(URLEncoder.encode(filterParam, "UTF-8"));
@@ -757,7 +756,7 @@ public class OutlookClient {
                     .format(DateTimeFormatter.ISO_LOCAL_DATE);
 
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
-            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview");
+            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body");
 
             String filterParam = "start/dateTime ge '" + today + "' and start/dateTime le '" + tomorrow + "'";
             urlBuilder.append("&$filter=").append(URLEncoder.encode(filterParam, "UTF-8"));
@@ -773,7 +772,7 @@ public class OutlookClient {
                     "Error creating fallback URI: " + e.getMessage());
             try {
                 return new URI(baseUrl
-                        + "?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,responseStatus&$top=50&$orderby=start/dateTime asc");
+                        + "?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus&$top=50&$orderby=start/dateTime asc");
             } catch (URISyntaxException e2) {
                 throw new RuntimeException("Failed to create even a basic URI: " + e2.getMessage());
             }
@@ -844,14 +843,20 @@ public class OutlookClient {
                 }
 
                 event.setIsOnlineMeeting(eventObj.optBoolean("isOnlineMeeting", false));
-                if (event.getIsOnlineMeeting()) {
-                    JSONObject onlineMeetingObj = eventObj.optJSONObject("onlineMeeting");
-                    if (onlineMeetingObj != null) {
-                        event.setOnlineMeetingUrl(onlineMeetingObj.optString("joinUrl", null));
-                    }
+                // Always attempt to get the joinUrl regardless of isOnlineMeeting flag
+                // (manually-scheduled Zoom meetings may have isOnlineMeeting=false but still have a joinUrl)
+                JSONObject onlineMeetingObj = eventObj.optJSONObject("onlineMeeting");
+                if (onlineMeetingObj != null) {
+                    event.setOnlineMeetingUrl(onlineMeetingObj.optString("joinUrl", null));
                 }
 
                 event.setBodyPreview(eventObj.optString("bodyPreview", null));
+
+                // Store full body HTML for meeting URL extraction
+                JSONObject bodyObj = eventObj.optJSONObject("body");
+                if (bodyObj != null) {
+                    event.setBodyHtml(bodyObj.optString("content", null));
+                }
 
                 JSONObject responseStatusObj = eventObj.optJSONObject("responseStatus");
                 if (responseStatusObj != null) {

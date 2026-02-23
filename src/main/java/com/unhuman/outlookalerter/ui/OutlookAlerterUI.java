@@ -30,6 +30,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.awt.Desktop;
+import java.net.URI;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import com.unhuman.outlookalerter.util.LogManager;
 import com.unhuman.outlookalerter.util.LogCategory;
 
@@ -154,6 +158,7 @@ public class OutlookAlerterUI extends JFrame {
     private JLabel lastUpdateLabel;
     private TrayIcon trayIcon;
     private SystemTray systemTray;
+    private PopupMenu trayPopupMenu;
 
     // Schedulers for periodic tasks
     private ScheduledExecutorService alertScheduler;
@@ -290,51 +295,9 @@ public class OutlookAlerterUI extends JFrame {
             if (SystemTray.isSupported()) {
                 systemTray = SystemTray.getSystemTray();
 
-                // Create a popup menu
-                PopupMenu popup = new PopupMenu();
-
-                // Create menu items
-                MenuItem showItem = new MenuItem("Show Outlook Alerter");
-                showItem.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        activateWindow();
-                    }
-                });
-
-                MenuItem refreshItem = new MenuItem("Refresh Calendar");
-                refreshItem.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        alertedEventIds.clear(); // Clear alerted events cache
-                        refreshCalendarEvents();
-                    }
-                });
-
-                MenuItem settingsItem = new MenuItem("Settings");
-                settingsItem.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        showSettingsDialog();
-                    }
-                });
-
-                MenuItem exitItem = new MenuItem("Exit");
-                exitItem.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        shutdown();
-                        System.exit(0);
-                    }
-                });
-
-                // Add menu items to popup
-                popup.add(showItem);
-                popup.add(refreshItem);
-                popup.addSeparator();
-                popup.add(settingsItem);
-                popup.addSeparator();
-                popup.add(exitItem);
+                // Create a popup menu (populated by buildTrayPopupMenu)
+                trayPopupMenu = new PopupMenu();
+                buildTrayPopupMenu(null);
 
                 // Create tray icon with the popup menu
                 try {
@@ -350,7 +313,7 @@ public class OutlookAlerterUI extends JFrame {
                     boolean trayIconInvalid = currentIconInvalidState != null ? currentIconInvalidState : false;
                     Image trayIconImage = IconManager.getIconImage(trayIconInvalid);
 
-                    trayIcon = new TrayIcon(trayIconImage, "Outlook Alerter - Meeting Alerts", popup);
+                    trayIcon = new TrayIcon(trayIconImage, "Outlook Alerter - Meeting Alerts", trayPopupMenu);
                     trayIcon.setImageAutoSize(true);
 
                     // Add double-click action to show window
@@ -720,6 +683,7 @@ public class OutlookAlerterUI extends JFrame {
                             // Use Collections.unmodifiableList to make the snapshot immutable
                             lastFetchedEvents = Collections.unmodifiableList(new ArrayList<>(finalEvents));
                             lastCalendarRefresh = ZonedDateTime.now();
+                            buildTrayPopupMenu(finalEvents);
 
                             // Update status to successful
                             String now = lastCalendarRefresh.format(DateTimeFormatter.ofPattern("hh:mm:ss a"));
@@ -1115,6 +1079,9 @@ public class OutlookAlerterUI extends JFrame {
                     // Update the UI with recalculated times
                     updateEventsDisplay(updatedEvents);
 
+                    // Refresh tray meeting links (status changes each minute)
+                    buildTrayPopupMenu(updatedEvents);
+
                     // Check for alerts
                     checkForEventAlerts(updatedEvents);
                 } catch (Exception e) {
@@ -1394,6 +1361,143 @@ public class OutlookAlerterUI extends JFrame {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Rebuilds the tray popup menu. Must be called on the EDT.
+     * Pass null on startup (before any events are fetched) to build the static menu only.
+     */
+    private void buildTrayPopupMenu(List<CalendarEvent> events) {
+        if (trayPopupMenu == null) return;
+        trayPopupMenu.removeAll();
+
+        // --- Static top items ---
+        MenuItem showItem = new MenuItem("Show Outlook Alerter");
+        showItem.addActionListener(e -> activateWindow());
+        trayPopupMenu.add(showItem);
+
+        MenuItem refreshItem = new MenuItem("Refresh Calendar");
+        refreshItem.addActionListener(e -> {
+            alertedEventIds.clear();
+            refreshCalendarEvents();
+        });
+        trayPopupMenu.add(refreshItem);
+
+        // --- Dynamic meeting items (show up to 10 min before start, through end) ---
+        if (events != null) {
+            List<CalendarEvent> upcoming = events.stream()
+                    .filter(e -> !e.hasEnded())
+                    .filter(e -> e.isInProgress() || e.getMinutesToStart() <= 10)
+                    .sorted((a, b) -> {
+                        int cmp = a.getStartTime().compareTo(b.getStartTime());
+                        if (cmp != 0) return cmp;
+                        String sa = a.getSubject() != null ? a.getSubject() : "";
+                        String sb = b.getSubject() != null ? b.getSubject() : "";
+                        return sa.compareToIgnoreCase(sb);
+                    })
+                    .collect(Collectors.toList());
+            if (!upcoming.isEmpty()) {
+                trayPopupMenu.addSeparator();
+                for (CalendarEvent event : upcoming) {
+                    String url = getEffectiveJoinUrl(event);
+                    MenuItem item;
+                    if (url != null) {
+                        item = new MenuItem(buildMeetingTrayLabel(event));
+                        item.addActionListener(ev -> {
+                            try {
+                                Desktop.getDesktop().browse(new URI(url));
+                            } catch (Exception ex) {
+                                LogManager.getInstance().error(LogCategory.GENERAL, "Failed to open meeting URL: " + ex.getMessage(), ex);
+                            }
+                        });
+                    } else {
+                        item = new MenuItem(buildMeetingTrayLabel(event) + " (No Link)");
+                        item.setEnabled(false);
+                    }
+                    trayPopupMenu.add(item);
+                }
+            }
+        }
+
+        // --- Static bottom items ---
+        trayPopupMenu.addSeparator();
+        MenuItem settingsItem = new MenuItem("Settings");
+        settingsItem.addActionListener(e -> showSettingsDialog());
+        trayPopupMenu.add(settingsItem);
+        trayPopupMenu.addSeparator();
+        MenuItem exitItem = new MenuItem("Exit");
+        exitItem.addActionListener(e -> {
+            shutdown();
+            System.exit(0);
+        });
+        trayPopupMenu.add(exitItem);
+    }
+
+    // Patterns for extracting meeting join URLs from body HTML / bodyPreview.
+    // Anchor href first (highest fidelity — includes ?pwd= and full path).
+    private static final Pattern HREF_PATTERN =
+            Pattern.compile("href=[\"']?(https?://[^\"'\\s>]+)[\"']?", Pattern.CASE_INSENSITIVE);
+    // Fallback: bare URLs in plain text / bodyPreview
+    private static final Pattern URL_PATTERN =
+            Pattern.compile("https?://[^\\s<>\"']+", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Returns the best URL to join a meeting using a four-tier priority:
+     *  1. Graph API onlineMeeting.joinUrl  (set for Teams / Zoom "Make Online" meetings)
+     *  2. location field, if it is an HTTP URL
+     *  3. href extracted from full body HTML  (catches "Click Here to Join" anchor links, incl. ?pwd=)
+     *  4. Bare URL from bodyPreview plain text (last-resort fallback)
+     */
+    private String getEffectiveJoinUrl(CalendarEvent event) {
+        // 1 — Graph joinUrl
+        String onlineUrl = event.getOnlineMeetingUrl();
+        if (onlineUrl != null && !onlineUrl.isBlank()) {
+            return onlineUrl;
+        }
+        // 2 — location field IS a URL
+        String loc = event.getLocation();
+        if (loc != null && (loc.startsWith("https://") || loc.startsWith("http://"))) {
+            return loc;
+        }
+        // 3 — first meeting-URL href in full body HTML
+        String html = event.getBodyHtml();
+        if (html != null) {
+            Matcher m = HREF_PATTERN.matcher(html);
+            String firstHref = null;
+            while (m.find()) {
+                String url = m.group(1);
+                if (isMeetingUrl(url)) return url;
+                if (firstHref == null) firstHref = url;
+            }
+            if (firstHref != null) return firstHref;
+        }
+        // 4 — bare URL in bodyPreview plain text
+        String preview = event.getBodyPreview();
+        if (preview != null) {
+            Matcher m = URL_PATTERN.matcher(preview);
+            if (m.find()) return m.group();
+        }
+        return null;
+    }
+
+    /** Returns true if the URL is a Zoom or Teams meeting join link. */
+    private static boolean isMeetingUrl(String url) {
+        return url.contains("zoom.us/j/") || url.contains("zoom.us/s/")
+                || url.contains("teams.microsoft.com/l/meetup")
+                || url.contains("teams.live.com");
+    }
+
+    /**
+     * Builds a concise tray menu label for a meeting join item.
+     * Format:  "Subject (now)"  or  "Subject (in 5m)"
+     */
+    private String buildMeetingTrayLabel(CalendarEvent event) {
+        String subject = event.getSubject() != null ? event.getSubject() : "Meeting";
+        if (subject.length() > 35) {
+            subject = subject.substring(0, 34) + "\u2026";
+        }
+        String timeHint = event.isInProgress() ? "now" : "in " + event.getMinutesToStart() + "m";
+        return subject + " (" + timeHint + ")";
     }
 
     /**

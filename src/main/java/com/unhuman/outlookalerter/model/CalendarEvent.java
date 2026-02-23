@@ -15,6 +15,7 @@ public class CalendarEvent {
     private boolean isOnlineMeeting;
     private String onlineMeetingUrl;
     private String bodyPreview;
+    private String bodyHtml;
     private String calendarName;
     private String responseStatus;
 
@@ -47,6 +48,9 @@ public class CalendarEvent {
 
     public String getBodyPreview() { return bodyPreview; }
     public void setBodyPreview(String bodyPreview) { this.bodyPreview = bodyPreview; }
+
+    public String getBodyHtml() { return bodyHtml; }
+    public void setBodyHtml(String bodyHtml) { this.bodyHtml = bodyHtml; }
 
     public String getCalendarName() { return calendarName; }
     public void setCalendarName(String calendarName) { this.calendarName = calendarName; }
