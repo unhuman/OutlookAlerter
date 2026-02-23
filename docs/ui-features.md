@@ -30,6 +30,7 @@ OutlookAlerter can run in the background via system tray:
   - **Show application window**
   - **Refresh calendar**
   - **Meeting join links** — active and imminent meetings (starting within 10 minutes) appear as clickable items that open the join URL directly in your browser. Meetings without a join link are shown disabled with `(No Link)`. The section is separated from the static items and updates every minute.
+  - **Next Meeting at hh:mm am/pm** — when no active or imminent meetings are present, a non-clickable (disabled) label shows the start time of the next upcoming meeting so you always know when to expect the next one.
   - **Settings**
   - **Exit application**
 - Double-click on the tray icon to show the main window

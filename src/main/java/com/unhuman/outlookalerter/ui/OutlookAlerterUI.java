@@ -20,8 +20,10 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
@@ -1416,6 +1418,15 @@ public class OutlookAlerterUI extends JFrame {
                     }
                     trayPopupMenu.add(item);
                 }
+            } else {
+                // No near-future meetings — show when the next one begins
+                String nextLabel = getNextMeetingTimeLabel(events);
+                if (nextLabel != null) {
+                    trayPopupMenu.addSeparator();
+                    MenuItem nextItem = new MenuItem(nextLabel);
+                    nextItem.setEnabled(false);
+                    trayPopupMenu.add(nextItem);
+                }
             }
         }
 
@@ -1491,6 +1502,21 @@ public class OutlookAlerterUI extends JFrame {
      * Builds a concise tray menu label for a meeting join item.
      * Format:  "Subject (now)"  or  "Subject (in 5m)"
      */
+    /**
+     * Returns a "Next Meeting at h:mm a" label for the nearest non-ended event in the list,
+     * or null when the list is null/empty or all events have ended.
+     * Package-private for testing.
+     */
+    String getNextMeetingTimeLabel(List<CalendarEvent> events) {
+        if (events == null) return null;
+        return events.stream()
+                .filter(e -> !e.hasEnded())
+                .min(Comparator.comparing(CalendarEvent::getStartTime))
+                .map(e -> "Next Meeting at " + e.getStartTime()
+                        .format(DateTimeFormatter.ofPattern("h:mm a")))
+                .orElse(null);
+    }
+
     private String buildMeetingTrayLabel(CalendarEvent event) {
         String subject = event.getSubject() != null ? event.getSubject() : "Meeting";
         if (subject.length() > 35) {

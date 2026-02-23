@@ -16,7 +16,10 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
@@ -272,6 +275,85 @@ class OutlookAlerterUITrayMenuTest {
             event.setSubject("Standup");
             String label = invokeBuildMeetingTrayLabel(event);
             assertTrue(label.startsWith("Standup ("), "Expected unmodified subject, got: " + label);
+        }
+    }
+
+    // ── getNextMeetingTimeLabel ────────────────────────────────────────
+
+    @Nested
+    @DisplayName("getNextMeetingTimeLabel() — next meeting label")
+    class GetNextMeetingTimeLabel {
+
+        private String invokeGetNextMeetingTimeLabel(List<CalendarEvent> events) throws Exception {
+            Method m = OutlookAlerterUI.class.getDeclaredMethod("getNextMeetingTimeLabel", List.class);
+            m.setAccessible(true);
+            return (String) m.invoke(ui, events);
+        }
+
+        @Test
+        @DisplayName("returns 'Next Meeting at' label for a future meeting")
+        void returnLabelForFutureMeeting() throws Exception {
+            ZonedDateTime future = ZonedDateTime.now().plusMinutes(90);
+            CalendarEvent event = makeEvent(future, future.plusMinutes(30));
+            event.setSubject("Quarterly Review");
+
+            String label = invokeGetNextMeetingTimeLabel(Arrays.asList(event));
+
+            assertNotNull(label);
+            String expectedTime = future.format(DateTimeFormatter.ofPattern("h:mm a"));
+            assertEquals("Next Meeting at " + expectedTime, label);
+        }
+
+        @Test
+        @DisplayName("returns null when events list is null")
+        void returnsNullForNullEvents() throws Exception {
+            assertNull(invokeGetNextMeetingTimeLabel(null));
+        }
+
+        @Test
+        @DisplayName("returns null when all events have ended")
+        void returnsNullWhenAllEventsEnded() throws Exception {
+            ZonedDateTime past = ZonedDateTime.now().minusHours(2);
+            CalendarEvent event = makeEvent(past, past.plusMinutes(30));
+
+            assertNull(invokeGetNextMeetingTimeLabel(Arrays.asList(event)));
+        }
+
+        @Test
+        @DisplayName("returns null when list is empty")
+        void returnsNullForEmptyList() throws Exception {
+            assertNull(invokeGetNextMeetingTimeLabel(Arrays.asList()));
+        }
+
+        @Test
+        @DisplayName("returns the earliest future meeting when multiple future meetings exist")
+        void returnsEarliestOfMultipleFutureMeetings() throws Exception {
+            ZonedDateTime first  = ZonedDateTime.now().plusMinutes(60);
+            ZonedDateTime second = ZonedDateTime.now().plusMinutes(120);
+            CalendarEvent e1 = makeEvent(first,  first.plusMinutes(30));
+            CalendarEvent e2 = makeEvent(second, second.plusMinutes(30));
+
+            // Pass in reverse order to confirm sorting
+            String label = invokeGetNextMeetingTimeLabel(Arrays.asList(e2, e1));
+
+            assertNotNull(label);
+            String expectedTime = first.format(DateTimeFormatter.ofPattern("h:mm a"));
+            assertEquals("Next Meeting at " + expectedTime, label);
+        }
+
+        @Test
+        @DisplayName("skips ended events and returns label for the earliest future event")
+        void skipsEndedEvents() throws Exception {
+            ZonedDateTime past   = ZonedDateTime.now().minusHours(2);
+            ZonedDateTime future = ZonedDateTime.now().plusMinutes(45);
+            CalendarEvent ended  = makeEvent(past,   past.plusMinutes(30));
+            CalendarEvent coming = makeEvent(future, future.plusMinutes(30));
+
+            String label = invokeGetNextMeetingTimeLabel(Arrays.asList(ended, coming));
+
+            assertNotNull(label);
+            String expectedTime = future.format(DateTimeFormatter.ofPattern("h:mm a"));
+            assertEquals("Next Meeting at " + expectedTime, label);
         }
     }
 }
