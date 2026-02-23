@@ -315,11 +315,7 @@ public class OutlookAlerterUI extends JFrame {
                 settingsItem.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
-                        if (isTokenDialogActive) {
-                            LogManager.getInstance().info(LogCategory.GENERAL, "Cannot display settings dialog while token dialog is active.");
-                        } else {
-                            showSettingsDialog();
-                        }
+                        showSettingsDialog();
                     }
                 });
 
@@ -655,9 +651,10 @@ public class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
-        // Suppress calendar refresh while token dialog is active (e.g., MSAL OAuth flow in progress)
+        // If token dialog is active, bring it to the front instead of starting a new refresh
         if (isTokenDialogActive) {
-            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Skipping calendar refresh — token dialog is active");
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Skipping calendar refresh — token dialog is active, bringing it to front");
+            bringTokenDialogToFront();
             return;
         }
 
@@ -1134,10 +1131,7 @@ public class OutlookAlerterUI extends JFrame {
      * Show settings dialog
      */
     private synchronized void showSettingsDialog() {
-        if (isTokenDialogActive) {
-            LogManager.getInstance().info(LogCategory.GENERAL, "Cannot display settings dialog while token dialog is active.");
-            return;
-        }
+        // Token dialog is non-modal, so settings can coexist with it
 
         if (settingsDialog == null || !settingsDialog.isShowing()) {
             // Create and show the new settings dialog
@@ -1343,6 +1337,15 @@ public class OutlookAlerterUI extends JFrame {
                 setVisible(true);
                 setExtendedState(JFrame.NORMAL);
 
+                // If token dialog is active, just make the main window visible
+                // and bring the modal dialog to front — skip the main window's
+                // focus-grabbing timers to avoid a focus war on macOS.
+                if (isTokenDialogActive) {
+                    toFront();
+                    bringTokenDialogToFront();
+                    return;
+                }
+
                 // On macOS, we need special handling to ensure the window comes to front
                 if (System.getProperty("os.name").toLowerCase().contains("mac")) {
                     // Set window always-on-top temporarily to help with focus
@@ -1394,6 +1397,17 @@ public class OutlookAlerterUI extends JFrame {
     }
 
     /**
+     * Bring the token dialog to the front if it's currently active.
+     * Safe to call from any thread.
+     */
+    private void bringTokenDialogToFront() {
+        SimpleTokenDialog dialog = SimpleTokenDialog.getCurrentInstance();
+        if (dialog != null) {
+            dialog.bringToFront();
+        }
+    }
+
+    /**
      * Check if EDT is responsive
      * @return true if EDT is responsive, false otherwise
      */
@@ -1418,12 +1432,14 @@ public class OutlookAlerterUI extends JFrame {
 
     /**
      * Prompt the user for tokens using the SimpleTokenDialog.
-     * Backwards-compatible overload without MSAL provider.
+     * Backwards-compatible overload that auto-resolves the MSAL provider from outlookClient.
      * @param signInUrl The URL for signing in.
      * @return A map containing the tokens, or null if the user cancels.
      */
     public Map<String, String> promptForTokens(String signInUrl) {
-        return promptForTokens(signInUrl, null);
+        com.unhuman.outlookalerter.core.MsalAuthProvider provider =
+                (outlookClient != null) ? outlookClient.getMsalAuthProvider() : null;
+        return promptForTokens(signInUrl, provider);
     }
 
     /**

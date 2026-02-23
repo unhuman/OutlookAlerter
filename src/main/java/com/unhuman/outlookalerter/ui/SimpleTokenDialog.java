@@ -140,25 +140,16 @@ public class SimpleTokenDialog {
      */
     private void createUI() {
         try {
-            // Find the main application frame as parent — avoid transient windows
-            // (flash overlays, alert banners) that may be disposed while this dialog
-            // is open, which would also dispose this modal dialog.
+            // Don't parent the dialog to the main application frame.
+            // JDialog owned windows are automatically hidden when the owner
+            // is hidden (e.g. main window red-X minimises to tray), which
+            // makes the token dialog disappear unexpectedly.
             parentFrame = null;
-            Frame[] frames = Frame.getFrames();
-            for (Frame f : frames) {
-                if (f.isVisible() && f instanceof JFrame
-                        && f.getTitle() != null && f.getTitle().startsWith("Outlook Alerter")) {
-                    // Prefer the main application window (its title starts with "Outlook Alerter")
-                    // but NOT undecorated popup-type windows (banners/flash overlays)
-                    if (!((JFrame) f).isUndecorated()) {
-                        parentFrame = (JFrame) f;
-                        break;
-                    }
-                }
-            }
 
-            // Create modal dialog
-            frame = new JDialog(parentFrame, "Outlook Alerter - Token Entry", true);
+            // Create non-modal dialog — the CountDownLatch in getTokens() handles
+            // the blocking wait. Modal dialogs freeze the parent window's input on
+            // macOS and can get hidden behind other windows, making the app unusable.
+            frame = new JDialog((Frame) null, "Outlook Alerter - Token Entry", false);
             frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);  // Let the system handle window closing
             frame.addWindowListener(new WindowAdapter() {
                 @Override
@@ -445,19 +436,52 @@ public class SimpleTokenDialog {
     }
 
     /**
+     * Bring the token dialog to the front if it's currently showing.
+     * Also re-shows the dialog if it was hidden (e.g. by the main
+     * window being minimised to tray).
+     * Safe to call from any thread.
+     */
+    public void bringToFront() {
+        if (!isShowing || frame == null || !frame.isDisplayable()) {
+            return;
+        }
+        SwingUtilities.invokeLater(() -> {
+            try {
+                if (frame != null && frame.isDisplayable()) {
+                    if (!frame.isVisible()) {
+                        frame.setVisible(true);
+                    }
+                    frame.toFront();
+                    frame.requestFocus();
+                }
+            } catch (Exception e) {
+                LogManager.getInstance().error(LogCategory.GENERAL,
+                        "SimpleTokenDialog: Error bringing dialog to front: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Get the current singleton instance without creating one.
+     * @return The current instance, or null if none exists.
+     */
+    public static SimpleTokenDialog getCurrentInstance() {
+        synchronized (LOCK) {
+            return instance;
+        }
+    }
+
+    /**
      * Create a minimal fallback UI as a last resort
      */
     private void createFallbackUI() {
         LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Creating fallback UI");
 
-        // Create a temporary parent frame for modality
-        parentFrame = new JFrame();
-        parentFrame.setUndecorated(true);
-        parentFrame.setVisible(true);
-        parentFrame.setLocationRelativeTo(null);
+        // No parent frame — see createUI() for rationale
+        parentFrame = null;
 
-        // Create modal dialog
-        frame = new JDialog(parentFrame, "Outlook Alerter - Token Entry (Fallback)", true);
+        // Create non-modal dialog (see createUI() comment for rationale)
+        frame = new JDialog((Frame) null, "Outlook Alerter - Token Entry (Fallback)", false);
         frame.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         // Add window listener to handle the red X button
         frame.addWindowListener(new WindowAdapter() {
