@@ -3,6 +3,8 @@ package com.unhuman.outlookalerter.ui;
 import com.unhuman.outlookalerter.util.LogManager;
 import com.unhuman.outlookalerter.util.LogCategory;
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.text.DefaultCaret;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -84,6 +86,22 @@ public class LogViewer extends JFrame {
             }
         });
         filterPanel.add(selectNoneButton);
+
+        filterPanel.add(Box.createHorizontalStrut(10));
+        filterPanel.add(new JLabel("Text Filter:"));
+        JTextField textFilterField = new JTextField(12);
+        textFilterField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) { applyFilter(); }
+            @Override
+            public void removeUpdate(DocumentEvent e) { applyFilter(); }
+            @Override
+            public void changedUpdate(DocumentEvent e) { applyFilter(); }
+            private void applyFilter() {
+                logManager.setTextFilter(textFilterField.getText());
+            }
+        });
+        filterPanel.add(textFilterField);
 
         logTextArea = new JTextArea();
         logTextArea.setEditable(false);

@@ -24,6 +24,7 @@ public class LogManager {
     private static final String LEVEL_ERROR = "ERROR";
     private final ConcurrentLinkedDeque<LogEntry> logBuffer = new ConcurrentLinkedDeque<>();
     private final Set<LogCategory> activeFilters = EnumSet.allOf(LogCategory.class);
+    private volatile String textFilter = "";
     private JTextArea logTextArea = null;
 
     private LogManager() {}
@@ -142,6 +143,27 @@ public class LogManager {
         return LogCategory.values();
     }
 
+    /**
+     * Set the text filter string. When non-empty, only log lines containing
+     * this string (case-insensitive) are shown.
+     */
+    public void setTextFilter(String filter) {
+        this.textFilter = (filter == null) ? "" : filter;
+        refreshLogDisplay();
+    }
+
+    public String getTextFilter() {
+        return textFilter;
+    }
+
+    private boolean matchesTextFilter(LogEntry entry) {
+        String filter = textFilter;
+        if (filter.isEmpty()) {
+            return true;
+        }
+        return entry.getFormattedMessage().toLowerCase().contains(filter.toLowerCase());
+    }
+
     public void setLogTextArea(JTextArea textArea) {
         this.logTextArea = textArea;
         if (textArea != null) {
@@ -161,6 +183,9 @@ public class LogManager {
                         return;
                     }
                     if (!activeFilters.contains(latestEntry.getCategory())) {
+                        return;
+                    }
+                    if (!matchesTextFilter(latestEntry)) {
                         return;
                     }
                     final int docLength = textAreaRef.getDocument().getLength();
@@ -184,7 +209,7 @@ public class LogManager {
         if (textArea != null) {
             StringBuilder sb = new StringBuilder();
             for (LogEntry entry : logBuffer) {
-                if (activeFilters.contains(entry.getCategory())) {
+                if (activeFilters.contains(entry.getCategory()) && matchesTextFilter(entry)) {
                     sb.append(entry.getFormattedMessage()).append("\n");
                 }
             }
@@ -204,7 +229,7 @@ public class LogManager {
     public String getLogsAsString() {
         StringBuilder sb = new StringBuilder();
         for (LogEntry entry : logBuffer) {
-            if (activeFilters.contains(entry.getCategory())) {
+            if (activeFilters.contains(entry.getCategory()) && matchesTextFilter(entry)) {
                 sb.append(entry.getFormattedMessage()).append("\n");
             }
         }

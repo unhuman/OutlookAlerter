@@ -200,6 +200,15 @@ class LogManagerTest {
     @DisplayName("category filtering")
     class Filtering {
 
+        @BeforeEach
+        void resetFilters() {
+            // Ensure all category filters are enabled and text filter is clear
+            for (LogCategory cat : LogCategory.values()) {
+                logManager.setFilterEnabled(cat, true);
+            }
+            logManager.setTextFilter("");
+        }
+
         @Test
         @DisplayName("all filters enabled by default")
         void allEnabledByDefault() {
@@ -233,6 +242,95 @@ class LogManagerTest {
             assertTrue(Arrays.asList(cats).contains(LogCategory.MEETING_INFO));
             assertTrue(Arrays.asList(cats).contains(LogCategory.ALERT_PROCESSING));
             assertTrue(Arrays.asList(cats).contains(LogCategory.GENERAL));
+        }
+    }
+
+    // ───────── Text Filtering ─────────
+
+    @Nested
+    @DisplayName("text filtering")
+    class TextFiltering {
+
+        @BeforeEach
+        void resetFilters() {
+            for (LogCategory cat : LogCategory.values()) {
+                logManager.setFilterEnabled(cat, true);
+            }
+            logManager.setTextFilter("");
+        }
+
+        @Test
+        @DisplayName("empty text filter shows all logs")
+        void emptyFilterShowsAll() {
+            logManager.info("alpha message");
+            logManager.info("beta message");
+            logManager.setTextFilter("");
+            String logs = logManager.getLogsAsString();
+            assertTrue(logs.contains("alpha message"));
+            assertTrue(logs.contains("beta message"));
+        }
+
+        @Test
+        @DisplayName("text filter hides non-matching entries")
+        void filterHidesNonMatching() {
+            logManager.info("token refreshed successfully");
+            logManager.info("calendar fetch started");
+            logManager.setTextFilter("token");
+            String logs = logManager.getLogsAsString();
+            assertTrue(logs.contains("token refreshed"));
+            assertFalse(logs.contains("calendar fetch"));
+        }
+
+        @Test
+        @DisplayName("text filter is case-insensitive")
+        void caseInsensitive() {
+            logManager.info("Token Refreshed Successfully");
+            logManager.setTextFilter("token refreshed");
+            assertTrue(logManager.getLogsAsString().contains("Token Refreshed"));
+        }
+
+        @Test
+        @DisplayName("clearing text filter restores all logs")
+        void clearingFilterRestoresAll() {
+            logManager.info("first entry");
+            logManager.info("second entry");
+            logManager.setTextFilter("first");
+            assertFalse(logManager.getLogsAsString().contains("second entry"));
+
+            logManager.setTextFilter("");
+            assertTrue(logManager.getLogsAsString().contains("first entry"));
+            assertTrue(logManager.getLogsAsString().contains("second entry"));
+        }
+
+        @Test
+        @DisplayName("null text filter treated as empty")
+        void nullFilterTreatedAsEmpty() {
+            logManager.info("some message");
+            logManager.setTextFilter(null);
+            assertTrue(logManager.getLogsAsString().contains("some message"));
+        }
+
+        @Test
+        @DisplayName("text filter works with category filter")
+        void textAndCategoryFilterCombine() {
+            logManager.info(LogCategory.DATA_FETCH, "fetch token data");
+            logManager.info(LogCategory.GENERAL, "general token info");
+            logManager.info(LogCategory.DATA_FETCH, "fetch calendar data");
+
+            logManager.setTextFilter("token");
+            logManager.setFilterEnabled(LogCategory.GENERAL, false);
+
+            String logs = logManager.getLogsAsString();
+            assertTrue(logs.contains("fetch token data"));
+            assertFalse(logs.contains("general token info"));   // category disabled
+            assertFalse(logs.contains("fetch calendar data"));  // text doesn't match
+        }
+
+        @Test
+        @DisplayName("getTextFilter returns current filter")
+        void getTextFilter() {
+            logManager.setTextFilter("hello");
+            assertEquals("hello", logManager.getTextFilter());
         }
     }
 
