@@ -525,6 +525,33 @@ public class OutlookAlerterUI extends JFrame {
                 LogManager.getInstance().info(LogCategory.GENERAL, "[OutlookAlerterUI] Wake event detected - restarting schedulers");
                 lastSystemWakeTime = System.currentTimeMillis();
 
+                // Proactively refresh the token before hitting the calendar API.
+                // After sleep the access token is likely expired; silent refresh
+                // via the MSAL cache (or Okta DCF cache) avoids an unnecessary
+                // user prompt.
+                try {
+                    if (!outlookClient.hasValidToken()) {
+                        LogManager.getInstance().info(LogCategory.GENERAL,
+                                "[OutlookAlerterUI] Post-wake: token expired, attempting silent refresh...");
+                        com.unhuman.outlookalerter.core.MsalAuthProvider msalProv = outlookClient.getMsalAuthProvider();
+                        String refreshed = (msalProv != null) ? msalProv.acquireTokenSilently() : null;
+                        if (refreshed == null && msalProv != null) {
+                            refreshed = msalProv.acquireTokenSilentlyFromOktaCache();
+                        }
+                        if (refreshed != null) {
+                            configManager.updateTokens(refreshed, null, configManager.getIgnoreCertValidation());
+                            LogManager.getInstance().info(LogCategory.GENERAL,
+                                    "[OutlookAlerterUI] Post-wake: silent token refresh successful");
+                        } else {
+                            LogManager.getInstance().info(LogCategory.GENERAL,
+                                    "[OutlookAlerterUI] Post-wake: silent refresh failed — will prompt on next calendar fetch");
+                        }
+                    }
+                } catch (Exception tokenEx) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                            "[OutlookAlerterUI] Post-wake: token refresh error (non-fatal): " + tokenEx.getMessage());
+                }
+
                 // Restart schedulers to ensure they're not stuck
                 SwingUtilities.invokeLater(() -> {
                     try {
@@ -1014,9 +1041,16 @@ public class OutlookAlerterUI extends JFrame {
             alertScheduler.submit((Runnable) () -> {
                 try {
                     if (!outlookClient.hasValidToken()) {
-                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Token is invalid or expired. Prompting for new token.");
-                        if (!isTokenDialogActive) {
-                            promptForTokens(configManager.getSignInUrl());
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH, "Token is invalid or expired. Attempting silent refresh...");
+                        // Try the silent refresh cascade (MSAL silent → Okta cache → legacy refresh)
+                        // before falling back to showing the interactive dialog
+                        if (outlookClient.attemptSilentTokenRefresh()) {
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Token refreshed successfully via silent authentication.");
+                        } else {
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Silent refresh failed. Prompting for new token.");
+                            if (!isTokenDialogActive) {
+                                promptForTokens(configManager.getSignInUrl());
+                            }
                         }
                     }
                 } catch (Exception ex) {

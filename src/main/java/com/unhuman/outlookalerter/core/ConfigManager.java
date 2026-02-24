@@ -41,6 +41,7 @@ public class ConfigManager {
     private static final String KEY_REFRESH_TOKEN = "refreshToken";
     private static final String KEY_USER_EMAIL = "userEmail";
     private static final String KEY_AUTH_MODE = "authMode";
+    private static final String KEY_OKTA_CLIENT_ID = "oktaClientId";
 
     // ── Default value constants ───────────────────────────────────────────
     // User-registered multi-tenant Azure AD app. First-party Microsoft app IDs
@@ -82,6 +83,7 @@ public class ConfigManager {
     private String loginHint;
     private String userEmail;
     private String authMode;
+    private String oktaClientId;
 
     public ConfigManager(String configFilePath) {
         this.configFilePath = configFilePath;
@@ -201,6 +203,7 @@ public class ConfigManager {
         refreshToken = properties.getProperty(KEY_REFRESH_TOKEN);
         userEmail = properties.getProperty(KEY_USER_EMAIL, "");
         authMode = properties.getProperty(KEY_AUTH_MODE, "");
+        oktaClientId = properties.getProperty(KEY_OKTA_CLIENT_ID, "");
     }
 
     public synchronized void saveConfiguration() {
@@ -231,6 +234,7 @@ public class ConfigManager {
             }
             properties.setProperty(KEY_USER_EMAIL, userEmail != null ? userEmail : "");
             properties.setProperty(KEY_AUTH_MODE, authMode != null ? authMode : "");
+            properties.setProperty(KEY_OKTA_CLIENT_ID, oktaClientId != null ? oktaClientId : "");
             File configFile = new File(configFilePath);
             try (FileOutputStream fos = new FileOutputStream(configFile)) {
                 properties.store(fos, "Outlook Alerter Configuration");
@@ -310,4 +314,10 @@ public class ConfigManager {
 
     /** Persist the last-used auth mode. */
     public void updateAuthMode(String mode) { this.authMode = mode != null ? mode : ""; saveConfiguration(); }
+
+    /** Client ID that last succeeded with Device Code Flow (for silent refresh via Okta cache). */
+    public String getOktaClientId() { return (oktaClientId != null && !oktaClientId.trim().isEmpty()) ? oktaClientId : null; }
+
+    /** Persist the client ID that worked for Device Code Flow. */
+    public void updateOktaClientId(String id) { this.oktaClientId = id != null ? id.trim() : ""; saveConfiguration(); }
 }

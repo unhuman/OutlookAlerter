@@ -104,6 +104,84 @@ public class MsalAuthProvider {
     }
 
     /**
+     * Attempt to silently refresh using the Device Code Flow (Okta) token cache.
+     *
+     * <p>Device Code Flow tokens are stored in a separate cache file ({@code msal_okta_cache.json})
+     * with a different client ID than the main MSAL PCA.  This method builds a temporary PCA
+     * using the client ID that last succeeded ({@link ConfigManager#getOktaClientId()}) and
+     * attempts silent acquisition from that cache.
+     *
+     * @return The access token, or {@code null} if silent refresh is not possible
+     */
+    public String acquireTokenSilentlyFromOktaCache() {
+        String oktaClientId = configManager.getOktaClientId();
+        if (oktaClientId == null) {
+            return null; // no previous DCF success recorded
+        }
+        try {
+            String tenantId = configManager.getTenantId();
+            if (tenantId == null || tenantId.trim().isEmpty()) {
+                tenantId = "common";
+            }
+            String authority = "https://login.microsoftonline.com/" + tenantId;
+            String oktaCachePath = getConfigDir() + "/msal_okta_cache.json";
+
+            TokenCacheAccessAspect cacheAspect = new TokenCacheAccessAspect(oktaCachePath);
+
+            PublicClientApplication.Builder pcaBuilder = PublicClientApplication.builder(oktaClientId)
+                    .authority(authority)
+                    .setTokenCacheAccessAspect(cacheAspect)
+                    .connectTimeoutForDefaultHttpClient(15000)
+                    .readTimeoutForDefaultHttpClient(15000);
+
+            if (configManager.getIgnoreCertValidation()) {
+                SSLSocketFactory sf = createTrustAllSslSocketFactory();
+                if (sf != null) {
+                    pcaBuilder.sslSocketFactory(sf);
+                }
+            }
+
+            PublicClientApplication tempPca = pcaBuilder.build();
+
+            Set<IAccount> accounts = tempPca.getAccounts().join();
+            if (accounts == null || accounts.isEmpty()) {
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                        "MSAL(Okta-silent): No cached accounts in Okta cache");
+                return null;
+            }
+
+            IAccount account = accounts.iterator().next();
+            LogManager.getInstance().info(LogCategory.GENERAL,
+                    "MSAL(Okta-silent): Attempting silent refresh for " + account.username()
+                    + " with clientId=" + oktaClientId.substring(0, 8) + "...");
+
+            SilentParameters silentParams = SilentParameters.builder(SCOPES, account).build();
+            IAuthenticationResult result = tempPca.acquireTokenSilently(silentParams).join();
+
+            if (result != null && result.accessToken() != null && !result.accessToken().isEmpty()) {
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                        "MSAL(Okta-silent): Silent refresh successful");
+                return result.accessToken();
+            }
+            return null;
+
+        } catch (Exception e) {
+            Throwable cause = e;
+            while (cause != null) {
+                if (cause instanceof MsalInteractionRequiredException) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                            "MSAL(Okta-silent): Interaction required — refresh token may be expired");
+                    return null;
+                }
+                cause = cause.getCause();
+            }
+            LogManager.getInstance().info(LogCategory.GENERAL,
+                    "MSAL(Okta-silent): Silent refresh failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Attempt to acquire a token silently from the MSAL cache (using refresh tokens).
      *
      * @return The access token string, or null if silent acquisition failed.

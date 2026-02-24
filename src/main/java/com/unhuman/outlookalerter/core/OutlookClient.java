@@ -190,6 +190,17 @@ public class OutlookClient {
             }
         }
 
+        // Try silent refresh from Device Code Flow (Okta) cache
+        {
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting Okta cache silent token refresh...");
+            String oktaToken = msalAuthProvider.acquireTokenSilentlyFromOktaCache();
+            if (oktaToken != null) {
+                configManager.updateTokens(oktaToken, null, configManager.getIgnoreCertValidation());
+                LogManager.getInstance().info(LogCategory.GENERAL, "Okta cache silent token refresh successful.");
+                return true;
+            }
+        }
+
         // Fall back to legacy refresh token
         String refreshTokenValue = configManager.getRefreshToken();
         if (refreshTokenValue != null && !refreshTokenValue.isEmpty()) {
@@ -223,6 +234,47 @@ public class OutlookClient {
 
         LogManager.getInstance().info(LogCategory.GENERAL, "Token validated with server successfully.");
         return true;
+    }
+
+    /**
+     * Attempt to silently refresh the token without any user interaction.
+     * Tries MSAL silent, Okta DCF cache silent, and legacy refresh token.
+     * Does NOT fall back to interactive authentication.
+     * @return true if a silent refresh succeeded and we now have a valid token
+     */
+    public boolean attemptSilentTokenRefresh() {
+        // Try MSAL silent refresh first (if configured)
+        if (msalAuthProvider.isConfigured()) {
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting MSAL silent token acquisition...");
+            String msalToken = msalAuthProvider.acquireTokenSilently();
+            if (msalToken != null) {
+                configManager.updateTokens(msalToken, null, configManager.getIgnoreCertValidation());
+                LogManager.getInstance().info(LogCategory.GENERAL, "MSAL silent token acquisition successful.");
+                return true;
+            }
+        }
+
+        // Try silent refresh from Device Code Flow (Okta) cache
+        {
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting Okta cache silent token refresh...");
+            String oktaToken = msalAuthProvider.acquireTokenSilentlyFromOktaCache();
+            if (oktaToken != null) {
+                configManager.updateTokens(oktaToken, null, configManager.getIgnoreCertValidation());
+                LogManager.getInstance().info(LogCategory.GENERAL, "Okta cache silent token refresh successful.");
+                return true;
+            }
+        }
+
+        // Fall back to legacy refresh token
+        String refreshTokenValue = configManager.getRefreshToken();
+        if (refreshTokenValue != null && !refreshTokenValue.isEmpty()) {
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting legacy refresh token...");
+            if (refreshToken()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -446,6 +498,17 @@ public class OutlookClient {
                 configManager.updateTokens(msalToken, null, configManager.getIgnoreCertValidation());
                 LogManager.getInstance().info(LogCategory.GENERAL, "MSAL silent refresh successful after " + errorType);
                 return msalToken;
+            }
+        }
+
+        // Try silent refresh from Device Code Flow (Okta) cache
+        {
+            LogManager.getInstance().info(LogCategory.GENERAL, "Attempting Okta cache silent token refresh after " + errorType + "...");
+            String oktaToken = msalAuthProvider.acquireTokenSilentlyFromOktaCache();
+            if (oktaToken != null) {
+                configManager.updateTokens(oktaToken, null, configManager.getIgnoreCertValidation());
+                LogManager.getInstance().info(LogCategory.GENERAL, "Okta cache silent refresh successful after " + errorType);
+                return oktaToken;
             }
         }
 

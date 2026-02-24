@@ -236,4 +236,35 @@ class OutlookClientTest {
             assertFalse(invokeIsValidTokenFormat("header..signature"));
         }
     }
+
+    // ───────── attemptSilentTokenRefresh ─────────
+
+    @Nested
+    @DisplayName("attemptSilentTokenRefresh")
+    class AttemptSilentTokenRefresh {
+
+        @Test
+        @DisplayName("method exists and is public")
+        void methodExists() throws Exception {
+            Method method = OutlookClient.class.getDeclaredMethod("attemptSilentTokenRefresh");
+            assertNotNull(method);
+            assertTrue(java.lang.reflect.Modifier.isPublic(method.getModifiers()));
+        }
+
+        @Test
+        @DisplayName("returns false when no tokens or caches available")
+        void returnsFalseWithNoConfig() {
+            OutlookClient client = new OutlookClient(configManager);
+            // With a fresh config (no MSAL cache, no Okta cache, no refresh token),
+            // silent refresh should return false without crashing
+            assertFalse(client.attemptSilentTokenRefresh());
+        }
+
+        @Test
+        @DisplayName("does not throw when called with empty configuration")
+        void doesNotThrowWithEmptyConfig() {
+            OutlookClient client = new OutlookClient(configManager);
+            assertDoesNotThrow(() -> client.attemptSilentTokenRefresh());
+        }
+    }
 }

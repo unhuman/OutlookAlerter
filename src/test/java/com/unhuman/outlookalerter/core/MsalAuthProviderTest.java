@@ -175,6 +175,39 @@ class MsalAuthProviderTest {
         }
     }
 
+    // ───────── Okta cache silent acquisition ─────────
+
+    @Nested
+    @DisplayName("Okta cache silent acquisition")
+    class OktaCacheSilentAcquisition {
+
+        @Test
+        @DisplayName("returns null when no oktaClientId is stored")
+        void returnsNullWhenNoOktaClientId() {
+            MsalAuthProvider provider = new MsalAuthProvider(configManager);
+            assertNull(provider.acquireTokenSilentlyFromOktaCache());
+        }
+
+        @Test
+        @DisplayName("returns non-null or null depending on cache state (no crash)")
+        void doesNotCrashWithOktaClientIdSet() {
+            configManager.updateOktaClientId("14d82eec-204b-4c2f-b7e8-296a70dab67e");
+            MsalAuthProvider provider = new MsalAuthProvider(configManager);
+            // May return a token if a previous DCF session exists on this machine,
+            // or null if the cache is empty/expired. Either is valid — the key
+            // requirement is that it does not throw.
+            assertDoesNotThrow(() -> provider.acquireTokenSilentlyFromOktaCache());
+        }
+
+        @Test
+        @DisplayName("does not throw when oktaClientId set but cache file missing")
+        void doesNotThrowWhenCacheMissing() {
+            configManager.updateOktaClientId("de8bc8b5-d9f9-48b1-a8ad-b748da725064");
+            MsalAuthProvider provider = new MsalAuthProvider(configManager);
+            assertDoesNotThrow(() -> provider.acquireTokenSilentlyFromOktaCache());
+        }
+    }
+
     // ───────── Interactive acquisition guard ─────────
 
     @Nested

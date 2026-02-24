@@ -64,6 +64,21 @@ automatically retries with the next ID in this order:
 If all three are rejected, an Azure AD admin may need to register a custom app
 (see [Azure App Registration Guide](azure-app-registration-guide.md)).
 
+### Automatic Token Refresh
+
+After a successful Device Code Flow sign-in, the app stores the working client ID
+and caches a refresh token (in `~/.outlookalerter/msal_okta_cache.json`). On
+subsequent runs or after a system sleep/wake:
+
+1. The app first checks whether the current access token is still valid.
+2. If expired, it silently uses the cached refresh token to obtain a new access
+   token — **no user interaction required**.
+3. Only if silent refresh fails (e.g., refresh token expired after ~90 days of
+   inactivity) does the app prompt for re-authentication.
+
+This means you typically only need to complete the Device Code Flow **once**, and
+the app transparently refreshes tokens in the background for up to 90 days.
+
 A diagnostic log file is written to:
 
 ```

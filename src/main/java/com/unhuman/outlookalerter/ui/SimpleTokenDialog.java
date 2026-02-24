@@ -942,7 +942,8 @@ public class SimpleTokenDialog {
                             });
                                 },
                                 progressCb);
-                        // Success — break out of the retry loop
+                        // Success — remember which client ID worked and break out
+                        ConfigManager.getInstance().updateOktaClientId(tryClientId);
                         break;
                     } catch (Exception clientEx) {
                         Throwable root = clientEx;

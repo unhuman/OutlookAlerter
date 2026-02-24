@@ -252,6 +252,17 @@ class ConfigManagerTest {
             configManager.updateAlertBeepAfterFlash(true);
             assertTrue(configManager.getAlertBeepAfterFlash());
         }
+
+        @Test
+        @DisplayName("updateOktaClientId persists and round-trips")
+        void updateOktaClientId() {
+            configManager.updateOktaClientId("14d82eec-204b-4c2f-b7e8-296a70dab67e");
+            assertEquals("14d82eec-204b-4c2f-b7e8-296a70dab67e", configManager.getOktaClientId());
+            // Verify persistence
+            ConfigManager reloaded = new ConfigManager(configPath);
+            reloaded.loadConfiguration();
+            assertEquals("14d82eec-204b-4c2f-b7e8-296a70dab67e", reloaded.getOktaClientId());
+        }
     }
 
     // ───────── Existing Config Loading ─────────
@@ -489,6 +500,42 @@ class ConfigManagerTest {
             // Keys must be present (even if empty) so round-trip load works
             assertNotNull(raw.getProperty("userEmail"), "userEmail key missing from config");
             assertNotNull(raw.getProperty("authMode"), "authMode key missing from config");
+        }
+
+        @Test
+        @DisplayName("getOktaClientId returns null when empty")
+        void getOktaClientIdReturnsNullWhenEmpty() {
+            configManager.loadConfiguration();
+            assertNull(configManager.getOktaClientId());
+        }
+
+        @Test
+        @DisplayName("updateOktaClientId trims whitespace")
+        void updateOktaClientIdTrims() {
+            configManager.loadConfiguration();
+            configManager.updateOktaClientId("  some-id  ");
+            assertEquals("some-id", configManager.getOktaClientId());
+        }
+
+        @Test
+        @DisplayName("updateOktaClientId with null stores empty")
+        void updateOktaClientIdNull() {
+            configManager.loadConfiguration();
+            configManager.updateOktaClientId(null);
+            assertNull(configManager.getOktaClientId());
+        }
+
+        @Test
+        @DisplayName("oktaClientId persists to disk with correct key")
+        void oktaClientIdPersistsWithCorrectKey() throws IOException {
+            configManager.loadConfiguration();
+            configManager.updateOktaClientId("test-okta-client-id");
+
+            Properties raw = new Properties();
+            try (FileInputStream fis = new FileInputStream(configPath)) {
+                raw.load(fis);
+            }
+            assertEquals("test-okta-client-id", raw.getProperty("oktaClientId"));
         }
     }
 }
