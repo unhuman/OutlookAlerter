@@ -39,6 +39,8 @@ public class ConfigManager {
     private static final String KEY_ALERT_BEEP_AFTER_FLASH = "alertBeepAfterFlash";
     private static final String KEY_ACCESS_TOKEN = "accessToken";
     private static final String KEY_REFRESH_TOKEN = "refreshToken";
+    private static final String KEY_USER_EMAIL = "userEmail";
+    private static final String KEY_AUTH_MODE = "authMode";
 
     // ── Default value constants ───────────────────────────────────────────
     // User-registered multi-tenant Azure AD app. First-party Microsoft app IDs
@@ -78,6 +80,8 @@ public class ConfigManager {
     private String signInUrl;
     private String tokenEndpoint;
     private String loginHint;
+    private String userEmail;
+    private String authMode;
 
     public ConfigManager(String configFilePath) {
         this.configFilePath = configFilePath;
@@ -127,6 +131,8 @@ public class ConfigManager {
         properties.setProperty(KEY_RESYNC_INTERVAL, DEFAULT_RESYNC_INTERVAL);
         properties.setProperty(KEY_ALERT_BEEP_COUNT, DEFAULT_ALERT_BEEP_COUNT);
         properties.setProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE);
+        properties.setProperty(KEY_USER_EMAIL, "");
+        properties.setProperty(KEY_AUTH_MODE, "");
         try (FileOutputStream fos = new FileOutputStream(configFile)) {
             properties.store(fos, "Outlook Alerter Configuration");
             LogManager.getInstance().info(LogCategory.GENERAL,
@@ -193,6 +199,8 @@ public class ConfigManager {
         alertBeepAfterFlash = Boolean.parseBoolean(properties.getProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE));
         accessToken = properties.getProperty(KEY_ACCESS_TOKEN);
         refreshToken = properties.getProperty(KEY_REFRESH_TOKEN);
+        userEmail = properties.getProperty(KEY_USER_EMAIL, "");
+        authMode = properties.getProperty(KEY_AUTH_MODE, "");
     }
 
     public synchronized void saveConfiguration() {
@@ -221,6 +229,8 @@ public class ConfigManager {
             if (refreshToken != null && !refreshToken.isEmpty()) {
                 properties.setProperty(KEY_REFRESH_TOKEN, refreshToken);
             }
+            properties.setProperty(KEY_USER_EMAIL, userEmail != null ? userEmail : "");
+            properties.setProperty(KEY_AUTH_MODE, authMode != null ? authMode : "");
             File configFile = new File(configFilePath);
             try (FileOutputStream fos = new FileOutputStream(configFile)) {
                 properties.store(fos, "Outlook Alerter Configuration");
@@ -285,4 +295,19 @@ public class ConfigManager {
     public void updateResyncIntervalMinutes(int minutes) { this.resyncIntervalMinutes = minutes; saveConfiguration(); }
     public void updateAlertBeepCount(int count) { this.alertBeepCount = count; saveConfiguration(); }
     public void updateAlertBeepAfterFlash(boolean enabled) { this.alertBeepAfterFlash = enabled; saveConfiguration(); }
+
+    /** Email address stored for Okta SSO federation discovery. May be empty/null. */
+    public String getUserEmail() { return userEmail; }
+
+    /**
+     * Auth mode last used: {@code "okta"} if Okta SSO was last used, {@code "msal"} for
+     * standard MSAL browser auth, empty/null for manual/legacy flow.
+     */
+    public String getAuthMode() { return authMode; }
+
+    /** Persist the user's email for future Okta SSO discovery. */
+    public void updateUserEmail(String email) { this.userEmail = email != null ? email.trim() : ""; saveConfiguration(); }
+
+    /** Persist the last-used auth mode. */
+    public void updateAuthMode(String mode) { this.authMode = mode != null ? mode : ""; saveConfiguration(); }
 }

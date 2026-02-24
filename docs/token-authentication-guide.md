@@ -47,9 +47,30 @@ If the token dialog appears blank or doesn't display properly:
    ./run-gui.sh
    ```
 
-5. **Manual Browser Launch**: If the browser doesn't open automatically, use the "Open Browser" button.
+5. **Manual Browser Launch**: If the browser doesn't open automatically, copy the URL and code shown in the status label and open the browser manually.
 
 6. **Check Console Output**: Look for any error messages in the terminal where you launched the application.
+
+### Okta SSO / Device Code Flow Diagnostics
+
+When using "Sign In with Okta SSO", the app uses Device Code Flow with well-known
+Microsoft client IDs. If the tenant rejects a client ID (AADSTS65002), the app
+automatically retries with the next ID in this order:
+
+1. **Microsoft Graph PowerShell SDK** (`14d82eec-...`)
+2. **Microsoft Graph Explorer** (`de8bc8b5-...`)
+3. **Azure CLI** (`04b07795-...`)
+
+If all three are rejected, an Azure AD admin may need to register a custom app
+(see [Azure App Registration Guide](azure-app-registration-guide.md)).
+
+A diagnostic log file is written to:
+
+```
+~/.outlookalerter/device-code-debug.log
+```
+
+This file contains timestamped progress of each step: authority resolution, PCA build, device code request, callback, and token acquisition. If sign-in appears to do nothing, check this file to see exactly which step failed.
 
 ## Using the New Test Script
 

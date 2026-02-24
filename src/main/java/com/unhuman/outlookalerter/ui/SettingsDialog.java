@@ -32,6 +32,7 @@ public class SettingsDialog extends JDialog {
     private JTextField signInUrlField;
     private JTextField clientIdField;
     private JTextField tenantIdField;
+    private JTextField userEmailField;
     private JCheckBox defaultIgnoreCertValidationCheckbox;
 
     /**
@@ -221,6 +222,20 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 11;
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc);
 
+        // Okta SSO email setting
+        gbc.gridx = 0;
+        gbc.gridy = 12;
+        formPanel.add(new JLabel("Okta SSO Email:"), gbc);
+
+        userEmailField = new JTextField(
+                configManager.getUserEmail() != null ? configManager.getUserEmail() : "", 20);
+        userEmailField.setToolTipText(
+                "Your work email used for Okta SSO federation discovery. "
+                + "Set automatically when you click \"Sign In with Okta SSO\"");
+        gbc.gridx = 1;
+        gbc.gridy = 12;
+        formPanel.add(userEmailField, gbc);
+
         // Button panel
         JPanel buttonPanel = new JPanel();
         JButton saveButton = new JButton("Save");
@@ -312,6 +327,10 @@ public class SettingsDialog extends JDialog {
             // Save the SSL certificate validation setting
             boolean defaultIgnoreCertVal = defaultIgnoreCertValidationCheckbox.isSelected();
             configManager.updateDefaultIgnoreCertValidation(defaultIgnoreCertVal);
+
+            // Save Okta SSO email
+            String userEmail = userEmailField.getText().trim();
+            configManager.updateUserEmail(userEmail);
 
             // Update the HTTP client to respect the new certificate validation setting
             outlookClient.updateCertificateValidation(defaultIgnoreCertVal);

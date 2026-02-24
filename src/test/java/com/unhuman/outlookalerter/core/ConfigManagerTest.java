@@ -354,6 +354,23 @@ class ConfigManagerTest {
             assertNotNull(url);
             assertFalse(url.trim().isEmpty());
         }
+
+        @Test
+        @DisplayName("userEmail getter returns empty string by default")
+        void userEmailDefault() {
+            String email = configManager.getUserEmail();
+            // Should be empty string, not null, after loading defaults
+            assertNotNull(email);
+            assertTrue(email.isEmpty());
+        }
+
+        @Test
+        @DisplayName("authMode getter returns empty string by default")
+        void authModeDefault() {
+            String mode = configManager.getAuthMode();
+            assertNotNull(mode);
+            assertTrue(mode.isEmpty());
+        }
     }
 
     // ───────── Property Key Constants ─────────
@@ -392,6 +409,51 @@ class ConfigManagerTest {
         }
 
         @Test
+        @DisplayName("updateUserEmail persists to disk with correct key")
+        void updateUserEmailPersists() throws IOException {
+            configManager.loadConfiguration();
+            configManager.updateUserEmail("test.user@company.com");
+
+            Properties raw = new Properties();
+            try (FileInputStream fis = new FileInputStream(configPath)) {
+                raw.load(fis);
+            }
+            assertEquals("test.user@company.com", raw.getProperty("userEmail"));
+            assertEquals("test.user@company.com", configManager.getUserEmail());
+        }
+
+        @Test
+        @DisplayName("updateAuthMode persists to disk with correct key")
+        void updateAuthModePersists() throws IOException {
+            configManager.loadConfiguration();
+            configManager.updateAuthMode("okta");
+
+            Properties raw = new Properties();
+            try (FileInputStream fis = new FileInputStream(configPath)) {
+                raw.load(fis);
+            }
+            assertEquals("okta", raw.getProperty("authMode"));
+            assertEquals("okta", configManager.getAuthMode());
+        }
+
+        @Test
+        @DisplayName("updateUserEmail trims whitespace")
+        void updateUserEmailTrims() {
+            configManager.loadConfiguration();
+            configManager.updateUserEmail("  user@example.com  ");
+            assertEquals("user@example.com", configManager.getUserEmail());
+        }
+
+        @Test
+        @DisplayName("updateUserEmail with null stores empty string")
+        void updateUserEmailNull() {
+            configManager.loadConfiguration();
+            configManager.updateUserEmail(null);
+            assertNotNull(configManager.getUserEmail());
+            assertTrue(configManager.getUserEmail().isEmpty());
+        }
+
+        @Test
         @DisplayName("default config file uses expected property key names")
         void defaultConfigUsesCorrectKeys() throws IOException {
             configManager.loadConfiguration();
@@ -413,6 +475,20 @@ class ConfigManagerTest {
             assertNotNull(raw.getProperty("flashDurationSeconds"));
             assertNotNull(raw.getProperty("resyncIntervalMinutes"));
             assertNotNull(raw.getProperty("alertBeepCount"));
+        }
+
+        @Test
+        @DisplayName("default config file includes userEmail and authMode keys")
+        void defaultConfigIncludesNewKeys() throws IOException {
+            configManager.loadConfiguration();
+
+            Properties raw = new Properties();
+            try (FileInputStream fis = new FileInputStream(configPath)) {
+                raw.load(fis);
+            }
+            // Keys must be present (even if empty) so round-trip load works
+            assertNotNull(raw.getProperty("userEmail"), "userEmail key missing from config");
+            assertNotNull(raw.getProperty("authMode"), "authMode key missing from config");
         }
     }
 }

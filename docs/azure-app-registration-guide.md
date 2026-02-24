@@ -80,7 +80,7 @@ If you prefer to use your own Azure AD app registration instead of the built-in 
 |---|---|---|
 | "Selected user account does not exist in tenant" | App registered as single-tenant | Go to app's **Authentication** page and change "Supported account types" to multi-tenant, or edit **Manifest** and set `"signInAudience": "AzureADandPersonalMicrosoftAccount"` |
 | "AADSTS65001: The user or administrator has not consented" | Organization requires admin consent | Ask your IT admin to grant consent for the app (see Admin Consent below), or use the Graph Explorer manual token flow instead |
-| "AADSTS65002: Consent between first party application..." | Tried using a Microsoft first-party app ID | Microsoft blocks third-party code from using first-party app IDs. Use a custom app registration instead |
+| "AADSTS65002: Consent between first party application..." | Tenant does not preauthorize the client ID for Graph API | OutlookAlerter automatically tries three well-known client IDs (Graph PowerShell SDK, Graph Explorer, Azure CLI). If all fail, an Azure AD admin may need to register a custom app. |
 | "AADSTS700016: Application not found in directory" | Wrong tenant ID or app was deleted | Verify the Client ID is correct and the app exists in Azure Portal |
 | Browser opens but sign-in fails silently | Redirect URI mismatch | Ensure the app registration has exactly `http://localhost:8888` as a **Public client** redirect URI (no path component — MSAL4J only processes callbacks at the root path `/`) |
 

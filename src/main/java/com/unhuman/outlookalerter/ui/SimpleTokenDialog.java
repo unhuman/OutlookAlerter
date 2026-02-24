@@ -8,14 +8,18 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import com.unhuman.outlookalerter.core.OutlookClient;
 import com.unhuman.outlookalerter.core.ConfigManager;
+import com.unhuman.outlookalerter.core.FederationDiscovery;
 import com.unhuman.outlookalerter.core.MsalAuthProvider;
 import com.unhuman.outlookalerter.util.LogManager;
 import com.unhuman.outlookalerter.util.LogCategory;
+import java.awt.datatransfer.StringSelection;
 import java.lang.reflect.InvocationTargetException;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import com.microsoft.aad.msal4j.DeviceCode;
 
 /**
  * A simplified token entry dialog for Microsoft OAuth authentication
@@ -327,8 +331,27 @@ public class SimpleTokenDialog {
                         submitToken();  // Use consistent validation in submitToken()
                     }
                 });
+                // Okta SSO button — visible when MSAL is configured (reuses same browser flow with domainHint)
+                JButton oktaSsoButton = new JButton("Sign In with Okta SSO");
+                oktaSsoButton.setToolTipText("Discover your organization's Okta federation and sign in automatically");
+                oktaSsoButton.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        if (!msalAuthProvider.isConfigured()) {
+                            String defaultId = ConfigManager.getDefaultClientId();
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                    "Auto-configuring default client ID for Okta SSO sign-in");
+                            ConfigManager.getInstance().updateClientId(defaultId);
+                        }
+                        performOktaAuth(oktaSsoButton);
+                    }
+                });
+
                 buttonPanel.add(graphExplorerButton);  // Add Graph Explorer button first
-                buttonPanel.add(openBrowserButton);  // Then sign-in page button
+                buttonPanel.add(openBrowserButton);  // Then standard sign-in page button
+                if (msalAuthProvider != null) {
+                    buttonPanel.add(oktaSsoButton);  // Okta SSO button (requires MSAL for redirect capture)
+                }
                 buttonPanel.add(submitButton);       // Then submit
 
                 // Status label for MSAL auth feedback
@@ -743,6 +766,293 @@ public class SimpleTokenDialog {
         }, "MsalInteractiveAuthThread");
         authThread.setDaemon(true);
         authThread.start();
+    }
+
+    /**
+     * Perform Okta-federated SSO authentication.
+     *
+     * <p>Flow:
+     * <ol>
+     *   <li>Prompt user for their email address (pre-populated from config if available)</li>
+     *   <li>Query Microsoft's GetUserRealm API to discover federation type</li>
+     *   <li>If Okta federation detected: invoke MSAL interactive auth with {@code domainHint}
+     *       so Azure AD routes the browser directly to Okta SSO</li>
+     *   <li>On success: auto-populate token field and submit</li>
+     * </ol>
+     */
+    private void performOktaAuth(JButton triggerButton) {
+        // Prompt for email — pre-populate from config
+        String savedEmail = ConfigManager.getInstance().getUserEmail();
+        if (savedEmail == null || savedEmail.isBlank()) {
+            savedEmail = ConfigManager.getInstance().getLoginHint();
+        }
+        String email = (String) JOptionPane.showInputDialog(
+                frame,
+                "Enter your work email address for Microsoft/Okta SSO sign-in:",
+                "SSO Login",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                null,
+                savedEmail != null ? savedEmail : "");
+
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        final String emailFinal = email.trim();
+
+        ConfigManager.getInstance().updateUserEmail(emailFinal);
+        ConfigManager.getInstance().updateAuthMode("okta");
+
+        // Immediately wire the button as a Cancel button — before any network I/O.
+        // On cancel we restore the UI right away and abandon the background thread.
+        final Thread[] threadRef = new Thread[1];
+        final boolean[] cancelledFlag = {false};
+
+        triggerButton.setEnabled(false);
+        triggerButton.setText("Requesting code...");
+        if (statusLabel != null) {
+            statusLabel.setText("Requesting sign-in code from Microsoft...");
+            statusLabel.setForeground(Color.BLUE);
+        }
+
+        // Replace listeners to become a cancel button
+        for (java.awt.event.ActionListener al : triggerButton.getActionListeners()) {
+            triggerButton.removeActionListener(al);
+        }
+        triggerButton.addActionListener(ev -> {
+            cancelledFlag[0] = true;
+            // Restore UI immediately — don't wait for the thread
+            restoreOktaButton(triggerButton);
+            if (statusLabel != null) {
+                statusLabel.setText("Sign-in cancelled.");
+                statusLabel.setForeground(Color.DARK_GRAY);
+            }
+            // Best-effort: cancel MSAL future + interrupt thread
+            if (msalAuthProvider != null) {
+                msalAuthProvider.cancelPendingAuth();
+            }
+            Thread t = threadRef[0];
+            if (t != null) {
+                t.interrupt();
+            }
+            LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                    "SimpleTokenDialog: User cancelled device code auth — UI restored");
+        });
+        triggerButton.setText("Cancel Sign-In");
+        triggerButton.setEnabled(true);
+
+        Thread oktaThread = new Thread(() -> {
+            try {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                        "SimpleTokenDialog: Starting device code flow for " + emailFinal);
+
+                // Progress callback updates the status label immediately
+                java.util.function.Consumer<String> progressCb = (msg) -> {
+                    SwingUtilities.invokeLater(() -> {
+                        if (statusLabel != null && !cancelledFlag[0]) {
+                            statusLabel.setText(msg);
+                            statusLabel.setForeground(Color.BLUE);
+                        }
+                    });
+                };
+
+                // Try each well-known client ID in order. Some tenants block
+                // certain first-party IDs with AADSTS65002; cycle through until
+                // one is accepted.
+                String accessToken = null;
+                String lastError = null;
+                for (String tryClientId : MsalAuthProvider.GRAPH_CLIENT_IDS) {
+                    if (cancelledFlag[0]) return;
+                    try {
+                        LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                "SimpleTokenDialog: Trying device code flow with clientId=" + tryClientId);
+                        accessToken = msalAuthProvider.acquireTokenDeviceCode(
+                                tryClientId,
+                                (DeviceCode deviceCode) -> {
+                            String userCode = deviceCode.userCode();
+                            String verificationUrl = deviceCode.verificationUri();
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                    "SimpleTokenDialog: Device code received — code=" + userCode
+                                    + ", url=" + verificationUrl);
+
+                            // Copy code to clipboard
+                            try {
+                                Toolkit.getDefaultToolkit().getSystemClipboard()
+                                        .setContents(new StringSelection(userCode), null);
+                            } catch (Exception clipEx) {
+                                LogManager.getInstance().warn(LogCategory.DATA_FETCH,
+                                        "SimpleTokenDialog: Clipboard copy failed: " + clipEx.getMessage());
+                            }
+
+                            // Open browser — try multiple approaches
+                            boolean browserOpened = false;
+                            String os = System.getProperty("os.name", "").toLowerCase();
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                    "SimpleTokenDialog: Opening browser on os=" + os + " url=" + verificationUrl);
+
+                            // Approach 1: Runtime.exec with platform command
+                            try {
+                                Process p;
+                                if (os.contains("mac")) {
+                                    p = Runtime.getRuntime().exec(new String[]{"/usr/bin/open", verificationUrl});
+                                } else if (os.contains("win")) {
+                                    p = Runtime.getRuntime().exec(new String[]{"cmd", "/c", "start", "", verificationUrl});
+                                } else {
+                                    p = Runtime.getRuntime().exec(new String[]{"xdg-open", verificationUrl});
+                                }
+                                boolean exited = p.waitFor(5, TimeUnit.SECONDS);
+                                browserOpened = exited && p.exitValue() == 0;
+                                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                        "SimpleTokenDialog: Runtime.exec result: exited=" + exited
+                                        + " exitValue=" + (exited ? p.exitValue() : "N/A"));
+                            } catch (Exception browseEx) {
+                                LogManager.getInstance().error(LogCategory.DATA_FETCH,
+                                        "SimpleTokenDialog: Runtime.exec failed: " + browseEx.getMessage(), browseEx);
+                            }
+
+                            // Approach 2: Desktop.browse (fallback)
+                            if (!browserOpened) {
+                                try {
+                                    if (java.awt.Desktop.isDesktopSupported()) {
+                                        java.awt.Desktop.getDesktop().browse(new URI(verificationUrl));
+                                        browserOpened = true;
+                                        LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                                "SimpleTokenDialog: Desktop.browse succeeded");
+                                    }
+                                } catch (Exception deskEx) {
+                                    LogManager.getInstance().error(LogCategory.DATA_FETCH,
+                                            "SimpleTokenDialog: Desktop.browse failed: " + deskEx.getMessage(), deskEx);
+                                }
+                            }
+
+                            final boolean finalBrowserOpened = browserOpened;
+                            // Update status label on EDT — always show the code prominently
+                            SwingUtilities.invokeLater(() -> {
+                                if (statusLabel != null) {
+                                    String prefix = finalBrowserOpened
+                                            ? "<b>Browser opened.</b>"
+                                            : "<b>Open browser manually:</b> <font color='blue'>"
+                                              + verificationUrl + "</font>";
+                                    statusLabel.setText("<html>" + prefix
+                                            + " Enter code: <font size='+2' color='#8B0000'><b>" + userCode
+                                            + "</b></font>"
+                                            + " (copied to clipboard). Waiting for sign-in...</html>");
+                                    statusLabel.setForeground(Color.BLUE);
+                                }
+                            });
+                                },
+                                progressCb);
+                        // Success — break out of the retry loop
+                        break;
+                    } catch (Exception clientEx) {
+                        Throwable root = clientEx;
+                        while (root.getCause() != null && root.getCause() != root) { root = root.getCause(); }
+                        String rootMsg = root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
+                        lastError = rootMsg;
+
+                        if (rootMsg.contains("AADSTS65002")) {
+                            LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                                    "SimpleTokenDialog: AADSTS65002 with clientId=" + tryClientId + ", trying next...");
+                            accessToken = null;
+                            continue; // try next client ID
+                        }
+                        // Any other error — don't retry, rethrow
+                        throw clientEx;
+                    }
+                }
+
+                // If all client IDs failed with AADSTS65002
+                if (accessToken == null && lastError != null && lastError.contains("AADSTS65002")) {
+                    throw new RuntimeException("All well-known client IDs were rejected by the tenant (AADSTS65002). "
+                            + "An Azure AD admin may need to register a custom app. Last error: " + lastError);
+                }
+
+                // If user cancelled while we were waiting, just bail
+                if (cancelledFlag[0]) return;
+
+                if (accessToken != null && !accessToken.isEmpty()) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                            "SimpleTokenDialog: SSO auth successful");
+                    final String token = accessToken;
+                    SwingUtilities.invokeLater(() -> {
+                        if (cancelledFlag[0]) return;
+                        if (tokenField != null) {
+                            tokenField.setText(token);
+                        }
+                        if (statusLabel != null) {
+                            statusLabel.setText("Sign-in successful!");
+                            statusLabel.setForeground(new Color(0, 128, 0));
+                        }
+                        restoreOktaButton(triggerButton);
+                        msalAuthenticated = true;
+                        submitToken();
+                        msalAuthenticated = false;
+                    });
+                } else {
+                    LogManager.getInstance().warn(LogCategory.DATA_FETCH,
+                            "SimpleTokenDialog: SSO auth returned no token");
+                    if (!cancelledFlag[0]) {
+                        SwingUtilities.invokeLater(() -> {
+                            restoreOktaButton(triggerButton);
+                            if (statusLabel != null) {
+                                statusLabel.setText("Sign-in returned no token. Try again.");
+                                statusLabel.setForeground(Color.RED);
+                            }
+                        });
+                    }
+                }
+
+            } catch (Exception ex) {
+                if (cancelledFlag[0]) return; // user already cancelled, UI already restored
+
+                Throwable c = ex;
+                while (c.getCause() != null && c.getCause() != c) { c = c.getCause(); }
+                boolean isCancelled = (c instanceof java.util.concurrent.CancellationException)
+                        || (c instanceof InterruptedException);
+                if (isCancelled) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                            "SimpleTokenDialog: SSO auth cancelled/interrupted");
+                    SwingUtilities.invokeLater(() -> {
+                        restoreOktaButton(triggerButton);
+                        if (statusLabel != null) {
+                            statusLabel.setText("Sign-in cancelled.");
+                            statusLabel.setForeground(Color.DARK_GRAY);
+                        }
+                    });
+                } else {
+                    String rootMsg = c.getMessage() != null ? c.getMessage() : c.getClass().getSimpleName();
+                    LogManager.getInstance().error(LogCategory.DATA_FETCH,
+                            "SimpleTokenDialog: SSO auth error: " + rootMsg, ex);
+                    final String errDisplay = rootMsg.length() > 120 ? rootMsg.substring(0, 120) + "..." : rootMsg;
+                    SwingUtilities.invokeLater(() -> {
+                        restoreOktaButton(triggerButton);
+                        if (statusLabel != null) {
+                            statusLabel.setText("Error: " + errDisplay);
+                            statusLabel.setForeground(Color.RED);
+                        }
+                        // No JOptionPane — status label is sufficient and doesn't block EDT
+                    });
+                }
+            }
+        }, "OktaSsoAuthThread");
+        oktaThread.setDaemon(true);
+        threadRef[0] = oktaThread;
+        oktaThread.start();
+    }
+
+    /** Restore the Okta SSO button to its original state. */
+    private void restoreOktaButton(JButton button) {
+        for (java.awt.event.ActionListener al : button.getActionListeners()) {
+            button.removeActionListener(al);
+        }
+        button.addActionListener(e -> {
+            if (!msalAuthProvider.isConfigured()) {
+                ConfigManager.getInstance().updateClientId(ConfigManager.getDefaultClientId());
+            }
+            performOktaAuth(button);
+        });
+        button.setText("Sign In with Okta SSO");
+        button.setEnabled(true);
     }
 
     /**

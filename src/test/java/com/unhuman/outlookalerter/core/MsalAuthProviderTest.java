@@ -52,6 +52,61 @@ class MsalAuthProviderTest {
     // ───────── isConfigured ─────────
 
     @Nested
+    @DisplayName("GRAPH_CLIENT_IDS")
+    class GraphClientIds {
+
+        @Test
+        @DisplayName("contains exactly 3 client IDs")
+        void containsThreeIds() {
+            assertEquals(3, MsalAuthProvider.GRAPH_CLIENT_IDS.length);
+        }
+
+        @Test
+        @DisplayName("first entry is Graph PowerShell SDK ID")
+        void firstIsGraphPowerShell() {
+            assertEquals("14d82eec-204b-4c2f-b7e8-296a70dab67e", MsalAuthProvider.GRAPH_CLIENT_IDS[0]);
+        }
+
+        @Test
+        @DisplayName("second entry is Graph Explorer ID")
+        void secondIsGraphExplorer() {
+            assertEquals("de8bc8b5-d9f9-48b1-a8ad-b748da725064", MsalAuthProvider.GRAPH_CLIENT_IDS[1]);
+        }
+
+        @Test
+        @DisplayName("last entry is Azure CLI (WELL_KNOWN_OFFICE_CLIENT_ID)")
+        void lastIsAzureCli() {
+            assertEquals(MsalAuthProvider.WELL_KNOWN_OFFICE_CLIENT_ID, MsalAuthProvider.GRAPH_CLIENT_IDS[2]);
+        }
+
+        @Test
+        @DisplayName("WELL_KNOWN_OFFICE_CLIENT_ID is Azure CLI ID")
+        void wellKnownOfficeClientId() {
+            assertEquals("04b07795-8ddb-461a-bbee-02f9e1bf7b46", MsalAuthProvider.WELL_KNOWN_OFFICE_CLIENT_ID);
+        }
+
+        @Test
+        @DisplayName("all IDs are non-null and non-empty UUID format")
+        void allIdsAreValidUuids() {
+            for (String id : MsalAuthProvider.GRAPH_CLIENT_IDS) {
+                assertNotNull(id);
+                assertFalse(id.isBlank());
+                assertTrue(id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"),
+                        "Client ID should be UUID format: " + id);
+            }
+        }
+
+        @Test
+        @DisplayName("no duplicate IDs in the list")
+        void noDuplicates() {
+            long distinct = java.util.Arrays.stream(MsalAuthProvider.GRAPH_CLIENT_IDS).distinct().count();
+            assertEquals(MsalAuthProvider.GRAPH_CLIENT_IDS.length, distinct);
+        }
+    }
+
+    // ───────── isConfigured ─────────
+
+    @Nested
     @DisplayName("isConfigured")
     class IsConfigured {
 
