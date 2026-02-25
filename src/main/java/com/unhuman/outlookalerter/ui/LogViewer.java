@@ -89,7 +89,7 @@ public class LogViewer extends JFrame {
 
         filterPanel.add(Box.createHorizontalStrut(10));
         filterPanel.add(new JLabel("Text Filter:"));
-        JTextField textFilterField = new JTextField(12);
+        JTextField textFilterField = new JTextField(logManager.getTextFilter(), 12);
         textFilterField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) { applyFilter(); }
