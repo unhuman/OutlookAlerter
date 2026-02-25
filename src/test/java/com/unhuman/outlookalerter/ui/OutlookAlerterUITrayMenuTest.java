@@ -19,7 +19,9 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Stream;
@@ -212,6 +214,16 @@ class OutlookAlerterUITrayMenuTest {
                     + "</html>");
             assertEquals("https://zoom.us/j/999?pwd=abc", invokeGetEffectiveJoinUrl(event));
         }
+
+        @Test
+        @DisplayName("extracts only URL portion from mixed location (URL  +  room names after semicolon)")
+        void tier2LocationUrlWithRooms() throws Exception {
+            CalendarEvent event = makeEvent(ZonedDateTime.now(), ZonedDateTime.now().plusHours(1));
+            event.setLocation(
+                    "https://cvent.zoom.us/j/96298127794?pwd=abc&from=addon; ~ 8F1 Colosseum (12-ZR)~ 6F2 Pink Floyd (7-ZR)");
+            String url = invokeGetEffectiveJoinUrl(event);
+            assertEquals("https://cvent.zoom.us/j/96298127794?pwd=abc&from=addon", url);
+        }
     }
 
     // ── buildMeetingTrayLabel ─────────────────────────────────────────────
@@ -275,6 +287,119 @@ class OutlookAlerterUITrayMenuTest {
             event.setSubject("Standup");
             String label = invokeBuildMeetingTrayLabel(event);
             assertTrue(label.startsWith("Standup ("), "Expected unmodified subject, got: " + label);
+        }
+
+        @Test
+        @DisplayName("appends physical location after time hint")
+        void appendsPhysicalLocation() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            event.setLocation("Conference Room 4B");
+            String label = invokeBuildMeetingTrayLabel(event);
+            assertTrue(label.contains("@ Conference Room 4B"),
+                    "Expected location appended, got: " + label);
+            assertTrue(label.contains("(now)"), "Expected time hint present, got: " + label);
+        }
+
+        @Test
+        @DisplayName("does not append location when it is a URL (used as join link)")
+        void doesNotAppendUrlLocation() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            event.setLocation("https://zoom.us/j/123456789");
+            String label = invokeBuildMeetingTrayLabel(event);
+            assertFalse(label.contains("@ "),
+                    "Expected URL location not appended, got: " + label);
+        }
+
+        @Test
+        @DisplayName("does not append location when location is null")
+        void doesNotAppendNullLocation() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            // location defaults to null
+            String label = invokeBuildMeetingTrayLabel(event);
+            assertFalse(label.contains("@ "),
+                    "Expected no location suffix when null, got: " + label);
+        }
+
+        @Test
+        @DisplayName("shows physical room names from mixed URL+room location")
+        void mixedLocationShowsRooms() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            event.setLocation(
+                    "https://cvent.zoom.us/j/96298127794?pwd=abc&from=addon; ~ 8F1 Colosseum (12-ZR)~ 6F2 Pink Floyd (7-ZR)");
+            String label = invokeBuildMeetingTrayLabel(event);
+            assertTrue(label.contains("@ "), "Expected location suffix, got: " + label);
+            assertTrue(label.contains("8F1 Colosseum (12-ZR)"), "Expected first room, got: " + label);
+            assertTrue(label.contains("6F2 Pink Floyd (7-ZR)"), "Expected second room, got: " + label);
+        }
+
+        @Test
+        @DisplayName("de-duplicates repeated room names")
+        void deduplicatesRooms() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            // Room A appears twice, Room B once
+            event.setLocation("~ Room A~ Room B~ Room A");
+            String label = invokeBuildMeetingTrayLabel(event);
+            // "Room A" must appear only once
+            int first = label.indexOf("Room A");
+            int second = label.indexOf("Room A", first + 1);
+            assertEquals(-1, second, "Room A should appear only once, got: " + label);
+            assertTrue(label.contains("Room B"), "Expected Room B present, got: " + label);
+        }
+
+        @Test
+        @DisplayName("only shows accepted rooms when attendee data is present")
+        void marksRoomAcceptance() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            event.setLocation("~ Room Accept~ Room Decline~ Room Pending");
+            Map<String, String> attendees = new LinkedHashMap<>();
+            attendees.put("Room Accept", "accepted");
+            attendees.put("Room Decline", "declined");
+            attendees.put("Room Pending", "notResponded");
+            event.setResourceAttendees(attendees);
+            String label = invokeBuildMeetingTrayLabel(event);
+            assertTrue(label.contains("Room Accept"), "Expected accepted room shown, got: " + label);
+            assertFalse(label.contains("Room Decline"), "Expected declined room excluded, got: " + label);
+            assertFalse(label.contains("Room Pending"), "Expected non-responded room excluded, got: " + label);
+        }
+
+        @Test
+        @DisplayName("shows all rooms when no attendee data is available")
+        void showsAllRoomsWithNoAttendeeData() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            event.setLocation("~ Room A~ Room B");
+            // no resourceAttendees set — defaults to empty map
+            String label = invokeBuildMeetingTrayLabel(event);
+            assertTrue(label.contains("Room A"), "Expected Room A shown, got: " + label);
+            assertTrue(label.contains("Room B"), "Expected Room B shown, got: " + label);
+        }
+
+        @Test
+        @DisplayName("returns null (no location suffix) when all rooms are declined/not responded")
+        void returnsNullWhenNoAcceptedRooms() throws Exception {
+            CalendarEvent event = makeEvent(
+                    ZonedDateTime.now().minusMinutes(1),
+                    ZonedDateTime.now().plusMinutes(59));
+            event.setLocation("~ Room Decline~ Room Pending");
+            Map<String, String> attendees = new LinkedHashMap<>();
+            attendees.put("Room Decline", "declined");
+            attendees.put("Room Pending", "notResponded");
+            event.setResourceAttendees(attendees);
+            String label = invokeBuildMeetingTrayLabel(event);
+            assertFalse(label.contains("@ "), "Expected no location suffix when no accepted rooms, got: " + label);
         }
     }
 

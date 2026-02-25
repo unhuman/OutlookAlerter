@@ -109,10 +109,11 @@ The menu is fully rebuilt each time events are refreshed (every fetch and every 
 ```
 Show Outlook Alerter
 Refresh Calendar
-─── separator ───           (only present when ≥1 meeting qualifies)
-Meeting A (now)             clickable — opens join URL in browser
-Meeting B (in 7m)           clickable — opens join URL in browser
-Meeting C (now) (No Link)   disabled — no join URL found
+─── separator ───                             (only present when ≥1 meeting qualifies)
+Meeting A (now)                               clickable — opens join URL in browser
+Meeting B (in 7m)                             clickable — opens join URL in browser
+Meeting C (now) @ Conference Room 4B          clickable — has URL join link; location shown
+Meeting D (now) @ Boardroom (No Link)         disabled — no join URL; physical location shown
 ─── separator ───
 Settings
 ─── separator ───
@@ -123,13 +124,13 @@ Exit
 
 **Join URL lookup priority (`getEffectiveJoinUrl`):**
 1. `onlineMeeting.joinUrl` from Graph API
-2. `location` field, if it starts with `http`
+2. `location` field, if it starts with `http` — **only the leading URL token is used** (stops at the first `;` or whitespace); trailing room names in the same field are ignored here and shown via the label instead
 3. First Zoom/Teams `href` link extracted from full body HTML
 4. First bare URL found in `bodyPreview` plain text
 
 **Sorting:** by `startTime` ascending, then subject alphabetically for ties
 
-**Label format:** `Subject (now)` or `Subject (in Xm)` — subject truncated to 35 chars with `…`
+**Label format:** `Subject (now)` or `Subject (in Xm)` — subject truncated to 35 chars with `…`. If the event has a `location` that contains physical room tokens (non-URL segments), they are appended as `@ <rooms>`. When `resourceAttendees` data is available, **only accepted rooms** are shown; if no attendee data exists all rooms are shown. Duplicate room names are suppressed.
 
 **No-link items:** label appended with ` (No Link)`, `setEnabled(false)`
 

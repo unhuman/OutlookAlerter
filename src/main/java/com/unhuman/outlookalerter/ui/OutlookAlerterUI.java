@@ -1499,10 +1499,15 @@ public class OutlookAlerterUI extends JFrame {
         if (onlineUrl != null && !onlineUrl.isBlank()) {
             return onlineUrl;
         }
-        // 2 — location field IS a URL
+        // 2 — location field starts with a URL.
+        // The field may contain trailing room names separated by ";" or whitespace
+        // (e.g. "https://zoom.us/...;addon; ~ Room A~ Room B").
+        // Extract only the leading URL token to avoid passing an invalid URI later.
         String loc = event.getLocation();
         if (loc != null && (loc.startsWith("https://") || loc.startsWith("http://"))) {
-            return loc;
+            // Split at the first semicolon or whitespace — URL itself never contains these
+            String urlPart = loc.split("[;\\s]")[0].trim();
+            if (!urlPart.isEmpty()) return urlPart;
         }
         // 3 — first meeting-URL href in full body HTML
         String html = event.getBodyHtml();
@@ -1551,13 +1556,62 @@ public class OutlookAlerterUI extends JFrame {
                 .orElse(null);
     }
 
+    /**
+     * Extracts the physical (non-URL) portion of a location field, de-duplicated.
+     * The location may be a composite like
+     *   "https://zoom.us/j/123; ~ Room A~ Room B".
+     * Splits on ";", discards URL segments, strips leading "~" chars, and
+     * joins remaining unique room tokens with ", ".
+     * When the event carries resource-attendee data, only rooms whose status is
+     * "accepted" are included. When there is no attendee data the full set of
+     * physical room tokens is returned (no filtering).
+     * Returns null when there is no non-URL content after filtering.
+     */
+    private String extractPhysicalLocation(CalendarEvent event) {
+        String location = event.getLocation();
+        if (location == null || location.isBlank()) return null;
+        java.util.Map<String, String> resourceAttendees = event.getResourceAttendees();
+        boolean hasAttendeeData = !resourceAttendees.isEmpty();
+        // Collect unique room names in encounter order
+        java.util.LinkedHashSet<String> rooms = new java.util.LinkedHashSet<>();
+        for (String part : location.split(";")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty() || trimmed.toLowerCase().startsWith("http")) continue;
+            // Each non-URL segment may itself be "~" delimited (e.g. "~ Room A~ Room B")
+            for (String sub : trimmed.split("~")) {
+                String room = sub.trim();
+                if (!room.isEmpty()) rooms.add(room);
+            }
+        }
+        if (rooms.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (String room : rooms) {
+            if (hasAttendeeData) {
+                // Only show rooms that have explicitly accepted
+                String status = null;
+                for (java.util.Map.Entry<String, String> entry : resourceAttendees.entrySet()) {
+                    if (entry.getKey().equalsIgnoreCase(room)) { status = entry.getValue(); break; }
+                }
+                if (!"accepted".equalsIgnoreCase(status)) continue;
+            }
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(room);
+        }
+        return sb.length() > 0 ? sb.toString() : null;
+    }
+
     private String buildMeetingTrayLabel(CalendarEvent event) {
         String subject = event.getSubject() != null ? event.getSubject() : "Meeting";
         if (subject.length() > 35) {
             subject = subject.substring(0, 34) + "\u2026";
         }
         String timeHint = event.isInProgress() ? "now" : "in " + event.getMinutesToStart() + "m";
-        return subject + " (" + timeHint + ")";
+        String label = subject + " (" + timeHint + ")";
+        String physicalLocation = extractPhysicalLocation(event);
+        if (physicalLocation != null) {
+            label += " @ " + physicalLocation;
+        }
+        return label;
     }
 
     /**

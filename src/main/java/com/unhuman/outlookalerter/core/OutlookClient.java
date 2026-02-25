@@ -674,7 +674,7 @@ public class OutlookClient {
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
             urlBuilder.append("?startDateTime=").append(URLEncoder.encode(startParam, "UTF-8"));
             urlBuilder.append("&endDateTime=").append(URLEncoder.encode(endParam, "UTF-8"));
-            urlBuilder.append("&$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body");
+            urlBuilder.append("&$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
             urlBuilder.append("&$top=50");
 
             String url = urlBuilder.toString();
@@ -768,7 +768,7 @@ public class OutlookClient {
             endTime = cleanDateTimeForFilter(endTime);
 
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
-            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus");
+            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
 
             String filterParam = "start/dateTime ge '" + startTime + "' and start/dateTime le '" + endTime + "'";
             urlBuilder.append("&$filter=").append(URLEncoder.encode(filterParam, "UTF-8"));
@@ -819,7 +819,7 @@ public class OutlookClient {
                     .format(DateTimeFormatter.ISO_LOCAL_DATE);
 
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
-            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body");
+            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
 
             String filterParam = "start/dateTime ge '" + today + "' and start/dateTime le '" + tomorrow + "'";
             urlBuilder.append("&$filter=").append(URLEncoder.encode(filterParam, "UTF-8"));
@@ -835,7 +835,7 @@ public class OutlookClient {
                     "Error creating fallback URI: " + e.getMessage());
             try {
                 return new URI(baseUrl
-                        + "?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus&$top=50&$orderby=start/dateTime asc");
+                        + "?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees&$top=50&$orderby=start/dateTime asc");
             } catch (URISyntaxException e2) {
                 throw new RuntimeException("Failed to create even a basic URI: " + e2.getMessage());
             }
@@ -927,6 +927,25 @@ public class OutlookClient {
                 }
 
                 event.setCancelledByOrganizer(eventObj.optBoolean("isCancelled", false));
+
+                // Parse resource (room) attendees for location acceptance status
+                JSONArray attendeesArr = eventObj.optJSONArray("attendees");
+                if (attendeesArr != null) {
+                    java.util.Map<String, String> resourceMap = new java.util.LinkedHashMap<>();
+                    for (int j = 0; j < attendeesArr.length(); j++) {
+                        JSONObject attendee = attendeesArr.optJSONObject(j);
+                        if (attendee == null) continue;
+                        if (!"resource".equalsIgnoreCase(attendee.optString("type", ""))) continue;
+                        JSONObject emailAddr = attendee.optJSONObject("emailAddress");
+                        if (emailAddr == null) continue;
+                        String name = emailAddr.optString("name", null);
+                        if (name == null || name.isBlank()) continue;
+                        JSONObject statusObj = attendee.optJSONObject("status");
+                        String response = statusObj != null ? statusObj.optString("response", "none") : "none";
+                        resourceMap.put(name, response);
+                    }
+                    event.setResourceAttendees(resourceMap);
+                }
 
                 // Skip cancelled/canceled events entirely — they must not appear anywhere in the UI
                 if (event.isCancelled()) {

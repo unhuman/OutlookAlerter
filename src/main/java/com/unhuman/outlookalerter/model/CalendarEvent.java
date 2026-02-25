@@ -1,6 +1,9 @@
 package com.unhuman.outlookalerter.model;
 
 import java.time.ZonedDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Represents a calendar event from Outlook
@@ -19,6 +22,12 @@ public class CalendarEvent {
     private String calendarName;
     private String responseStatus;
     private boolean cancelledByOrganizer;
+    /**
+     * Room/resource attendees: display name -> response status ("accepted", "declined",
+     * "tentativelyAccepted", "notResponded", "none"). Populated from Graph API attendees
+     * where type == "resource". Never null — defaults to an empty map.
+     */
+    private Map<String, String> resourceAttendees = new LinkedHashMap<>();
 
     // Getters and setters
     public String getId() { return id; }
@@ -61,6 +70,12 @@ public class CalendarEvent {
 
     public boolean getCancelledByOrganizer() { return cancelledByOrganizer; }
     public void setCancelledByOrganizer(boolean cancelledByOrganizer) { this.cancelledByOrganizer = cancelledByOrganizer; }
+
+    /** Returns an unmodifiable view of the resource-attendee map. */
+    public Map<String, String> getResourceAttendees() { return Collections.unmodifiableMap(resourceAttendees); }
+    public void setResourceAttendees(Map<String, String> resourceAttendees) {
+        this.resourceAttendees = resourceAttendees != null ? new LinkedHashMap<>(resourceAttendees) : new LinkedHashMap<>();
+    }
 
     /**
      * Returns true if this event has been cancelled — either via the Graph API

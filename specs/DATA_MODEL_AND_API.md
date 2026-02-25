@@ -20,6 +20,7 @@
 | `bodyHtml` | `String` | `body.content` (full HTML body, used for meeting URL extraction) |
 | `calendarName` | `String` | Set by caller (multi-calendar) |
 | `responseStatus` | `String` | `responseStatus.response` |
+| `resourceAttendees` | `Map<String, String>` | `attendees[]` where `type == "resource"` — `emailAddress.name → status.response`. Never null; defaults to an empty map. Values: `accepted`, `declined`, `tentativelyAccepted`, `notResponded`, `none` |
 
 ### Computed Properties
 
