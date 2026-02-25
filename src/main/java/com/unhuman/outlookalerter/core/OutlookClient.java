@@ -327,7 +327,10 @@ public class OutlookClient {
                 JSONObject json = new JSONObject(response.body());
 
                 String accessToken = json.optString("access_token", null);
-                String refreshTokenValue = json.optString("refresh_token", null);
+                // Preserve the existing refresh token if the response doesn't include a new one
+                String refreshTokenValue = json.has("refresh_token")
+                        ? json.optString("refresh_token", null)
+                        : configManager.getRefreshToken();
 
                 configManager.updateTokens(accessToken, refreshTokenValue, configManager.getIgnoreCertValidation());
                 lastTokenValidationResult = TOKEN_REFRESHED;
