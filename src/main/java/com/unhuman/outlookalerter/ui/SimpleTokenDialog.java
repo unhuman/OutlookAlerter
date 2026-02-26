@@ -179,15 +179,14 @@ public class SimpleTokenDialog {
                     instructionsHtml =
                         "<html><div style='width: 400px'>" +
                         "<h2>Outlook Alerter Authentication</h2>" +
-                        "<p><b>Recommended:</b> Click <b>'Sign In with Browser'</b> below to sign in automatically.</p>" +
-                        "<p>Your browser will open for Microsoft login. Once complete, the token will be captured automatically.</p>" +
+                        "<p><b>Recommended:</b> Click <b>'Sign In with Okta SSO'</b> below to sign in automatically using your organization's Okta account.</p>" +
+                        "<p>Your browser will open, routing you directly to Okta. Once complete, the token is captured automatically — no copy/paste needed.</p>" +
                         "<hr>" +
-                        "<p><b>Manual Method:</b> If browser sign-in doesn't work, use Graph Explorer:</p>" +
-                        "<ol>" +
-                        "<li>Click 'Open Graph Explorer' and sign in</li>" +
-                        "<li>Click your profile picture &rarr; 'Access token' tab</li>" +
-                        "<li>Copy and paste the token below</li>" +
-                        "</ol>" +
+                        "<p><b>Alternative Methods:</b> If Okta SSO doesn't work:</p>" +
+                        "<ul>" +
+                        "<li><b>Sign In with Browser</b> — standard Microsoft login (no Okta routing)</li>" +
+                        "<li><b>Open Graph Explorer</b> — sign in, then copy the token manually from the Access token tab</li>" +
+                        "</ul>" +
                         "</div></html>";
                 } else {
                     instructionsHtml =
@@ -256,7 +255,6 @@ public class SimpleTokenDialog {
                 ));
 
                 JButton graphExplorerButton = new JButton("Open Graph Explorer");
-                graphExplorerButton.setFont(graphExplorerButton.getFont().deriveFont(Font.BOLD));
                 graphExplorerButton.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
@@ -319,11 +317,6 @@ public class SimpleTokenDialog {
                         }
                     }
                 });
-                // Make the browser sign-in button bold when MSAL is configured
-                if (msalAuthProvider != null && msalAuthProvider.isConfigured()) {
-                    openBrowserButton.setFont(openBrowserButton.getFont().deriveFont(Font.BOLD));
-                }
-
                 JButton submitButton = new JButton("Submit");
                 submitButton.addActionListener(new ActionListener() {
                     @Override
@@ -333,7 +326,8 @@ public class SimpleTokenDialog {
                 });
                 // Okta SSO button — visible when MSAL is configured (reuses same browser flow with domainHint)
                 JButton oktaSsoButton = new JButton("Sign In with Okta SSO");
-                oktaSsoButton.setToolTipText("Discover your organization's Okta federation and sign in automatically");
+                oktaSsoButton.setFont(oktaSsoButton.getFont().deriveFont(Font.BOLD));  // Preferred method
+                oktaSsoButton.setToolTipText("Recommended: Discover your organization's Okta federation and sign in automatically");
                 oktaSsoButton.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
@@ -347,11 +341,11 @@ public class SimpleTokenDialog {
                     }
                 });
 
-                buttonPanel.add(graphExplorerButton);  // Add Graph Explorer button first
-                buttonPanel.add(openBrowserButton);  // Then standard sign-in page button
                 if (msalAuthProvider != null) {
-                    buttonPanel.add(oktaSsoButton);  // Okta SSO button (requires MSAL for redirect capture)
+                    buttonPanel.add(oktaSsoButton);  // Okta SSO button first (preferred/recommended)
                 }
+                buttonPanel.add(openBrowserButton);  // Standard browser sign-in
+                buttonPanel.add(graphExplorerButton);  // Manual Graph Explorer fallback
                 buttonPanel.add(submitButton);       // Then submit
 
                 // Status label for MSAL auth feedback
