@@ -162,6 +162,7 @@ public class OutlookAlerterUI extends JFrame {
     private SystemTray systemTray;
     private PopupMenu trayPopupMenu;
     private javax.swing.Timer trayFlashTimer;
+    private volatile boolean trayIconFlashing = false;
 
     // Schedulers for periodic tasks
     private ScheduledExecutorService alertScheduler;
@@ -287,10 +288,14 @@ public class OutlookAlerterUI extends JFrame {
         if (currentIconInvalidState == null || invalidToken != currentIconInvalidState) {
             IconManager.clearIconCaches(); // Force regeneration of icons
             currentIconInvalidState = invalidToken;
-            setIconImage(IconManager.getLargeIconImage(invalidToken));
-            if (trayIcon != null) {
-                trayIcon.setImage(IconManager.getIconImage(invalidToken));
-            }
+            final boolean finalInvalidToken = invalidToken;
+            SwingUtilities.invokeLater(() -> {
+                setIconImage(IconManager.getLargeIconImage(finalInvalidToken));
+                // Skip tray icon update while alert flash is running — restoreTrayIcon() will apply it
+                if (trayIcon != null && !trayIconFlashing) {
+                    trayIcon.setImage(IconManager.getIconImage(finalInvalidToken));
+                }
+            });
         }
     }
 
@@ -2056,6 +2061,7 @@ public class OutlookAlerterUI extends JFrame {
         if (trayFlashTimer != null && trayFlashTimer.isRunning()) {
             trayFlashTimer.stop();
         }
+        trayIconFlashing = true;
         final boolean[] yellowPhase = {true};
         trayIcon.setImage(IconManager.getAlertFlashIconImage(true)); // immediate first frame
         trayFlashTimer = new javax.swing.Timer(500, e -> {
@@ -2076,6 +2082,7 @@ public class OutlookAlerterUI extends JFrame {
 
     /** Restore the tray icon to reflect the current connection health. Must be called on the EDT. */
     private void restoreTrayIcon() {
+        trayIconFlashing = false;
         if (trayIcon != null) {
             boolean invalid = currentIconInvalidState != null && currentIconInvalidState;
             trayIcon.setImage(IconManager.getIconImage(invalid));
