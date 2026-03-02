@@ -29,6 +29,7 @@ public class SettingsDialog extends JDialog {
     private JSpinner flashOpacitySpinner;
     private JSpinner alertBeepCountSpinner;
     private JCheckBox alertBeepAfterFlashCheckbox;
+    private JCheckBox ignoreAllDayEventsCheckbox;
     private JTextField signInUrlField;
     private JTextField clientIdField;
     private JTextField tenantIdField;
@@ -167,64 +168,74 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 6;
         formPanel.add(alertBeepAfterFlashCheckbox, gbc);
 
-        // Sign-in URL setting
+        // Ignore All Day Events setting
         gbc.gridx = 0;
         gbc.gridy = 7;
+        formPanel.add(new JLabel("Ignore All Day Events:"), gbc);
+
+        ignoreAllDayEventsCheckbox = new JCheckBox("", configManager.getIgnoreAllDayEvents());
+        gbc.gridx = 1;
+        gbc.gridy = 7;
+        formPanel.add(ignoreAllDayEventsCheckbox, gbc);
+
+        // Sign-in URL setting
+        gbc.gridx = 0;
+        gbc.gridy = 8;
         formPanel.add(new JLabel("Sign-in URL:"), gbc);
 
         signInUrlField = new JTextField(configManager.getSignInUrl() != null ? configManager.getSignInUrl() : "", 20);
         gbc.gridx = 1;
-        gbc.gridy = 7;
+        gbc.gridy = 8;
         formPanel.add(signInUrlField, gbc);
 
         // OAuth Client ID setting
         gbc.gridx = 0;
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         formPanel.add(new JLabel("Client ID (Azure AD App):"), gbc);
 
         clientIdField = new JTextField(configManager.getClientId() != null ? configManager.getClientId() : "", 20);
         clientIdField.setToolTipText("Register an app at portal.azure.com to enable automatic browser sign-in");
         gbc.gridx = 1;
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         formPanel.add(clientIdField, gbc);
 
         // OAuth Tenant ID setting
         gbc.gridx = 0;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         formPanel.add(new JLabel("Tenant ID (default: common):"), gbc);
 
         tenantIdField = new JTextField(configManager.getTenantId() != null ? configManager.getTenantId() : "common", 20);
         tenantIdField.setToolTipText("Your Azure AD tenant ID or 'common' for multi-tenant");
         gbc.gridx = 1;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         formPanel.add(tenantIdField, gbc);
 
         // Test Sign In button
         gbc.gridx = 0;
-        gbc.gridy = 10;
+        gbc.gridy = 11;
         formPanel.add(new JLabel("Test OAuth Sign-in:"), gbc);
 
         JButton testSignInButton = new JButton("Test Sign In");
         testSignInButton.setToolTipText("Test MSAL browser sign-in with the configured Client ID");
         testSignInButton.addActionListener(e -> testMsalSignIn(testSignInButton));
         gbc.gridx = 1;
-        gbc.gridy = 10;
+        gbc.gridy = 11;
         formPanel.add(testSignInButton, gbc);
 
         // Default Ignore SSL certificate validation setting
         gbc.gridx = 0;
-        gbc.gridy = 11;
+        gbc.gridy = 12;
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc);
 
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation());
         // No longer update immediately when checkbox changes
         gbc.gridx = 1;
-        gbc.gridy = 11;
+        gbc.gridy = 12;
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc);
 
         // Okta SSO email setting
         gbc.gridx = 0;
-        gbc.gridy = 12;
+        gbc.gridy = 13;
         formPanel.add(new JLabel("Okta SSO Email:"), gbc);
 
         userEmailField = new JTextField(
@@ -233,7 +244,7 @@ public class SettingsDialog extends JDialog {
                 "Your work email used for Okta SSO federation discovery. "
                 + "Set automatically when you click \"Sign In with Okta SSO\"");
         gbc.gridx = 1;
-        gbc.gridy = 12;
+        gbc.gridy = 13;
         formPanel.add(userEmailField, gbc);
 
         // Button panel
@@ -323,6 +334,9 @@ public class SettingsDialog extends JDialog {
 
             // Save alert beep after flash
             configManager.updateAlertBeepAfterFlash(alertBeepAfterFlashCheckbox.isSelected());
+
+            // Save ignore all day events
+            configManager.updateIgnoreAllDayEvents(ignoreAllDayEventsCheckbox.isSelected());
 
             // Save the SSL certificate validation setting
             boolean defaultIgnoreCertVal = defaultIgnoreCertValidationCheckbox.isSelected();

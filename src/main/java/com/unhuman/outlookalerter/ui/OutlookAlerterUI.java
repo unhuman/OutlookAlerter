@@ -743,7 +743,8 @@ public class OutlookAlerterUI extends JFrame {
                             // Count only today's meetings for the window title
                             LocalDate today = LocalDate.now();
                             long todayMeetingsCount = finalEvents.stream()
-                                .filter(event -> event.getStartTime().toLocalDate().equals(today))
+                                .filter(event -> event.getStartTime() != null
+                                        && event.getStartTime().toLocalDate().equals(today))
                                 .count();
                             setTitle("Outlook Alerter - " + todayMeetingsCount + " meetings today");
 
@@ -831,18 +832,40 @@ public class OutlookAlerterUI extends JFrame {
         // Sort events by minutes to start (ascending) so closest events are first
         relevantEvents.sort((a, b) -> Integer.compare(a.getMinutesToStart(), b.getMinutesToStart()));
 
-        // Separate in-progress events from upcoming events
-        List<CalendarEvent> inProgressEvents = relevantEvents.stream()
-            .filter(CalendarEvent::isInProgress)
+        // All-day events always go in their own dedicated section at the top.
+        // They are excluded from all scheduled sections regardless of the setting.
+        boolean ignoreAllDay = configManager.getIgnoreAllDayEvents();
+        List<CalendarEvent> allDayEvents = relevantEvents.stream()
+            .filter(CalendarEvent::isAllDay)
             .collect(Collectors.toList());
-        List<CalendarEvent> upcomingEvents = relevantEvents.stream()
-            .filter(event -> !event.isInProgress())
+        List<CalendarEvent> scheduledEvents = relevantEvents.stream()
+            .filter(event -> !event.isAllDay())
             .collect(Collectors.toList());
 
         // Build the display text
         StringBuilder displayText = new StringBuilder();
 
-        // Show in-progress events first
+        // Show all-day events first in their own section
+        if (!allDayEvents.isEmpty()) {
+            displayText.append("\n-- ALL DAY EVENTS --\n\n");
+            for (CalendarEvent event : allDayEvents) {
+                displayText.append("  \u2022 ").append(event.getSubject())
+                          .append(event.getOrganizer() != null ? " - Organized by: " + event.getOrganizer() : "")
+                          .append(event.getResponseStatus() != null ? " - Status: " + event.getResponseStatus() : "")
+                          .append(ignoreAllDay ? " (Non-Alertable)" : "")
+                          .append("\n");
+            }
+        }
+
+        // Separate in-progress events from upcoming events (scheduled events only)
+        List<CalendarEvent> inProgressEvents = scheduledEvents.stream()
+            .filter(CalendarEvent::isInProgress)
+            .collect(Collectors.toList());
+        List<CalendarEvent> upcomingEvents = scheduledEvents.stream()
+            .filter(event -> !event.isInProgress())
+            .collect(Collectors.toList());
+
+        // Show in-progress events
         if (!inProgressEvents.isEmpty()) {
             displayText.append("\n-- CURRENTLY IN PROGRESS --\n\n");
             for (CalendarEvent event : inProgressEvents) {
@@ -997,6 +1020,18 @@ public class OutlookAlerterUI extends JFrame {
                 alertedEventIds.remove(event.getId()); // Remove from list if already ended
                 continue;
             }
+            // All-day events never participate in time-based alerting: their start times
+            // are unreliable (e.g. all-day events use non-standard timezones like
+            // "tzone://Microsoft/Custom" that fail to parse, falling back to "now").
+            // Wake/startup alerts are handled separately by checkAlertsOnWake().
+            if (event.isAllDay()) {
+                String reason = configManager.getIgnoreAllDayEvents()
+                        ? " Skipping: All-day event (non-alertable per setting)"
+                        : " Skipping: All-day event (time-based alert not applicable)";
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                    event.getSubject() + reason);
+                continue;
+            }
             int minutesToStart = event.getMinutesToStart() + 1; // +1 to account for current time
             LogManager.getInstance().info(LogCategory.MEETING_INFO, event.getSubject() + " Minutes to start: " + minutesToStart);
             // Skip events we've already alerted for
@@ -1121,8 +1156,12 @@ public class OutlookAlerterUI extends JFrame {
             // Alert immediately for any meeting currently in progress.
             // checkForEventAlerts() uses minutesToStart >= -1 and would miss meetings that
             // started more than ~1 minute ago — those must be handled here explicitly.
+            // All-day events are excluded when "Ignore All Day Events" is enabled because
+            // isInProgress() returns true for them all day, and they should never alert.
+            boolean ignoreAllDay = configManager.getIgnoreAllDayEvents();
             List<CalendarEvent> inProgressEvents = events.stream()
                 .filter(CalendarEvent::isInProgress)
+                .filter(e -> !(ignoreAllDay && e.isAllDay()))
                 .collect(Collectors.toList());
 
             if (!inProgressEvents.isEmpty()) {
@@ -1510,10 +1549,15 @@ public class OutlookAlerterUI extends JFrame {
 
         // --- Dynamic meeting items (show up to 10 min before start, through end) ---
         if (events != null) {
+            // All-day events are always excluded from the tray's time-based upcoming list.
+            // They do not have reliable start times and do not meaningfully "start in X minutes".
             List<CalendarEvent> upcoming = events.stream()
                     .filter(e -> !e.hasEnded())
+                    .filter(e -> !e.isAllDay())
                     .filter(e -> e.isInProgress() || e.getMinutesToStart() <= 10)
                     .sorted((a, b) -> {
+                        if (a.getStartTime() == null) return 1;
+                        if (b.getStartTime() == null) return -1;
                         int cmp = a.getStartTime().compareTo(b.getStartTime());
                         if (cmp != 0) return cmp;
                         String sa = a.getSubject() != null ? a.getSubject() : "";
@@ -1637,8 +1681,12 @@ public class OutlookAlerterUI extends JFrame {
      */
     String getNextMeetingTimeLabel(List<CalendarEvent> events) {
         if (events == null) return null;
+        // All-day events are always excluded from "next meeting starts at" calculations.
+        // They span all day and have no specific/reliable start time in this context.
         return events.stream()
                 .filter(e -> !e.hasEnded())
+                .filter(e -> !e.isAllDay())
+                .filter(e -> e.getStartTime() != null)
                 .min(Comparator.comparing(CalendarEvent::getStartTime))
                 .map(e -> "Next Meeting at " + e.getStartTime()
                         .format(DateTimeFormatter.ofPattern("h:mm a")))
@@ -1865,31 +1913,10 @@ public class OutlookAlerterUI extends JFrame {
                 int count = Math.max(0, configManager.getAlertBeepCount());
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting beep sequence (count: " + count + ")");
                 int successCount = 0;
-
-                // On macOS, also play audio via afplay as a fallback for the first beep.
-                // Toolkit.beep() uses the system alert channel, which is completely silent
-                // when System Settings → Sound → Alert Volume is set to 0. afplay plays
-                // through the standard audio channel and is audible independently.
-                if (count > 0 && System.getProperty("os.name", "").toLowerCase().contains("mac")) {
-                    try {
-                        String[] soundPaths = {
-                            "/System/Library/Sounds/Glass.aiff",
-                            "/System/Library/Sounds/Funk.aiff",
-                            "/System/Library/Sounds/Submarine.aiff"
-                        };
-                        for (String soundPath : soundPaths) {
-                            if (new java.io.File(soundPath).exists()) {
-                                Runtime.getRuntime().exec(new String[]{"afplay", soundPath});
-                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                                    "AlertBeep: Started macOS afplay fallback: " + soundPath);
-                                break;
-                            }
-                        }
-                    } catch (Exception afEx) {
-                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                            "AlertBeep: Could not start afplay fallback: " + afEx.getMessage());
-                    }
-                }
+                // Note: afplay is NOT launched here. It is launched from the onFlashReady
+                // callback (Mac) or banner delay timer so that audio only plays when flash
+                // windows are confirmed visible.  Firing afplay here would play sound even
+                // when MacScreenFlasher silently skips the flash due to validation failure.
 
                 for (int i = 0; i < count; i++) {
                     try {
@@ -1932,6 +1959,10 @@ public class OutlookAlerterUI extends JFrame {
                     } catch (Exception ex) {
                         LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage(), ex);
                     }
+                    // Play afplay here — flash windows are confirmed visible at this point.
+                    // Firing it from the beep thread would play sound even when the flash
+                    // silently fails validation (display not ready, headless, etc).
+                    playMacAudio("AlertBeep: Started macOS afplay (flash confirmed visible)");
                 });
             } else {
                 // Non-Mac: show banner after a brief delay to let flash windows render first
@@ -1961,26 +1992,11 @@ public class OutlookAlerterUI extends JFrame {
                         int postBeepCount = Math.max(0, configManager.getAlertBeepCount());
                         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting post-flash beep sequence (count: " + postBeepCount + ")");
 
-                        // Play afplay fallback again so audio is heard even when Alert Volume is 0
-                        if (postBeepCount > 0 && System.getProperty("os.name", "").toLowerCase().contains("mac")) {
-                            try {
-                                String[] soundPaths = {
-                                    "/System/Library/Sounds/Glass.aiff",
-                                    "/System/Library/Sounds/Funk.aiff",
-                                    "/System/Library/Sounds/Submarine.aiff"
-                                };
-                                for (String soundPath : soundPaths) {
-                                    if (new java.io.File(soundPath).exists()) {
-                                        Runtime.getRuntime().exec(new String[]{"afplay", soundPath});
-                                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                                            "AlertBeep: Started macOS afplay fallback (post-flash): " + soundPath);
-                                        break;
-                                    }
-                                }
-                            } catch (Exception afEx) {
-                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                                    "AlertBeep: Could not start afplay fallback (post-flash): " + afEx.getMessage());
-                            }
+                        // Play afplay fallback again so audio is heard even when Alert Volume is 0.
+                        // Unlike the initial afplay (which is tied to flash confirmation), we know
+                        // the flash was shown because we just waited flashDurationMs for it to complete.
+                        if (postBeepCount > 0) {
+                            playMacAudio("AlertBeep: Started macOS afplay (post-flash)");
                         }
 
                         for (int i = 0; i < postBeepCount; i++) {
@@ -2023,6 +2039,38 @@ public class OutlookAlerterUI extends JFrame {
                 LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertTray: Error showing tray notification: " + ex.getMessage());
             }
         });
+    }
+
+    /**
+     * Play macOS audio via {@code afplay} so the alert sound is heard even when
+     * System Preferences → Sound → Alert Volume is set to 0 (which silences
+     * {@link java.awt.Toolkit#beep()}).  This is intentionally separated from
+     * the beep thread so it can be called only after flash windows are confirmed
+     * visible, preventing sound from playing when the flash silently fails.
+     *
+     * @param logMessage context string written to the ALERT_PROCESSING log
+     */
+    private void playMacAudio(String logMessage) {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+            return;
+        }
+        try {
+            String[] soundPaths = {
+                "/System/Library/Sounds/Glass.aiff",
+                "/System/Library/Sounds/Funk.aiff",
+                "/System/Library/Sounds/Submarine.aiff"
+            };
+            for (String soundPath : soundPaths) {
+                if (new java.io.File(soundPath).exists()) {
+                    Runtime.getRuntime().exec(new String[]{"afplay", soundPath});
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, logMessage + ": " + soundPath);
+                    break;
+                }
+            }
+        } catch (Exception afEx) {
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "AlertBeep: Could not start afplay: " + afEx.getMessage());
+        }
     }
 
     /**

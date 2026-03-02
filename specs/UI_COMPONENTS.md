@@ -24,6 +24,9 @@ The GUI is a Swing-based desktop application that runs as a system tray icon. Th
 ├──────────────────────────────────────────────────────┤
 │  Upcoming Calendar Events                            │
 │ ┌──────────────────────────────────────────────────┐ │
+│ │ == ALL DAY EVENTS ==                             │ │
+│ │  • Company Holiday (Non-Alertable)               │ │
+│ │                                                  │ │
 │ │ == CURRENTLY IN PROGRESS ==                      │ │
 │ │ 2:00 PM - 2:30 PM  Team Standup (In progress)   │ │
 │ │                                                  │ │
@@ -70,12 +73,14 @@ The GUI is a Swing-based desktop application that runs as a system tray icon. Th
 
 ### Event Categories in Display
 
-Events are sorted by `minutesToStart` and grouped into:
-1. **CURRENTLY IN PROGRESS** — `isInProgress()` is true
-2. **NEXT MEETINGS** — starts within current hour
-3. **TODAY'S MEETINGS** — starts today
-4. **TOMORROW'S MEETINGS** — starts tomorrow
-5. **LATER MEETINGS** — everything else
+Events are partitioned by `isAllDay()` first, then sorted by `minutesToStart` and grouped:
+
+1. **ALL DAY EVENTS** — `isAllDay()` is true. Always shown at the top in their own section, regardless of the *Ignore All Day Events* setting. When the setting is enabled, each entry is labelled `(Non-Alertable)`. All-day events are **excluded** from all time-based sections below because their start times are unreliable (Graph API all-day events use non-parseable timezone strings).
+2. **CURRENTLY IN PROGRESS** — `isInProgress()` is true (scheduled events only)
+3. **NEXT MEETINGS** — starts within current hour (scheduled events only)
+4. **TODAY'S MEETINGS** — starts today (scheduled events only)
+5. **TOMORROW'S MEETINGS** — starts tomorrow (scheduled events only)
+6. **LATER MEETINGS** — everything else (scheduled events only)
 
 ### Refresh Flow
 
@@ -120,7 +125,11 @@ Settings
 Exit
 ```
 
-**Meeting items appear when:** `!hasEnded()` AND (`isInProgress()` OR `getMinutesToStart() <= 10`)
+**Meeting items appear when:** `!hasEnded()` AND `!isAllDay()` AND (`isInProgress()` OR `getMinutesToStart() <= 10`)
+
+**All-day events are always excluded from the tray meeting list.** Their start times are unreliable and they do not have a meaningful "starts in X minutes" time. The *Ignore All Day Events* setting does not affect this — all-day events are unconditionally excluded from the tray.
+
+**"Next Meeting at" label:** Shown in place of the meeting list when no scheduled meetings qualify. All-day events are excluded from this calculation. Produced by `getNextMeetingTimeLabel()`.
 
 **Join URL lookup priority (`getEffectiveJoinUrl`):**
 1. `onlineMeeting.joinUrl` from Graph API
@@ -159,6 +168,7 @@ Exit
 | Flash Duration (sec) | `JSpinner` | 1–30 | `flashDurationSeconds` |
 | Flash Opacity (%) | `JSpinner` | 10–100 (step 10) | `flashOpacity` |
 | Alert Beep Count | `JSpinner` | 0–20 | `alertBeepCount` |
+| Ignore All Day Events | `JCheckBox` | boolean | `ignoreAllDayEvents` |
 | Alert Beep After Flash | `JCheckBox` | boolean | `alertBeepAfterFlash` |
 | Sign-in URL | `JTextField` | URL | `signInUrl` |
 | Ignore SSL Cert | `JCheckBox` | boolean | `defaultIgnoreCertValidation` |
@@ -289,7 +299,7 @@ Caller                     SimpleTokenDialog
 Headless mode that prints events to stdout and fires screen flash only (no beep, no banner, no tray).
 
 - **Polling:** Every 1 minute
-- **Display:** Console text with in-progress/upcoming/later categories
+- **Display:** Console text with dedicated all-day section (`-- ALL DAY EVENTS --`) at top, followed by in-progress/upcoming/later categories for scheduled events only
 - **Alerts:** `screenFlasher.flashMultiple(events)` only
 - **Exit:** Enter key (non-daemon) or signal (daemon)
 

@@ -101,6 +101,7 @@ class ConfigManagerTest {
             assertEquals(240, configManager.getResyncIntervalMinutes());
             assertEquals(5, configManager.getAlertBeepCount());
             assertFalse(configManager.getAlertBeepAfterFlash());
+            assertFalse(configManager.getIgnoreAllDayEvents());
             assertEquals("common", configManager.getTenantId());
         }
 
@@ -251,6 +252,18 @@ class ConfigManagerTest {
         void updateBeepAfterFlash() {
             configManager.updateAlertBeepAfterFlash(true);
             assertTrue(configManager.getAlertBeepAfterFlash());
+        }
+
+        @Test
+        @DisplayName("updateIgnoreAllDayEvents")
+        void updateIgnoreAllDayEvents() {
+            assertFalse(configManager.getIgnoreAllDayEvents()); // default
+            configManager.updateIgnoreAllDayEvents(true);
+            assertTrue(configManager.getIgnoreAllDayEvents());
+            // Verify persistence
+            ConfigManager reloaded = new ConfigManager(configPath);
+            reloaded.loadConfiguration();
+            assertTrue(reloaded.getIgnoreAllDayEvents());
         }
 
         @Test
@@ -417,6 +430,7 @@ class ConfigManagerTest {
             assertEquals("240", raw.getProperty("resyncIntervalMinutes"));
             assertEquals("5", raw.getProperty("alertBeepCount"));
             assertEquals("false", raw.getProperty("alertBeepAfterFlash"));
+            assertEquals("false", raw.getProperty("ignoreAllDayEvents"));
         }
 
         @Test

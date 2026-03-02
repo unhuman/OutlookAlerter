@@ -20,6 +20,8 @@
 | `bodyHtml` | `String` | `body.content` (full HTML body, used for meeting URL extraction) |
 | `calendarName` | `String` | Set by caller (multi-calendar) |
 | `responseStatus` | `String` | `responseStatus.response` |
+| `allDay` | `boolean` | `isAllDay` — true when the event spans the full day with no specific time range. Start/end times use non-standard timezones (e.g. `tzone://Microsoft/Custom`) and are unreliable for time-based calculations. |  
+| `cancelledByOrganizer` | `boolean` | `isCancelled` — events with this flag set are silently filtered out in `parseEventResponse` and never appear in the UI. Also detected via subject prefix `"Cancelled:"` / `"Canceled:"`. |
 | `resourceAttendees` | `Map<String, String>` | `attendees[]` where `type == "resource"` — `emailAddress.name → status.response`. Never null; defaults to an empty map. Values: `accepted`, `declined`, `tentativelyAccepted`, `notResponded`, `none` |
 
 ### Computed Properties
@@ -32,6 +34,8 @@
 
 **Note:** `getMinutesToStart()` uses the event's own timezone for the "now" reference, ensuring correct behavior when the event timezone differs from the system timezone.
 
+**Important — all-day events:** `isAllDay == true` events return `isInProgress() == true` for the entire day because their end time is midnight of the following day. Their `getMinutesToStart()` value is unreliable (often 0) because the Graph API all-day event timezone (`tzone://Microsoft/Custom`) fails to parse and falls back to `ZonedDateTime.now()`. All-day events must never be used in time-based alert calculations.
+
 ---
 
 ## ConfigManager
@@ -43,8 +47,9 @@
 ### Constants
 
 All property keys and default values are defined as `private static final String` constants:
-- **Key constants** (`KEY_*`): `KEY_CLIENT_ID`, `KEY_CLIENT_SECRET`, `KEY_TENANT_ID`, `KEY_REDIRECT_URI`, `KEY_SIGN_IN_URL`, `KEY_TOKEN_ENDPOINT`, `KEY_LOGIN_HINT`, `KEY_PREFERRED_TIMEZONE`, `KEY_ALERT_MINUTES`, `KEY_DEFAULT_IGNORE_CERT`, `KEY_IGNORE_CERT`, `KEY_FLASH_COLOR`, `KEY_FLASH_TEXT_COLOR`, `KEY_FLASH_OPACITY`, `KEY_FLASH_DURATION`, `KEY_RESYNC_INTERVAL`, `KEY_ALERT_BEEP_COUNT`, `KEY_ALERT_BEEP_AFTER_FLASH`, `KEY_ACCESS_TOKEN`, `KEY_REFRESH_TOKEN`
+- **Key constants** (`KEY_*`): `KEY_CLIENT_ID`, `KEY_CLIENT_SECRET`, `KEY_TENANT_ID`, `KEY_REDIRECT_URI`, `KEY_SIGN_IN_URL`, `KEY_TOKEN_ENDPOINT`, `KEY_LOGIN_HINT`, `KEY_PREFERRED_TIMEZONE`, `KEY_ALERT_MINUTES`, `KEY_DEFAULT_IGNORE_CERT`, `KEY_IGNORE_CERT`, `KEY_FLASH_COLOR`, `KEY_FLASH_TEXT_COLOR`, `KEY_FLASH_OPACITY`, `KEY_FLASH_DURATION`, `KEY_RESYNC_INTERVAL`, `KEY_ALERT_BEEP_COUNT`, `KEY_ALERT_BEEP_AFTER_FLASH`, `KEY_ACCESS_TOKEN`, `KEY_REFRESH_TOKEN`, `KEY_IGNORE_ALL_DAY_EVENTS`
 - **Default constants** (`DEFAULT_*`): `DEFAULT_TENANT_ID`, `DEFAULT_REDIRECT_URI`, `DEFAULT_FLASH_COLOR`, `DEFAULT_FLASH_TEXT_COLOR`, `DEFAULT_FLASH_OPACITY`, `DEFAULT_ALERT_MINUTES`, `DEFAULT_FLASH_DURATION`, `DEFAULT_RESYNC_INTERVAL`, `DEFAULT_ALERT_BEEP_COUNT`, `DEFAULT_FALSE`
+- **`ignoreAllDayEvents`** defaults to `false` via `DEFAULT_FALSE`; property key is `"ignoreAllDayEvents"`
 
 ### All Properties
 
@@ -69,6 +74,7 @@ All property keys and default values are defined as `private static final String
 | `resyncIntervalMinutes` | int | `240` | Scheduler |
 | `defaultIgnoreCertValidation` | boolean | `false` | SSL |
 | `ignoreCertValidation` | boolean | `false` | SSL (runtime) |
+| `ignoreAllDayEvents` | boolean | `false` | Alert |
 
 ### Persistence
 
@@ -93,6 +99,7 @@ void updateFlashTextColor(String color)
 void updateFlashOpacity(double opacity)
 void updateResyncIntervalMinutes(int minutes)
 void updateAlertBeepCount(int count)
+void updateIgnoreAllDayEvents(boolean ignore)
 ```
 
 ---
@@ -116,8 +123,7 @@ void updateAlertBeepCount(int count)
 GET /me/calendarView
   ?startDateTime={now ISO}
   &endDateTime={endOfTomorrow ISO}
-  &$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview
-  &$orderby=start/dateTime asc
+  &$select=id,subject,organizer,start,end,location,isAllDay,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees
   &$top=50
 
 Headers:

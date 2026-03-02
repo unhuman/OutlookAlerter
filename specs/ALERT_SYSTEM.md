@@ -239,6 +239,11 @@ showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageTyp
 ```
 for each event:
   ├─ Skip if event.hasEnded() → also remove from alertedEventIds
+  ├─ Skip if event.isAllDay()
+  │    All-day events are ALWAYS excluded from time-based alerting regardless of the
+  │    "Ignore All Day Events" setting. Their start times use a non-standard timezone
+  │    ("tzone://Microsoft/Custom") that fails to parse and falls back to now(), giving
+  │    them minutesToStart ≈ 0. They must never trigger a time-based alert.
   ├─ minutesToStart = event.getMinutesToStart() + 1  (account for current time)
   ├─ Skip if alertedEventIds.contains(event.id)
   └─ Alert if: minutesToStart <= configManager.alertMinutes AND minutesToStart >= -1
@@ -322,11 +327,14 @@ refreshCalendarEvents() → fetch thread → EDT callback
 Using lastFetchedEvents (cached):
   1. Collect all non-ended event IDs → remove from alertedEventIds
      (allows upcoming events to re-fire via normal window)
-  2. Find events where isInProgress() == true
+  2. Find events where isInProgress() == true AND !isAllDay()
+     (all-day events are always in-progress all day; exclude them unconditionally
+      to prevent spurious "meeting in progress" alerts for non-meeting day events)
      → fire performFullAlert() immediately with banner text "Meeting in progress: <subject>"
      → mark those event IDs in alertedEventIds (prevent double-alert)
   3. Call checkForEventAlerts(events)
      → handles upcoming events within the normal alert-minutes window
+     → checkForEventAlerts also skips all-day events unconditionally
 ```
 
 **Banner text for in-progress alert:**
@@ -404,8 +412,8 @@ Uses `sun.misc.Unsafe.allocateInstance()` to create a minimal `OutlookAlerterUI`
 | doesNotAlertOutsideThreshold | Event far in future produces no alert |
 | noDuplicateAlerts | Same event checked twice only fires one alert |
 | cleansUpEndedEvents | Ended events removed from `alertedEventIds` |
-| alertsMultipleEvents | Multiple qualifying events batched into single alert |
-
+| alertsMultipleEvents | Multiple qualifying events batched into single alert || allDayEventNeverAlerted_settingOff | All-day event never triggers alert when *Ignore All Day Events* is OFF |
+| allDayEventNeverAlerted_settingOn | All-day event never triggers alert when *Ignore All Day Events* is ON |
 ### checkAlertsOnWake() tests
 | Test | Verifies |
 |------|----------|

@@ -443,6 +443,43 @@ class OutlookAlerterUIAlertTest {
             assertTrue(getAlertedEventIds().contains("multi-1"));
             assertTrue(getAlertedEventIds().contains("multi-2"));
         }
+
+        @Test
+        @DisplayName("never alerts for all-day event when ignore setting is OFF")
+        void allDayEventNeverAlerted_settingOff() throws Exception {
+            configManager.updateAlertMinutes(5);
+            configManager.updateIgnoreAllDayEvents(false); // setting OFF
+
+            // All-day event whose startTime is within the alert window
+            CalendarEvent allDayEvent = makeTestEvent("Company Holiday", 1);
+            allDayEvent.setId("allday-off");
+            allDayEvent.setAllDay(true);
+
+            invokeCheckForEventAlerts(List.of(allDayEvent));
+            Thread.sleep(300);
+
+            assertEquals(0, flasher.flashMultipleCount,
+                "All-day events must never trigger time-based alerts, even when ignore setting is OFF");
+            assertFalse(getAlertedEventIds().contains("allday-off"),
+                "All-day event should not be added to alertedEventIds");
+        }
+
+        @Test
+        @DisplayName("never alerts for all-day event when ignore setting is ON")
+        void allDayEventNeverAlerted_settingOn() throws Exception {
+            configManager.updateAlertMinutes(5);
+            configManager.updateIgnoreAllDayEvents(true); // setting ON
+
+            CalendarEvent allDayEvent = makeTestEvent("All-hands", 1);
+            allDayEvent.setId("allday-on");
+            allDayEvent.setAllDay(true);
+
+            invokeCheckForEventAlerts(List.of(allDayEvent));
+            Thread.sleep(300);
+
+            assertEquals(0, flasher.flashMultipleCount,
+                "All-day events must never trigger time-based alerts when ignore setting is ON");
+        }
     }
 
     // ───────── checkAlertsOnWake ─────────

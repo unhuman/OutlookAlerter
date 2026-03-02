@@ -228,9 +228,26 @@ public class OutlookAlerterConsole {
             // Sort events by minutes to start (ascending) so closest events are first
             relevantEvents.sort((a, b) -> Integer.compare(a.getMinutesToStart(), b.getMinutesToStart()));
             
-            // Separate in-progress events from upcoming events
-            List<CalendarEvent> inProgressEvents = relevantEvents.stream().filter(CalendarEvent::isInProgress).collect(Collectors.toList());
-            List<CalendarEvent> upcomingEvents = relevantEvents.stream().filter(event -> !event.isInProgress()).collect(Collectors.toList());
+            // Separate all-day events (shown first); they do not participate in
+            // time-based in-progress / upcoming sections because their start times
+            // are unreliable (non-standard timezones may fail to parse).
+            List<CalendarEvent> allDayConsoleEvents = relevantEvents.stream()
+                .filter(com.unhuman.outlookalerter.model.CalendarEvent::isAllDay).collect(Collectors.toList());
+            List<CalendarEvent> scheduledConsoleEvents = relevantEvents.stream()
+                .filter(event -> !event.isAllDay()).collect(Collectors.toList());
+
+            if (!allDayConsoleEvents.isEmpty()) {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH, "\n-- ALL DAY EVENTS --");
+                for (com.unhuman.outlookalerter.model.CalendarEvent event : allDayConsoleEvents) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH, "  - " + event.getSubject()
+                          + (event.getOrganizer() != null ? " - Organized by: " + event.getOrganizer() : "")
+                          + (event.getResponseStatus() != null ? " - Status: " + event.getResponseStatus() : ""));
+                }
+            }
+
+            // Separate in-progress events from upcoming events (scheduled events only)
+            List<CalendarEvent> inProgressEvents = scheduledConsoleEvents.stream().filter(CalendarEvent::isInProgress).collect(Collectors.toList());
+            List<CalendarEvent> upcomingEvents = scheduledConsoleEvents.stream().filter(event -> !event.isInProgress()).collect(Collectors.toList());
             
             // Show in-progress events first
             if (!inProgressEvents.isEmpty()) {

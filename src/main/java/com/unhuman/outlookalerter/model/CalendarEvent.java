@@ -22,6 +22,7 @@ public class CalendarEvent {
     private String calendarName;
     private String responseStatus;
     private boolean cancelledByOrganizer;
+    private boolean allDay;
     /**
      * Room/resource attendees: display name -> response status ("accepted", "declined",
      * "tentativelyAccepted", "notResponded", "none"). Populated from Graph API attendees
@@ -70,6 +71,10 @@ public class CalendarEvent {
 
     public boolean getCancelledByOrganizer() { return cancelledByOrganizer; }
     public void setCancelledByOrganizer(boolean cancelledByOrganizer) { this.cancelledByOrganizer = cancelledByOrganizer; }
+
+    /** Returns {@code true} if this event spans the full day with no specific start/end time. */
+    public boolean isAllDay() { return allDay; }
+    public void setAllDay(boolean allDay) { this.allDay = allDay; }
 
     /** Returns an unmodifiable view of the resource-attendee map. */
     public Map<String, String> getResourceAttendees() { return Collections.unmodifiableMap(resourceAttendees); }

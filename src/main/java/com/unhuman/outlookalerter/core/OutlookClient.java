@@ -677,7 +677,7 @@ public class OutlookClient {
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
             urlBuilder.append("?startDateTime=").append(URLEncoder.encode(startParam, "UTF-8"));
             urlBuilder.append("&endDateTime=").append(URLEncoder.encode(endParam, "UTF-8"));
-            urlBuilder.append("&$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
+            urlBuilder.append("&$select=id,subject,organizer,start,end,location,isAllDay,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
             urlBuilder.append("&$top=50");
 
             String url = urlBuilder.toString();
@@ -771,7 +771,7 @@ public class OutlookClient {
             endTime = cleanDateTimeForFilter(endTime);
 
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
-            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
+            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isAllDay,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
 
             String filterParam = "start/dateTime ge '" + startTime + "' and start/dateTime le '" + endTime + "'";
             urlBuilder.append("&$filter=").append(URLEncoder.encode(filterParam, "UTF-8"));
@@ -822,7 +822,7 @@ public class OutlookClient {
                     .format(DateTimeFormatter.ISO_LOCAL_DATE);
 
             StringBuilder urlBuilder = new StringBuilder(baseUrl);
-            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
+            urlBuilder.append("?$select=id,subject,organizer,start,end,location,isAllDay,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees");
 
             String filterParam = "start/dateTime ge '" + today + "' and start/dateTime le '" + tomorrow + "'";
             urlBuilder.append("&$filter=").append(URLEncoder.encode(filterParam, "UTF-8"));
@@ -838,7 +838,7 @@ public class OutlookClient {
                     "Error creating fallback URI: " + e.getMessage());
             try {
                 return new URI(baseUrl
-                        + "?$select=id,subject,organizer,start,end,location,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees&$top=50&$orderby=start/dateTime asc");
+                        + "?$select=id,subject,organizer,start,end,location,isAllDay,isOnlineMeeting,onlineMeeting,bodyPreview,body,responseStatus,attendees&$top=50&$orderby=start/dateTime asc");
             } catch (URISyntaxException e2) {
                 throw new RuntimeException("Failed to create even a basic URI: " + e2.getMessage());
             }
@@ -908,6 +908,7 @@ public class OutlookClient {
                     event.setEndTime(ZonedDateTime.now().plusHours(1));
                 }
 
+                event.setAllDay(eventObj.optBoolean("isAllDay", false));
                 event.setIsOnlineMeeting(eventObj.optBoolean("isOnlineMeeting", false));
                 // Always attempt to get the joinUrl regardless of isOnlineMeeting flag
                 // (manually-scheduled Zoom meetings may have isOnlineMeeting=false but still have a joinUrl)

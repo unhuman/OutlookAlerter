@@ -37,6 +37,7 @@ public class ConfigManager {
     private static final String KEY_RESYNC_INTERVAL = "resyncIntervalMinutes";
     private static final String KEY_ALERT_BEEP_COUNT = "alertBeepCount";
     private static final String KEY_ALERT_BEEP_AFTER_FLASH = "alertBeepAfterFlash";
+    private static final String KEY_IGNORE_ALL_DAY_EVENTS = "ignoreAllDayEvents";
     private static final String KEY_ACCESS_TOKEN = "accessToken";
     private static final String KEY_REFRESH_TOKEN = "refreshToken";
     private static final String KEY_USER_EMAIL = "userEmail";
@@ -78,6 +79,7 @@ public class ConfigManager {
     private int resyncIntervalMinutes = 240;
     private int alertBeepCount = 5;
     private boolean alertBeepAfterFlash = false;
+    private boolean ignoreAllDayEvents = false;
     private String signInUrl;
     private String tokenEndpoint;
     private String loginHint;
@@ -133,6 +135,7 @@ public class ConfigManager {
         properties.setProperty(KEY_RESYNC_INTERVAL, DEFAULT_RESYNC_INTERVAL);
         properties.setProperty(KEY_ALERT_BEEP_COUNT, DEFAULT_ALERT_BEEP_COUNT);
         properties.setProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE);
+        properties.setProperty(KEY_IGNORE_ALL_DAY_EVENTS, DEFAULT_FALSE);
         properties.setProperty(KEY_USER_EMAIL, "");
         properties.setProperty(KEY_AUTH_MODE, "");
         try (FileOutputStream fos = new FileOutputStream(configFile)) {
@@ -199,6 +202,7 @@ public class ConfigManager {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid alertBeepCount value, using default: " + e.getMessage());
         }
         alertBeepAfterFlash = Boolean.parseBoolean(properties.getProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE));
+        ignoreAllDayEvents = Boolean.parseBoolean(properties.getProperty(KEY_IGNORE_ALL_DAY_EVENTS, DEFAULT_FALSE));
         accessToken = properties.getProperty(KEY_ACCESS_TOKEN);
         refreshToken = properties.getProperty(KEY_REFRESH_TOKEN);
         userEmail = properties.getProperty(KEY_USER_EMAIL, "");
@@ -226,6 +230,7 @@ public class ConfigManager {
             properties.setProperty(KEY_RESYNC_INTERVAL, String.valueOf(resyncIntervalMinutes));
             properties.setProperty(KEY_ALERT_BEEP_COUNT, String.valueOf(alertBeepCount));
             properties.setProperty(KEY_ALERT_BEEP_AFTER_FLASH, String.valueOf(alertBeepAfterFlash));
+            properties.setProperty(KEY_IGNORE_ALL_DAY_EVENTS, String.valueOf(ignoreAllDayEvents));
             if (accessToken != null && !accessToken.isEmpty()) {
                 properties.setProperty(KEY_ACCESS_TOKEN, accessToken);
             }
@@ -284,6 +289,7 @@ public class ConfigManager {
     public int getResyncIntervalMinutes() { return resyncIntervalMinutes; }
     public int getAlertBeepCount() { return alertBeepCount; }
     public boolean getAlertBeepAfterFlash() { return alertBeepAfterFlash; }
+    public boolean getIgnoreAllDayEvents() { return ignoreAllDayEvents; }
 
     public void updatePreferredTimezone(String timezone) { this.preferredTimezone = timezone; saveConfiguration(); }
     public void updateAlertMinutes(int minutes) { this.alertMinutes = minutes; saveConfiguration(); }
@@ -299,6 +305,7 @@ public class ConfigManager {
     public void updateResyncIntervalMinutes(int minutes) { this.resyncIntervalMinutes = minutes; saveConfiguration(); }
     public void updateAlertBeepCount(int count) { this.alertBeepCount = count; saveConfiguration(); }
     public void updateAlertBeepAfterFlash(boolean enabled) { this.alertBeepAfterFlash = enabled; saveConfiguration(); }
+    public void updateIgnoreAllDayEvents(boolean ignore) { this.ignoreAllDayEvents = ignore; saveConfiguration(); }
 
     /** Email address stored for Okta SSO federation discovery. May be empty/null. */
     public String getUserEmail() { return userEmail; }

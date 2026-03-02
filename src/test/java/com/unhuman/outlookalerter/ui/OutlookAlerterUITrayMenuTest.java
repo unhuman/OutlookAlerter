@@ -480,5 +480,51 @@ class OutlookAlerterUITrayMenuTest {
             String expectedTime = future.format(DateTimeFormatter.ofPattern("h:mm a"));
             assertEquals("Next Meeting at " + expectedTime, label);
         }
+
+        @Test
+        @DisplayName("all-day event is excluded from next-meeting label when ignore setting is OFF")
+        void allDayEventExcluded_settingOff() throws Exception {
+            // All-day event in progress with setting OFF — should still be excluded
+            ZonedDateTime midnight = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+            CalendarEvent allDay = makeEvent(midnight, midnight.plusHours(24));
+            allDay.setAllDay(true);
+            allDay.setSubject("Company Holiday");
+
+            assertNull(invokeGetNextMeetingTimeLabel(Arrays.asList(allDay)),
+                "All-day events must never count as 'next meeting starts at' regardless of ignore setting");
+        }
+
+        @Test
+        @DisplayName("all-day event is excluded from next-meeting label when ignore setting is ON")
+        void allDayEventExcluded_settingOn() throws Exception {
+            configManager.updateIgnoreAllDayEvents(true);
+            ZonedDateTime midnight = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+            CalendarEvent allDay = makeEvent(midnight, midnight.plusHours(24));
+            allDay.setAllDay(true);
+            allDay.setSubject("All-hands Day");
+
+            assertNull(invokeGetNextMeetingTimeLabel(Arrays.asList(allDay)),
+                "All-day events must be excluded from next-meeting label when ignore setting is ON");
+        }
+
+        @Test
+        @DisplayName("all-day event does not block a real meeting from showing as next-meeting")
+        void allDayDoesNotBlockRealMeeting() throws Exception {
+            ZonedDateTime midnight = ZonedDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+            CalendarEvent allDay = makeEvent(midnight, midnight.plusHours(24));
+            allDay.setAllDay(true);
+            allDay.setSubject("Holiday");
+
+            ZonedDateTime future = ZonedDateTime.now().plusHours(2);
+            CalendarEvent scheduled = makeEvent(future, future.plusMinutes(60));
+            scheduled.setSubject("Strategy Session");
+
+            String label = invokeGetNextMeetingTimeLabel(Arrays.asList(allDay, scheduled));
+
+            assertNotNull(label, "Scheduled meeting should still produce a next-meeting label");
+            String expectedTime = future.format(DateTimeFormatter.ofPattern("h:mm a"));
+            assertEquals("Next Meeting at " + expectedTime, label,
+                "Label should be based on the scheduled meeting, not the all-day event");
+        }
     }
 }
