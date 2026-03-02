@@ -191,7 +191,7 @@ mvn package -Dheadless=false
 | `IconManagerTest` | ui | 12 | Icon generation, sizes, valid/invalid states, caching |
 | `OutlookClientTest` | core | 11 | `AuthenticationCancelledException`, token constants, constructors |
 | `ScreenFlasherFactoryTest` | util | 5 | Platform factory, interface contract |
-| `OutlookAlerterUIAlertTest` | ui | 17 | `performFullAlert`, screen flash, beep thread, `checkForEventAlerts`, dedup, cleanup |
+| `OutlookAlerterUIAlertTest` | ui | 23 | `performFullAlert`, screen flash, beep thread, `checkForEventAlerts`, dedup, cleanup, `checkAlertsOnWake` |
 | `SingleInstanceManagerTest` | core | 6 | File lock acquire/release/exclusive |
 | `MacSleepWakeMonitorTest` | util | 9 | Singleton, lifecycle, wake listeners |
 

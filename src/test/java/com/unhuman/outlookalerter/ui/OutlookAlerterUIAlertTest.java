@@ -445,6 +445,129 @@ class OutlookAlerterUIAlertTest {
         }
     }
 
+    // ───────── checkAlertsOnWake ─────────
+
+    @Nested
+    @DisplayName("checkAlertsOnWake()")
+    class WakeAlertTests {
+
+        /** Inject a list of events into the UI's lastFetchedEvents field. */
+        private void setLastFetchedEvents(List<CalendarEvent> events) throws Exception {
+            Field field = findField(ui.getClass(), "lastFetchedEvents");
+            field.setAccessible(true);
+            field.set(ui, java.util.Collections.unmodifiableList(new ArrayList<>(events)));
+        }
+
+        private void invokeCheckAlertsOnWake() throws Exception {
+            Method method = OutlookAlerterUI.class.getDeclaredMethod("checkAlertsOnWake");
+            method.setAccessible(true);
+            method.invoke(ui);
+        }
+
+        /** Event that started 10 minutes ago and ends in 20 minutes (in progress). */
+        private CalendarEvent makeInProgressEvent(String subject) {
+            CalendarEvent event = new CalendarEvent();
+            event.setSubject(subject);
+            event.setId(subject.toLowerCase().replace(' ', '-') + "-id");
+            event.setStartTime(ZonedDateTime.now().minusMinutes(10));
+            event.setEndTime(ZonedDateTime.now().plusMinutes(20));
+            return event;
+        }
+
+        /** Event that ended 5 minutes ago. */
+        private CalendarEvent makeEndedEvent(String subject) {
+            CalendarEvent event = new CalendarEvent();
+            event.setSubject(subject);
+            event.setId(subject.toLowerCase().replace(' ', '-') + "-id");
+            event.setStartTime(ZonedDateTime.now().minusMinutes(35));
+            event.setEndTime(ZonedDateTime.now().minusMinutes(5));
+            return event;
+        }
+
+        @Test
+        @DisplayName("alerts for in-progress meeting on wake")
+        void alertsForInProgressOnWake() throws Exception {
+            CalendarEvent inProgress = makeInProgressEvent("Board Review");
+            setLastFetchedEvents(List.of(inProgress));
+
+            invokeCheckAlertsOnWake();
+            Thread.sleep(500);
+
+            assertEquals(1, flasher.flashMultipleCount, "Should flash for in-progress meeting");
+            assertEquals("Board Review", flasher.flashedEvents.get(0).getSubject());
+        }
+
+        @Test
+        @DisplayName("does not alert for in-progress meeting that already alerted before wake")
+        void inProgressAlreadyAlertedIsReAlertedonWake() throws Exception {
+            // Simulate: event was alerted before sleep
+            CalendarEvent inProgress = makeInProgressEvent("Daily Standup");
+            getAlertedEventIds().add(inProgress.getId());
+            setLastFetchedEvents(List.of(inProgress));
+
+            // Wake check should clear the alerted status and re-alert
+            invokeCheckAlertsOnWake();
+            Thread.sleep(500);
+
+            assertEquals(1, flasher.flashMultipleCount,
+                "In-progress event alerted before sleep should be re-alerted on wake");
+        }
+
+        @Test
+        @DisplayName("does not alert for ended meeting on wake")
+        void doesNotAlertForEndedMeetingOnWake() throws Exception {
+            CalendarEvent ended = makeEndedEvent("Morning Sync");
+            setLastFetchedEvents(List.of(ended));
+
+            invokeCheckAlertsOnWake();
+            Thread.sleep(300);
+
+            assertEquals(0, flasher.flashMultipleCount, "Ended meeting should not trigger alert on wake");
+        }
+
+        @Test
+        @DisplayName("alerts for upcoming meeting within threshold on wake")
+        void alertsForUpcomingOnWake() throws Exception {
+            configManager.updateAlertMinutes(5);
+            CalendarEvent upcoming = makeTestEvent("Sprint Planning", 3);
+            upcoming.setId("sprint-id");
+            setLastFetchedEvents(List.of(upcoming));
+
+            invokeCheckAlertsOnWake();
+            Thread.sleep(500);
+
+            assertEquals(1, flasher.flashMultipleCount, "Upcoming event within threshold should alert on wake");
+        }
+
+        @Test
+        @DisplayName("does nothing when no cached events")
+        void doesNothingWithNoCachedEvents() throws Exception {
+            setLastFetchedEvents(List.of());
+
+            assertDoesNotThrow(() -> invokeCheckAlertsOnWake());
+            Thread.sleep(300);
+
+            assertEquals(0, flasher.flashMultipleCount);
+        }
+
+        @Test
+        @DisplayName("alerts in-progress and upcoming in separate batches on wake")
+        void alertsBothInProgressAndUpcoming() throws Exception {
+            configManager.updateAlertMinutes(5);
+            CalendarEvent inProgress = makeInProgressEvent("Ongoing Review");
+            CalendarEvent upcoming = makeTestEvent("Next Meeting", 2);
+            upcoming.setId("next-id");
+            setLastFetchedEvents(List.of(inProgress, upcoming));
+
+            invokeCheckAlertsOnWake();
+            Thread.sleep(500);
+
+            // In-progress fires first via performFullAlert, upcoming via checkForEventAlerts
+            assertEquals(2, flasher.flashMultipleCount,
+                "Should produce two alert batches: one in-progress, one upcoming");
+        }
+    }
+
     // ───────── Helpers ─────────
 
     private CalendarEvent makeTestEvent(String subject, int minutesFromNow) {

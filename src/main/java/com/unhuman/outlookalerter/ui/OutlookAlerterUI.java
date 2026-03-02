@@ -173,6 +173,10 @@ public class OutlookAlerterUI extends JFrame {
     // Store last fetched events to avoid frequent API calls (volatile for cross-thread visibility)
     private volatile List<CalendarEvent> lastFetchedEvents = new ArrayList<>();
 
+    // Fired once on startup after the first successful calendar fetch to alert for
+    // any meetings already in progress when the application launches.
+    private volatile boolean initialAlertCheckDone = false;
+
     // Throttle token validation checks (every 5 minutes instead of every minute)
     private volatile long lastTokenValidationTime = 0L;
     private static final long TOKEN_VALIDATION_INTERVAL_MS = 5 * 60 * 1000L; // 5 minutes
@@ -559,6 +563,13 @@ public class OutlookAlerterUI extends JFrame {
 
                         // Also force a calendar refresh after wake
                         refreshCalendarEvents();
+
+                        // After a short stabilization delay, alert for any in-progress or
+                        // upcoming meetings. The 3-second delay lets the display settle;
+                        // MacScreenFlasher's own 5-second post-wake guard absorbs the rest.
+                        Timer wakeAlertTimer = new Timer(3000, evt -> checkAlertsOnWake());
+                        wakeAlertTimer.setRepeats(false);
+                        wakeAlertTimer.start();
                     } catch (Exception e) {
                         LogManager.getInstance().error(LogCategory.GENERAL, "[OutlookAlerterUI] Error restarting after wake: " + e.getMessage(), e);
                     }
@@ -713,6 +724,15 @@ public class OutlookAlerterUI extends JFrame {
                             lastFetchedEvents = Collections.unmodifiableList(new ArrayList<>(finalEvents));
                             lastCalendarRefresh = ZonedDateTime.now();
                             buildTrayPopupMenu(finalEvents);
+
+                            // On startup, fire a wake-style check for in-progress meetings
+                            // so the user is immediately alerted if a meeting started before launch.
+                            if (!initialAlertCheckDone) {
+                                initialAlertCheckDone = true;
+                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                                    "[Startup] First calendar fetch complete — checking for in-progress meetings");
+                                checkAlertsOnWake();
+                            }
 
                             // Update status to successful
                             String now = lastCalendarRefresh.format(DateTimeFormatter.ofPattern("hh:mm:ss a"));
@@ -1065,6 +1085,75 @@ public class OutlookAlerterUI extends JFrame {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Clearing alertedEventIds list (size > 100)");
                 alertedEventIds.clear();
             }
+        }
+    }
+
+    /**
+     * Called immediately after a system wake event.
+     * Re-enables alerting for any non-ended events (clears their "already alerted" status),
+     * then fires an immediate alert for meetings currently in progress, and runs the normal
+     * upcoming-event check for meetings about to start.
+     *
+     * Must be called on the EDT.
+     */
+    private void checkAlertsOnWake() {
+        try {
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "[Wake] Checking for events that need immediate alert after wake");
+
+            List<CalendarEvent> events = new ArrayList<>(lastFetchedEvents);
+            if (events.isEmpty()) {
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                    "[Wake] No cached events available for wake check");
+                return;
+            }
+
+            // Clear alertedEventIds for all non-ended events so they can be re-evaluated.
+            // Events alerted before sleep would otherwise be silently skipped.
+            List<String> idsToReset = events.stream()
+                .filter(e -> !e.hasEnded())
+                .map(CalendarEvent::getId)
+                .collect(Collectors.toList());
+            idsToReset.forEach(id -> alertedEventIds.remove(id));
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "[Wake] Reset " + idsToReset.size() + " non-ended event(s) in alerted cache");
+
+            // Alert immediately for any meeting currently in progress.
+            // checkForEventAlerts() uses minutesToStart >= -1 and would miss meetings that
+            // started more than ~1 minute ago — those must be handled here explicitly.
+            List<CalendarEvent> inProgressEvents = events.stream()
+                .filter(CalendarEvent::isInProgress)
+                .collect(Collectors.toList());
+
+            if (!inProgressEvents.isEmpty()) {
+                String subjects = inProgressEvents.stream()
+                    .map(CalendarEvent::getSubject)
+                    .collect(Collectors.joining(", "));
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                    "[Wake] Alerting for " + inProgressEvents.size() + " in-progress event(s): " + subjects);
+
+                String bannerText = (inProgressEvents.size() == 1)
+                    ? "Meeting in progress: " + inProgressEvents.get(0).getSubject()
+                    : inProgressEvents.size() + " meetings in progress";
+                String notifTitle = (inProgressEvents.size() == 1)
+                    ? "Meeting in progress" : "Meetings in progress";
+                String notifMsg = (inProgressEvents.size() == 1)
+                    ? inProgressEvents.get(0).getSubject() + " is in progress"
+                    : inProgressEvents.size() + " meetings are in progress";
+
+                // Mark as alerted before calling performFullAlert so the normal
+                // checkForEventAlerts below doesn't double-alert for the same events.
+                inProgressEvents.forEach(e -> alertedEventIds.add(e.getId()));
+
+                performFullAlert(bannerText, notifTitle, notifMsg, inProgressEvents);
+            }
+
+            // Run the normal upcoming-event check for meetings about to start
+            checkForEventAlerts(events);
+
+        } catch (Exception e) {
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
+                "[Wake] Error during wake alert check: " + e.getMessage(), e);
         }
     }
 
@@ -1776,6 +1865,32 @@ public class OutlookAlerterUI extends JFrame {
                 int count = Math.max(0, configManager.getAlertBeepCount());
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting beep sequence (count: " + count + ")");
                 int successCount = 0;
+
+                // On macOS, also play audio via afplay as a fallback for the first beep.
+                // Toolkit.beep() uses the system alert channel, which is completely silent
+                // when System Settings → Sound → Alert Volume is set to 0. afplay plays
+                // through the standard audio channel and is audible independently.
+                if (count > 0 && System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+                    try {
+                        String[] soundPaths = {
+                            "/System/Library/Sounds/Glass.aiff",
+                            "/System/Library/Sounds/Funk.aiff",
+                            "/System/Library/Sounds/Submarine.aiff"
+                        };
+                        for (String soundPath : soundPaths) {
+                            if (new java.io.File(soundPath).exists()) {
+                                Runtime.getRuntime().exec(new String[]{"afplay", soundPath});
+                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                                    "AlertBeep: Started macOS afplay fallback: " + soundPath);
+                                break;
+                            }
+                        }
+                    } catch (Exception afEx) {
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                            "AlertBeep: Could not start afplay fallback: " + afEx.getMessage());
+                    }
+                }
+
                 for (int i = 0; i < count; i++) {
                     try {
                         Toolkit.getDefaultToolkit().beep();
@@ -1845,6 +1960,29 @@ public class OutlookAlerterUI extends JFrame {
                         Thread.sleep(flashDurationMs);
                         int postBeepCount = Math.max(0, configManager.getAlertBeepCount());
                         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting post-flash beep sequence (count: " + postBeepCount + ")");
+
+                        // Play afplay fallback again so audio is heard even when Alert Volume is 0
+                        if (postBeepCount > 0 && System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+                            try {
+                                String[] soundPaths = {
+                                    "/System/Library/Sounds/Glass.aiff",
+                                    "/System/Library/Sounds/Funk.aiff",
+                                    "/System/Library/Sounds/Submarine.aiff"
+                                };
+                                for (String soundPath : soundPaths) {
+                                    if (new java.io.File(soundPath).exists()) {
+                                        Runtime.getRuntime().exec(new String[]{"afplay", soundPath});
+                                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                                            "AlertBeep: Started macOS afplay fallback (post-flash): " + soundPath);
+                                        break;
+                                    }
+                                }
+                            } catch (Exception afEx) {
+                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                                    "AlertBeep: Could not start afplay fallback (post-flash): " + afEx.getMessage());
+                            }
+                        }
+
                         for (int i = 0; i < postBeepCount; i++) {
                             try {
                                 Toolkit.getDefaultToolkit().beep();

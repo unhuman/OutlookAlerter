@@ -47,7 +47,8 @@ performFullAlert()
 - **Thread:** `AlertBeepThread` (daemon)
 - **Count:** `configManager.alertBeepCount` (clamped ≥ 0)
 - **Interval:** 250ms between beeps
-- **API:** `Toolkit.getDefaultToolkit().beep()`
+- **Primary API:** `Toolkit.getDefaultToolkit().beep()` (macOS system alert channel)
+- **macOS fallback:** `afplay /System/Library/Sounds/Glass.aiff` launched once before the beep loop (and again before the post-flash beep loop when *Alert Beep Again After Flash* is enabled). Plays through the standard audio channel, so it is audible even when System Settings → Sound → Alert Volume is 0. Failure is silently logged (non-critical).
 - **Interruption-safe:** catches `InterruptedException`, sets interrupt flag
 
 ## Component 2: Screen Flash
@@ -101,19 +102,20 @@ Ensures flash windows remain visible above other applications.
 | Parameter | Value |
 |---|---|
 | Initial delay | 100ms |
-| Repeat interval | 200ms |
-| Max attempts | 5 |
+| Repeat interval | 1000ms |
+| Max attempts | `max(10, ceil(flashDurationMs / 1000) + 3)` — covers full flash duration with buffer |
 
 **Behavior per tick:**
 
-| Tick | Action |
+| Condition | Action |
 |---|---|
-| 1st | Toggle `alwaysOnTop` off→on, `frame.toFront()` |
-| 2nd–5th (no overlays) | `frame.toFront()` |
-| 2nd–5th (with overlays) | Skip flash `toFront()` (prevents flicker) |
+| Every tick | Toggle `alwaysOnTop` off→on to re-assert always-on-top above normal windows |
+| No overlays registered | Also call `frame.toFront()` to raise flash fully |
+| Overlays registered | Skip `frame.toFront()` on flash (banner's own `toFront()` below maintains correct z-order without flicker) |
 | Every tick | Re-elevate all registered overlay windows via `overlay.toFront()` |
+| Frame disposed | Timer self-terminates via `!frame.isDisplayable()` check |
 
-**Rationale:** After the first tick establishes visibility, calling `toFront()` on the flash when banner overlays are present would momentarily push the flash above the banner, causing visible flicker. Skipping flash `toFront()` when overlays exist eliminates this.
+**Rationale:** Toggling `setAlwaysOnTop(false/true)` on every tick keeps the flash window above all normal (non-alwaysOnTop) windows for the entire flash duration, even if another application was activated mid-flash. When banner overlays are registered, calling `toFront()` on the flash would momentarily push it above the banner causing visible flicker; the `setAlwaysOnTop` toggle alone is sufficient to maintain visibility against normal windows, and the overlay's own `toFront()` call preserves the correct z-order (banner above flash).
 
 ### Cooperative Overlay System
 
@@ -280,6 +282,59 @@ outlookAlerterUI.performFullAlert(
 
 ---
 
+## Wake Alert / Startup Alert
+
+**Location:** `OutlookAlerterUI.checkAlertsOnWake()` \
+**Triggers:**
+- System wake event detected by `MacSleepWakeMonitor`, 3 seconds after wake
+- Application startup: called once after the first successful calendar fetch completes (`initialAlertCheckDone` flag prevents repeat calls)
+
+### Problem
+
+`checkForEventAlerts()` skips events in `alertedEventIds` (events that already fired before sleep) and events with `minutesToStart < -1` (meetings that started more than ~1 minute ago). If the system sleeps during a meeting or wakes past a meeting's start time, no alert would ever fire for those events.
+
+### Sequence on wake
+
+```
+MacSleepWakeMonitor detects time jump > 65s
+  └─ notifyWakeListeners()
+       ├─ MacScreenFlasher.updateLastWakeTime()      (cleanup stuck windows)
+       └─ OutlookAlerterUI wake listener (background thread)
+            ├─ silent token refresh attempt
+            └─ SwingUtilities.invokeLater → EDT
+                 ├─ restartSchedulers()
+                 ├─ refreshCalendarEvents()           (async API refresh)
+                 └─ Timer(3000ms) → checkAlertsOnWake()
+```
+
+### Sequence on startup
+
+```
+refreshCalendarEvents() → fetch thread → EDT callback
+  ├─ lastFetchedEvents updated
+  ├─ initialAlertCheckDone == false → set true
+  └─ checkAlertsOnWake()   (called directly on the EDT, no delay needed)
+```
+
+### checkAlertsOnWake() logic
+
+```
+Using lastFetchedEvents (cached):
+  1. Collect all non-ended event IDs → remove from alertedEventIds
+     (allows upcoming events to re-fire via normal window)
+  2. Find events where isInProgress() == true
+     → fire performFullAlert() immediately with banner text "Meeting in progress: <subject>"
+     → mark those event IDs in alertedEventIds (prevent double-alert)
+  3. Call checkForEventAlerts(events)
+     → handles upcoming events within the normal alert-minutes window
+```
+
+**Banner text for in-progress alert:**
+- Single event: `"Meeting in progress: <subject>"`
+- Multiple events: `"N meetings in progress"`
+
+---
+
 ## Threading Summary
 
 ```
@@ -350,3 +405,13 @@ Uses `sun.misc.Unsafe.allocateInstance()` to create a minimal `OutlookAlerterUI`
 | noDuplicateAlerts | Same event checked twice only fires one alert |
 | cleansUpEndedEvents | Ended events removed from `alertedEventIds` |
 | alertsMultipleEvents | Multiple qualifying events batched into single alert |
+
+### checkAlertsOnWake() tests
+| Test | Verifies |
+|------|----------|
+| alertsForInProgressOnWake | In-progress meeting → flash immediately on wake |
+| inProgressAlreadyAlertedIsReAlertedonWake | Event alerted before sleep has its alerted status cleared and re-fires |
+| doesNotAlertForEndedMeetingOnWake | Ended meeting produces no alert |
+| alertsForUpcomingOnWake | Upcoming meeting within threshold fires via `checkForEventAlerts` path |
+| doesNothingWithNoCachedEvents | No cached events → no exception, no flash |
+| alertsBothInProgressAndUpcoming | In-progress + upcoming → two separate flash batches |

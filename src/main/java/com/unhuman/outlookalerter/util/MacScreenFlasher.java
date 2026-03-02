@@ -114,7 +114,15 @@ public class MacScreenFlasher implements ScreenFlasher {
 
                         long timeSinceResponse = System.currentTimeMillis() - lastEdtResponseTime.get();
 
-                        if (!responded.get() || timeSinceResponse > 10000) {
+                        // Only flag the EDT as unresponsive if BOTH:
+                        //  (a) this tick's ping did not come back within the 5-second window, AND
+                        //  (b) the last recorded response is older than 10 seconds.
+                        // Using OR here caused false positives after system sleep: the watchdog
+                        // thread and EDT are both paused during sleep, so lastEdtResponseTime
+                        // freezes at the pre-sleep timestamp. On wake, timeSinceResponse equals
+                        // the entire sleep duration and the CRITICAL message fires even though
+                        // the EDT is perfectly healthy.
+                        if (!responded.get() && timeSinceResponse > 10000) {
                             LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "[EDT WATCHDOG] CRITICAL: EDT unresponsive for " +
                                 (timeSinceResponse / 1000) + " seconds - attempting recovery");
 
@@ -176,6 +184,10 @@ public class MacScreenFlasher implements ScreenFlasher {
         sleepWakeMonitor.addWakeListener(() -> {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "[MacScreenFlasher] Wake event detected, updating wake time");
             updateLastWakeTime();
+
+            // Reset the EDT watchdog timestamp so that the sleep gap is not misread
+            // as EDT unresponsiveness on the first check after wake.
+            lastEdtResponseTime.set(System.currentTimeMillis());
 
             // Force cleanup of any stuck windows from before sleep
             SwingUtilities.invokeLater(() -> {
@@ -582,6 +594,7 @@ public class MacScreenFlasher implements ScreenFlasher {
             // Since we set explicit full-screen bounds, pack() is unnecessary and harmful.
             frame.setVisible(true);
             frame.toFront();
+            frame.requestFocus();         // Explicitly request focus so macOS activates the window
             frame.setAlwaysOnTop(true);  // Ensure it stays on top
 
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
@@ -589,15 +602,22 @@ public class MacScreenFlasher implements ScreenFlasher {
                 "' bounds=" + bounds + " visible=" + frame.isVisible() +
                 " opacity=" + frame.getOpacity());
 
-            // Use standard Swing approach to ensure window is on top
-            // Note: Native window handle access is blocked by Java module system on macOS 15.7.1
-            // Standard Swing methods work reliably without needing native handles
+            // Elevation timer: runs for the FULL flash duration so that if another app
+            // steals focus or z-order at any point the flash is immediately re-elevated.
             //
-            // The elevation timer runs for the FULL flash duration (not just the first second)
-            // so that if another app steals focus at any point, the flash is re-elevated.
+            // On every tick we toggle setAlwaysOnTop(false/true) to re-assert the
+            // always-on-top property, keeping the flash above all normal windows.
+            // toFront() is only called when no overlay windows are registered, because
+            // calling toFront() on the flash while the transparent banner overlay is
+            // active would momentarily push the flash above the banner, causing flicker.
+            // After re-asserting alwaysOnTop on the flash, the overlays' toFront() call
+            // restores the correct z-order (banner on top of flash).
+            //
+            // maxAttempts is sized to comfortably cover flashDurationMs plus a buffer;
+            // once the frame is disposed the timer self-terminates via isDisplayable().
             Timer elevationTimer = new Timer(100, null);
             final int[] attemptCount = {0};
-            final int maxAttempts = Math.max(5, (int) (flashDurationMs / 1000));
+            final int maxAttempts = Math.max(10, (int) Math.ceil(flashDurationMs / 1000.0) + 3);
 
             elevationTimer.addActionListener(new ActionListener() {
                 @Override
@@ -613,16 +633,16 @@ public class MacScreenFlasher implements ScreenFlasher {
 
                         boolean hasOverlays = !overlayWindows.isEmpty();
 
-                        // First tick: full-screen breakthrough — toggle alwaysOnTop and toFront().
-                        // Subsequent ticks: only toFront() the flash when NO overlay windows
-                        // are registered. When overlays exist, the flash already has
-                        // alwaysOnTop and is visible; calling toFront() again would
-                        // momentarily push it above the banner causing flicker.
-                        if (attemptCount[0] == 1) {
-                            frame.setAlwaysOnTop(false);
-                            frame.setAlwaysOnTop(true);
-                            frame.toFront();
-                        } else if (!hasOverlays) {
+                        // Every tick: toggle alwaysOnTop to re-assert it. This keeps the
+                        // flash above all normal (non-alwaysOnTop) windows even if another
+                        // window was activated since the last tick.
+                        frame.setAlwaysOnTop(false);
+                        frame.setAlwaysOnTop(true);
+
+                        // Only call toFront() on the flash when no overlay windows are
+                        // registered. When overlays (banner) exist, their own toFront()
+                        // below maintains correct z-order without flash-over-banner flicker.
+                        if (!hasOverlays) {
                             frame.toFront();
                         }
 
