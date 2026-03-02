@@ -2055,11 +2055,23 @@ public class OutlookAlerterUI extends JFrame {
             return;
         }
         try {
-            String[] soundPaths = {
-                "/System/Library/Sounds/Glass.aiff",
-                "/System/Library/Sounds/Funk.aiff",
-                "/System/Library/Sounds/Submarine.aiff"
-            };
+            // Use the configured path first; fall back to the built-in chain if the file is missing.
+            String configured = (configManager != null) ? configManager.getAlertSoundPath() : null;
+            String[] soundPaths;
+            if (configured != null && !configured.isBlank()) {
+                soundPaths = new String[]{
+                    configured,
+                    "/System/Library/Sounds/Glass.aiff",
+                    "/System/Library/Sounds/Funk.aiff",
+                    "/System/Library/Sounds/Submarine.aiff"
+                };
+            } else {
+                soundPaths = new String[]{
+                    "/System/Library/Sounds/Glass.aiff",
+                    "/System/Library/Sounds/Funk.aiff",
+                    "/System/Library/Sounds/Submarine.aiff"
+                };
+            }
             for (String soundPath : soundPaths) {
                 if (new java.io.File(soundPath).exists()) {
                     Runtime.getRuntime().exec(new String[]{"afplay", soundPath});

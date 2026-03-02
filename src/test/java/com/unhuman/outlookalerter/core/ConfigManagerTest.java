@@ -103,6 +103,7 @@ class ConfigManagerTest {
             assertFalse(configManager.getAlertBeepAfterFlash());
             assertFalse(configManager.getIgnoreAllDayEvents());
             assertEquals("common", configManager.getTenantId());
+            assertEquals(ConfigManager.DEFAULT_ALERT_SOUND_PATH, configManager.getAlertSoundPath());
         }
 
         @Test
@@ -431,6 +432,7 @@ class ConfigManagerTest {
             assertEquals("5", raw.getProperty("alertBeepCount"));
             assertEquals("false", raw.getProperty("alertBeepAfterFlash"));
             assertEquals("false", raw.getProperty("ignoreAllDayEvents"));
+            assertEquals(ConfigManager.DEFAULT_ALERT_SOUND_PATH, raw.getProperty("alertSoundPath"));
         }
 
         @Test
@@ -550,6 +552,45 @@ class ConfigManagerTest {
                 raw.load(fis);
             }
             assertEquals("test-okta-client-id", raw.getProperty("oktaClientId"));
+        }
+
+        @Test
+        @DisplayName("updateAlertSoundPath persists and round-trips")
+        void updateAlertSoundPathPersists() throws IOException {
+            configManager.loadConfiguration();
+            assertEquals(ConfigManager.DEFAULT_ALERT_SOUND_PATH, configManager.getAlertSoundPath());
+
+            configManager.updateAlertSoundPath("/System/Library/Sounds/Funk.aiff");
+            assertEquals("/System/Library/Sounds/Funk.aiff", configManager.getAlertSoundPath());
+
+            Properties raw = new Properties();
+            try (FileInputStream fis = new FileInputStream(configPath)) {
+                raw.load(fis);
+            }
+            assertEquals("/System/Library/Sounds/Funk.aiff", raw.getProperty("alertSoundPath"));
+
+            // Reload from disk to verify round-trip
+            ConfigManager reloaded = new ConfigManager(configPath);
+            reloaded.loadConfiguration();
+            assertEquals("/System/Library/Sounds/Funk.aiff", reloaded.getAlertSoundPath());
+        }
+
+        @Test
+        @DisplayName("updateAlertSoundPath(null) resets to default")
+        void updateAlertSoundPathNullResetsToDefault() {
+            configManager.loadConfiguration();
+            configManager.updateAlertSoundPath("/tmp/custom.aiff");
+            configManager.updateAlertSoundPath(null);
+            assertEquals(ConfigManager.DEFAULT_ALERT_SOUND_PATH, configManager.getAlertSoundPath());
+        }
+
+        @Test
+        @DisplayName("updateAlertSoundPath with blank string resets to default")
+        void updateAlertSoundPathBlankResetsToDefault() {
+            configManager.loadConfiguration();
+            configManager.updateAlertSoundPath("/tmp/custom.aiff");
+            configManager.updateAlertSoundPath("   ");
+            assertEquals(ConfigManager.DEFAULT_ALERT_SOUND_PATH, configManager.getAlertSoundPath());
         }
     }
 }

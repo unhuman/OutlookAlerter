@@ -169,6 +169,7 @@ Exit
 | Flash Opacity (%) | `JSpinner` | 10–100 (step 10) | `flashOpacity` |
 | Alert Beep Count | `JSpinner` | 0–20 | `alertBeepCount` |
 | Ignore All Day Events | `JCheckBox` | boolean | `ignoreAllDayEvents` |
+| Alert Sound File (macOS) | `JTextField` + Preview + Browse button | File path string | `alertSoundPath` |
 | Alert Beep After Flash | `JCheckBox` | boolean | `alertBeepAfterFlash` |
 | Sign-in URL | `JTextField` | URL | `signInUrl` |
 | Ignore SSL Cert | `JCheckBox` | boolean | `defaultIgnoreCertValidation` |

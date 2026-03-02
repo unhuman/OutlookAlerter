@@ -48,7 +48,7 @@ performFullAlert()
 - **Count:** `configManager.alertBeepCount` (clamped ≥ 0)
 - **Interval:** 250ms between beeps
 - **Primary API:** `Toolkit.getDefaultToolkit().beep()` (macOS system alert channel)
-- **macOS fallback:** `afplay /System/Library/Sounds/Glass.aiff` launched once before the beep loop (and again before the post-flash beep loop when *Alert Beep Again After Flash* is enabled). Plays through the standard audio channel, so it is audible even when System Settings → Sound → Alert Volume is 0. Failure is silently logged (non-critical).
+- **macOS fallback:** `afplay <sound-file>` launched once before the beep loop (and again before the post-flash beep loop when *Alert Beep Again After Flash* is enabled). Plays through the standard audio channel, so it is audible even when System Settings → Sound → Alert Volume is 0. Failure is silently logged (non-critical). The sound file path is user-configurable via **Settings → Alert Sound File**; the default is `/System/Library/Sounds/Glass.aiff` (`ConfigManager.DEFAULT_ALERT_SOUND_PATH`). If the configured file does not exist, `playMacAudio()` falls back through `Glass.aiff` → `Funk.aiff` → `Submarine.aiff` (first existing file wins).
 - **Interruption-safe:** catches `InterruptedException`, sets interrupt flag
 
 ## Component 2: Screen Flash

@@ -47,9 +47,10 @@
 ### Constants
 
 All property keys and default values are defined as `private static final String` constants:
-- **Key constants** (`KEY_*`): `KEY_CLIENT_ID`, `KEY_CLIENT_SECRET`, `KEY_TENANT_ID`, `KEY_REDIRECT_URI`, `KEY_SIGN_IN_URL`, `KEY_TOKEN_ENDPOINT`, `KEY_LOGIN_HINT`, `KEY_PREFERRED_TIMEZONE`, `KEY_ALERT_MINUTES`, `KEY_DEFAULT_IGNORE_CERT`, `KEY_IGNORE_CERT`, `KEY_FLASH_COLOR`, `KEY_FLASH_TEXT_COLOR`, `KEY_FLASH_OPACITY`, `KEY_FLASH_DURATION`, `KEY_RESYNC_INTERVAL`, `KEY_ALERT_BEEP_COUNT`, `KEY_ALERT_BEEP_AFTER_FLASH`, `KEY_ACCESS_TOKEN`, `KEY_REFRESH_TOKEN`, `KEY_IGNORE_ALL_DAY_EVENTS`
-- **Default constants** (`DEFAULT_*`): `DEFAULT_TENANT_ID`, `DEFAULT_REDIRECT_URI`, `DEFAULT_FLASH_COLOR`, `DEFAULT_FLASH_TEXT_COLOR`, `DEFAULT_FLASH_OPACITY`, `DEFAULT_ALERT_MINUTES`, `DEFAULT_FLASH_DURATION`, `DEFAULT_RESYNC_INTERVAL`, `DEFAULT_ALERT_BEEP_COUNT`, `DEFAULT_FALSE`
+- **Key constants** (`KEY_*`): `KEY_CLIENT_ID`, `KEY_CLIENT_SECRET`, `KEY_TENANT_ID`, `KEY_REDIRECT_URI`, `KEY_SIGN_IN_URL`, `KEY_TOKEN_ENDPOINT`, `KEY_LOGIN_HINT`, `KEY_PREFERRED_TIMEZONE`, `KEY_ALERT_MINUTES`, `KEY_DEFAULT_IGNORE_CERT`, `KEY_IGNORE_CERT`, `KEY_FLASH_COLOR`, `KEY_FLASH_TEXT_COLOR`, `KEY_FLASH_OPACITY`, `KEY_FLASH_DURATION`, `KEY_RESYNC_INTERVAL`, `KEY_ALERT_BEEP_COUNT`, `KEY_ALERT_BEEP_AFTER_FLASH`, `KEY_ACCESS_TOKEN`, `KEY_REFRESH_TOKEN`, `KEY_IGNORE_ALL_DAY_EVENTS`, `KEY_ALERT_SOUND_PATH`
+- **Default constants** (`DEFAULT_*`): `DEFAULT_TENANT_ID`, `DEFAULT_REDIRECT_URI`, `DEFAULT_FLASH_COLOR`, `DEFAULT_FLASH_TEXT_COLOR`, `DEFAULT_FLASH_OPACITY`, `DEFAULT_ALERT_MINUTES`, `DEFAULT_FLASH_DURATION`, `DEFAULT_RESYNC_INTERVAL`, `DEFAULT_ALERT_BEEP_COUNT`, `DEFAULT_FALSE`, `DEFAULT_ALERT_SOUND_PATH` (`"/System/Library/Sounds/Glass.aiff"`)
 - **`ignoreAllDayEvents`** defaults to `false` via `DEFAULT_FALSE`; property key is `"ignoreAllDayEvents"`
+- **`alertSoundPath`** defaults to `DEFAULT_ALERT_SOUND_PATH`; property key is `"alertSoundPath"`
 
 ### All Properties
 
@@ -75,6 +76,7 @@ All property keys and default values are defined as `private static final String
 | `defaultIgnoreCertValidation` | boolean | `false` | SSL |
 | `ignoreCertValidation` | boolean | `false` | SSL (runtime) |
 | `ignoreAllDayEvents` | boolean | `false` | Alert |
+| `alertSoundPath` | String | `"/System/Library/Sounds/Glass.aiff"` | Alert |
 
 ### Persistence
 
@@ -100,6 +102,7 @@ void updateFlashOpacity(double opacity)
 void updateResyncIntervalMinutes(int minutes)
 void updateAlertBeepCount(int count)
 void updateIgnoreAllDayEvents(boolean ignore)
+void updateAlertSoundPath(String path)  // null or blank resets to DEFAULT_ALERT_SOUND_PATH
 ```
 
 ---

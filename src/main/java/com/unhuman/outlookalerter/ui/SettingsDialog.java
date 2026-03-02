@@ -30,6 +30,7 @@ public class SettingsDialog extends JDialog {
     private JSpinner alertBeepCountSpinner;
     private JCheckBox alertBeepAfterFlashCheckbox;
     private JCheckBox ignoreAllDayEventsCheckbox;
+    private JTextField alertSoundPathField;
     private JTextField signInUrlField;
     private JTextField clientIdField;
     private JTextField tenantIdField;
@@ -178,64 +179,192 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 7;
         formPanel.add(ignoreAllDayEventsCheckbox, gbc);
 
-        // Sign-in URL setting
+        // Alert sound path setting (macOS only)
         gbc.gridx = 0;
         gbc.gridy = 8;
+        formPanel.add(new JLabel("Alert Sound File (macOS):"), gbc);
+
+        JPanel soundPanel = new JPanel(new BorderLayout(4, 0));
+        alertSoundPathField = new JTextField(configManager.getAlertSoundPath(), 20);
+        JButton soundBrowseButton = new JButton("Browse...");
+        soundBrowseButton.addActionListener(e -> {
+            final Process[] previewProc = {null};
+            Runnable stopPreview = () -> {
+                if (previewProc[0] != null && previewProc[0].isAlive()) {
+                    previewProc[0].destroy();
+                    previewProc[0] = null;
+                }
+            };
+
+            JFileChooser chooser = new JFileChooser();
+            // Open at the directory of the currently configured file, defaulting to /System/Library/Sounds/
+            java.io.File currentFile = new java.io.File(alertSoundPathField.getText().trim());
+            java.io.File startDir = currentFile.getParentFile();
+            if (startDir == null || !startDir.exists()) {
+                startDir = new java.io.File("/System/Library/Sounds");
+            }
+            chooser.setCurrentDirectory(startDir);
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
+                    "Audio files (*.aiff, *.wav, *.mp3)", "aiff", "wav", "mp3"));
+            // Hide the L&F's own Open/Cancel buttons so we can supply our own row
+            chooser.setControlButtonsAreShown(false);
+
+            // Build our own button row: [▶ Preview]  [Open]  [Cancel]
+            JButton previewBtn = new JButton("▶  Preview");
+            JButton openBtn    = new JButton("Open");
+            JButton cancelBtn  = new JButton("Cancel");
+            previewBtn.setEnabled(false);
+            openBtn.setEnabled(false);
+
+            chooser.addPropertyChangeListener(JFileChooser.SELECTED_FILE_CHANGED_PROPERTY, pce -> {
+                stopPreview.run();
+                java.io.File sel = (java.io.File) pce.getNewValue();
+                boolean isFile = sel != null && sel.isFile();
+                previewBtn.setEnabled(isFile);
+                openBtn.setEnabled(isFile);
+            });
+
+            previewBtn.addActionListener(pe -> {
+                stopPreview.run();
+                java.io.File sel = chooser.getSelectedFile();
+                if (sel != null && sel.isFile()) {
+                    try {
+                        previewProc[0] = Runtime.getRuntime()
+                                .exec(new String[]{"afplay", sel.getAbsolutePath()});
+                    } catch (java.io.IOException ex) { /* ignore */ }
+                }
+            });
+
+            // Build the dialog manually so we fully control the layout
+            javax.swing.JDialog fileDialog = new javax.swing.JDialog(
+                    javax.swing.SwingUtilities.getWindowAncestor(SettingsDialog.this),
+                    "Select Alert Sound File",
+                    java.awt.Dialog.ModalityType.APPLICATION_MODAL);
+            fileDialog.setDefaultCloseOperation(javax.swing.JDialog.DISPOSE_ON_CLOSE);
+
+            final int[] result = {JFileChooser.CANCEL_OPTION};
+
+            openBtn.addActionListener(oe -> {
+                result[0] = JFileChooser.APPROVE_OPTION;
+                stopPreview.run();
+                fileDialog.dispose();
+            });
+            cancelBtn.addActionListener(ce -> {
+                stopPreview.run();
+                fileDialog.dispose();
+            });
+            // Double-click / Enter in the chooser fires approveSelection
+            chooser.addActionListener(ae -> {
+                if (JFileChooser.APPROVE_SELECTION.equals(ae.getActionCommand())
+                        && chooser.getSelectedFile() != null
+                        && chooser.getSelectedFile().isFile()) {
+                    result[0] = JFileChooser.APPROVE_OPTION;
+                    stopPreview.run();
+                    fileDialog.dispose();
+                }
+            });
+
+            JPanel buttonRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 6));
+            buttonRow.add(previewBtn);
+            buttonRow.add(openBtn);
+            buttonRow.add(cancelBtn);
+
+            fileDialog.getContentPane().add(chooser, java.awt.BorderLayout.CENTER);
+            fileDialog.getContentPane().add(buttonRow, java.awt.BorderLayout.SOUTH);
+            fileDialog.pack();
+            fileDialog.setLocationRelativeTo(SettingsDialog.this);
+            fileDialog.setVisible(true); // blocks until disposed
+
+            if (result[0] == JFileChooser.APPROVE_OPTION) {
+                alertSoundPathField.setText(chooser.getSelectedFile().getAbsolutePath());
+            }
+        });
+        JButton soundPreviewButton = new JButton("Preview");
+        soundPreviewButton.setToolTipText("Play the selected sound file");
+        soundPreviewButton.addActionListener(e -> {
+            String path = alertSoundPathField.getText().trim();
+            if (path.isEmpty()) {
+                return;
+            }
+            if (!new java.io.File(path).exists()) {
+                javax.swing.JOptionPane.showMessageDialog(SettingsDialog.this,
+                        "File not found: " + path, "Preview", javax.swing.JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            try {
+                Runtime.getRuntime().exec(new String[]{"afplay", path});
+            } catch (java.io.IOException ex) {
+                javax.swing.JOptionPane.showMessageDialog(SettingsDialog.this,
+                        "Could not play sound: " + ex.getMessage(), "Preview", javax.swing.JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        JPanel soundButtonPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
+        soundButtonPanel.add(soundPreviewButton);
+        soundButtonPanel.add(soundBrowseButton);
+        soundPanel.add(alertSoundPathField, BorderLayout.CENTER);
+        soundPanel.add(soundButtonPanel, BorderLayout.EAST);
+        gbc.gridx = 1;
+        gbc.gridy = 8;
+        formPanel.add(soundPanel, gbc);
+
+        // Sign-in URL setting
+        gbc.gridx = 0;
+        gbc.gridy = 9;
         formPanel.add(new JLabel("Sign-in URL:"), gbc);
 
         signInUrlField = new JTextField(configManager.getSignInUrl() != null ? configManager.getSignInUrl() : "", 20);
         gbc.gridx = 1;
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         formPanel.add(signInUrlField, gbc);
 
         // OAuth Client ID setting
         gbc.gridx = 0;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         formPanel.add(new JLabel("Client ID (Azure AD App):"), gbc);
 
         clientIdField = new JTextField(configManager.getClientId() != null ? configManager.getClientId() : "", 20);
         clientIdField.setToolTipText("Register an app at portal.azure.com to enable automatic browser sign-in");
         gbc.gridx = 1;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         formPanel.add(clientIdField, gbc);
 
         // OAuth Tenant ID setting
         gbc.gridx = 0;
-        gbc.gridy = 10;
+        gbc.gridy = 11;
         formPanel.add(new JLabel("Tenant ID (default: common):"), gbc);
 
         tenantIdField = new JTextField(configManager.getTenantId() != null ? configManager.getTenantId() : "common", 20);
         tenantIdField.setToolTipText("Your Azure AD tenant ID or 'common' for multi-tenant");
         gbc.gridx = 1;
-        gbc.gridy = 10;
+        gbc.gridy = 11;
         formPanel.add(tenantIdField, gbc);
 
         // Test Sign In button
         gbc.gridx = 0;
-        gbc.gridy = 11;
+        gbc.gridy = 12;
         formPanel.add(new JLabel("Test OAuth Sign-in:"), gbc);
 
         JButton testSignInButton = new JButton("Test Sign In");
         testSignInButton.setToolTipText("Test MSAL browser sign-in with the configured Client ID");
         testSignInButton.addActionListener(e -> testMsalSignIn(testSignInButton));
         gbc.gridx = 1;
-        gbc.gridy = 11;
+        gbc.gridy = 12;
         formPanel.add(testSignInButton, gbc);
 
         // Default Ignore SSL certificate validation setting
         gbc.gridx = 0;
-        gbc.gridy = 12;
+        gbc.gridy = 13;
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc);
 
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation());
         // No longer update immediately when checkbox changes
         gbc.gridx = 1;
-        gbc.gridy = 12;
+        gbc.gridy = 13;
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc);
 
         // Okta SSO email setting
         gbc.gridx = 0;
-        gbc.gridy = 13;
+        gbc.gridy = 14;
         formPanel.add(new JLabel("Okta SSO Email:"), gbc);
 
         userEmailField = new JTextField(
@@ -244,7 +373,7 @@ public class SettingsDialog extends JDialog {
                 "Your work email used for Okta SSO federation discovery. "
                 + "Set automatically when you click \"Sign In with Okta SSO\"");
         gbc.gridx = 1;
-        gbc.gridy = 13;
+        gbc.gridy = 14;
         formPanel.add(userEmailField, gbc);
 
         // Button panel
@@ -337,6 +466,10 @@ public class SettingsDialog extends JDialog {
 
             // Save ignore all day events
             configManager.updateIgnoreAllDayEvents(ignoreAllDayEventsCheckbox.isSelected());
+
+            // Save alert sound path
+            String soundPath = alertSoundPathField.getText().trim();
+            configManager.updateAlertSoundPath(soundPath.isEmpty() ? null : soundPath);
 
             // Save the SSL certificate validation setting
             boolean defaultIgnoreCertVal = defaultIgnoreCertValidationCheckbox.isSelected();
