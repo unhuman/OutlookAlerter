@@ -14,6 +14,7 @@ import com.unhuman.outlookalerter.util.ScreenFlasher;
 import com.unhuman.outlookalerter.util.ScreenFlasherFactory;
 import com.unhuman.outlookalerter.util.MacScreenFlasher;
 import com.unhuman.outlookalerter.util.MacSleepWakeMonitor;
+import com.unhuman.outlookalerter.util.MacLockUnlockMonitor;
 import java.time.ZonedDateTime;
 import java.time.ZoneId;
 import java.time.LocalDate;
@@ -581,7 +582,21 @@ public class OutlookAlerterUI extends JFrame {
                     }
                 });
             });
-        }
+
+            // ---- Screen lock/unlock monitoring ----
+            MacLockUnlockMonitor lockMonitor = MacLockUnlockMonitor.getInstance();
+            lockMonitor.startMonitoring();
+            lockMonitor.addUnlockListener(() -> {
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                    "[OutlookAlerterUI] Screen unlock detected — checking for pending meeting alerts");
+                // Brief delay so the display is fully active before flashing
+                SwingUtilities.invokeLater(() -> {
+                    Timer unlockAlertTimer = new Timer(1500, evt -> checkAlertsOnWake());
+                    unlockAlertTimer.setRepeats(false);
+                    unlockAlertTimer.start();
+                });
+            });
+        }//end mac block
 
         // Start periodic tasks if not already running
         if (!schedulersRunning) {
