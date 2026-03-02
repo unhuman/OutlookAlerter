@@ -235,11 +235,13 @@ public class SettingsDialog extends JDialog {
                 }
             });
 
-            // Build the dialog manually so we fully control the layout
+            // Build the dialog manually so we fully control the layout.
+            // Owner is SettingsDialog.this (a Dialog) so the file picker surfaces
+            // on top of — and is modal to — the Settings window that launched it.
             javax.swing.JDialog fileDialog = new javax.swing.JDialog(
-                    javax.swing.SwingUtilities.getWindowAncestor(SettingsDialog.this),
+                    SettingsDialog.this,
                     "Select Alert Sound File",
-                    java.awt.Dialog.ModalityType.APPLICATION_MODAL);
+                    java.awt.Dialog.ModalityType.DOCUMENT_MODAL);
             fileDialog.setDefaultCloseOperation(javax.swing.JDialog.DISPOSE_ON_CLOSE);
 
             final int[] result = {JFileChooser.CANCEL_OPTION};
