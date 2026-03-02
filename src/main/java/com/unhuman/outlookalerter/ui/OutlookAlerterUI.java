@@ -161,6 +161,7 @@ public class OutlookAlerterUI extends JFrame {
     private TrayIcon trayIcon;
     private SystemTray systemTray;
     private PopupMenu trayPopupMenu;
+    private javax.swing.Timer trayFlashTimer;
 
     // Schedulers for periodic tasks
     private ScheduledExecutorService alertScheduler;
@@ -2030,7 +2031,7 @@ public class OutlookAlerterUI extends JFrame {
             });
         }
 
-        // ========== ALERT COMPONENT 4: Tray notification (EDT required) ==========
+        // ========== ALERT COMPONENT 4: Tray notification + icon flash (EDT required) ==========
         SwingUtilities.invokeLater(() -> {
             try {
                 showTrayNotification(notificationTitle, notificationMessage, TrayIcon.MessageType.INFO);
@@ -2038,7 +2039,47 @@ public class OutlookAlerterUI extends JFrame {
             } catch (Exception ex) {
                 LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertTray: Error showing tray notification: " + ex.getMessage());
             }
+            // Flash tray icon yellow/blue for the same duration as the screen flash
+            int durationMs = Math.max(1000, configManager.getFlashDurationSeconds() * 1000);
+            startTrayIconFlash(durationMs);
         });
+    }
+
+    /**
+     * Flash the tray icon between yellow and blue at 0.5-second intervals for
+     * {@code durationMs} milliseconds, then restore the health-based icon.
+     * Must be called on the EDT.
+     */
+    private void startTrayIconFlash(int durationMs) {
+        if (trayIcon == null) return;
+        // Stop any in-progress flash first
+        if (trayFlashTimer != null && trayFlashTimer.isRunning()) {
+            trayFlashTimer.stop();
+        }
+        final boolean[] yellowPhase = {true};
+        trayIcon.setImage(IconManager.getAlertFlashIconImage(true)); // immediate first frame
+        trayFlashTimer = new javax.swing.Timer(500, e -> {
+            yellowPhase[0] = !yellowPhase[0];
+            if (trayIcon != null) {
+                trayIcon.setImage(IconManager.getAlertFlashIconImage(yellowPhase[0]));
+            }
+        });
+        trayFlashTimer.start();
+        // Restore normal icon when flash duration expires
+        javax.swing.Timer stopTimer = new javax.swing.Timer(durationMs, e -> {
+            trayFlashTimer.stop();
+            restoreTrayIcon();
+        });
+        stopTimer.setRepeats(false);
+        stopTimer.start();
+    }
+
+    /** Restore the tray icon to reflect the current connection health. Must be called on the EDT. */
+    private void restoreTrayIcon() {
+        if (trayIcon != null) {
+            boolean invalid = currentIconInvalidState != null && currentIconInvalidState;
+            trayIcon.setImage(IconManager.getIconImage(invalid));
+        }
     }
 
     /**

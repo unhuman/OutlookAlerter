@@ -13,17 +13,40 @@ public class IconManager {
     }
 
     private static final Color OUTLOOK_BLUE = new Color(0, 114, 198);
-    private static final Color ALERT_RED = new Color(220, 0, 0);
+    private static final Color ALERT_RED   = new Color(220, 0, 0);
+    private static final Color ALERT_YELLOW = new Color(255, 200, 0);
     private static BufferedImage iconCache;
     private static BufferedImage largeIconCache;
     private static BufferedImage invalidIconCache;
     private static BufferedImage invalidLargeIconCache;
+    private static BufferedImage alertYellowIconCache;
+    private static BufferedImage alertBlueIconCache;
 
     public static void clearIconCaches() {
         iconCache = null;
         largeIconCache = null;
         invalidIconCache = null;
         invalidLargeIconCache = null;
+        alertYellowIconCache = null;
+        alertBlueIconCache = null;
+    }
+
+    /**
+     * Returns a small icon for alert-flashing the tray icon.
+     * @param yellowPhase true → yellow body/blue siren; false → blue body/yellow siren
+     */
+    public static Image getAlertFlashIconImage(boolean yellowPhase) {
+        if (yellowPhase) {
+            if (alertYellowIconCache == null) {
+                alertYellowIconCache = createIconImage(16, ALERT_YELLOW, OUTLOOK_BLUE);
+            }
+            return alertYellowIconCache;
+        } else {
+            if (alertBlueIconCache == null) {
+                alertBlueIconCache = createIconImage(16, OUTLOOK_BLUE, ALERT_RED);
+            }
+            return alertBlueIconCache;
+        }
     }
 
     public static Image getIconImage(boolean isTokenInvalid) {
@@ -63,6 +86,18 @@ public class IconManager {
     }
 
     public static BufferedImage createIconImage(int size, boolean isTokenInvalid) {
+        Color bodyColor  = isTokenInvalid ? ALERT_RED  : OUTLOOK_BLUE;
+        Color sirenColor = isTokenInvalid ? OUTLOOK_BLUE : ALERT_RED;
+        return createIconImage(size, bodyColor, sirenColor, Color.WHITE);
+    }
+
+    private static BufferedImage createIconImage(int size, Color bodyColor, Color sirenColor) {
+        // Derive text color: black on yellow for legibility, white on everything else
+        Color textColor = ALERT_YELLOW.equals(bodyColor) ? Color.BLACK : Color.WHITE;
+        return createIconImage(size, bodyColor, sirenColor, textColor);
+    }
+
+    private static BufferedImage createIconImage(int size, Color bodyColor, Color sirenColor, Color textColor) {
         BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
 
@@ -74,7 +109,7 @@ public class IconManager {
             float cornerRadius = 2.0f * scale;
             float sirenSize = 6.0f * scale;
 
-            g.setColor(isTokenInvalid ? ALERT_RED : OUTLOOK_BLUE);
+            g.setColor(bodyColor);
             float y = margin + sirenSize / 2.0f;
             float w = size - 2.0f * margin;
             float h = size - 2.0f * margin - sirenSize / 2.0f;
@@ -83,7 +118,7 @@ public class IconManager {
             );
             g.fill(baseRect);
 
-            g.setColor(Color.WHITE);
+            g.setColor(textColor);
             g.setFont(new Font("Arial", Font.BOLD, Math.round(9.0f * scale)));
             FontMetrics fm = g.getFontMetrics();
             String letter = "O";
@@ -93,7 +128,7 @@ public class IconManager {
                 (float)(size - (size - textBounds.getHeight()) / 2 - 1)
             );
 
-            g.setColor(isTokenInvalid ? OUTLOOK_BLUE : ALERT_RED);
+            g.setColor(sirenColor);
             Arc2D.Float sirenArc = new Arc2D.Float(
                 (size - sirenSize) / 2,
                 margin,
