@@ -184,6 +184,9 @@ public class OutlookAlerterUI extends JFrame {
     private volatile long lastTokenValidationTime = 0L;
     private static final long TOKEN_VALIDATION_INTERVAL_MS = 5 * 60 * 1000L; // 5 minutes
 
+    /** How many times longer the tray icon flashes compared to the screen flash duration. */
+    private static final int TRAY_FLASH_DURATION_MULTIPLIER = 3;
+
     // Track last calendar refresh time
     private volatile ZonedDateTime lastCalendarRefresh = null;
 
@@ -2059,8 +2062,8 @@ public class OutlookAlerterUI extends JFrame {
             } catch (Exception ex) {
                 LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertTray: Error showing tray notification: " + ex.getMessage());
             }
-            // Flash tray icon yellow/blue for the same duration as the screen flash
-            int durationMs = Math.max(1000, configManager.getFlashDurationSeconds() * 1000);
+            // Flash tray icon yellow/blue for TRAY_FLASH_DURATION_MULTIPLIER times the screen flash duration
+            int durationMs = Math.max(1000, configManager.getFlashDurationSeconds() * 1000) * TRAY_FLASH_DURATION_MULTIPLIER;
             startTrayIconFlash(durationMs);
         });
     }
