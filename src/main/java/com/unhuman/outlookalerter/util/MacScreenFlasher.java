@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -82,6 +83,13 @@ public class MacScreenFlasher implements ScreenFlasher {
 
     // Flag to prevent multiple simultaneous cleanups
     private final AtomicBoolean cleanupInProgress = new AtomicBoolean(false);
+
+    // Serialises concurrent flash requests: only one flashMultiple() runs at a time.
+    // The semaphore is acquired at the start of flashMultiple() and released only after
+    // forceCleanup() signals the per-invocation completion latch, preventing the two
+    // races that cause stuck flash windows when wake and upcoming-meeting alerts overlap.
+    private final Semaphore flashSemaphore = new Semaphore(1);
+    private volatile CountDownLatch activeFlashLatch = null;
 
     // Guard against duplicate shutdown hooks
     private static volatile boolean shutdownHookRegistered = false;
@@ -292,6 +300,15 @@ public class MacScreenFlasher implements ScreenFlasher {
             LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error during cleanup: " + e.getMessage());
             e.printStackTrace();
         } finally {
+            // Signal any flashMultiple() that is blocked waiting for this flash to finish.
+            // Use getAndSet(null) semantics via a local variable so we signal exactly once
+            // even if forceCleanup() is called redundantly by backup/failsafe timers.
+            CountDownLatch latch = activeFlashLatch;
+            if (latch != null) {
+                activeFlashLatch = null;
+                latch.countDown();
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Flash completion latch signalled");
+            }
             cleanupInProgress.set(false);
         }
     }
@@ -305,6 +322,30 @@ public class MacScreenFlasher implements ScreenFlasher {
     public void flashMultiple(List<CalendarEvent> events) {
         if (events == null || events.isEmpty()) return;
 
+        // Acquire the serialisation lock so that concurrent flash requests (e.g. a laptop-wake
+        // alert and an upcoming-meeting alert firing at the same time) never overlap.
+        // The lock is released only after forceCleanup() signals the completion latch, which
+        // prevents the two races that leave flash windows stuck on screen:
+        //   1. A stale invokeLater(cleanupTask) from a concurrent forceCleanup() taking a
+        //      snapshot that misses new frames, then calling activeFlashFrames.clear() and
+        //      losing track of those frames forever.
+        //   2. activeTimers being partially iterated/cleared while setupCleanupTimer() is
+        //      simultaneously inserting new timers, leaving unstopped orphan timers behind.
+        try {
+            flashSemaphore.acquire();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Interrupted while waiting for flash lock, skipping");
+            return;
+        }
+
+        // This latch is set just before the cleanup timers are armed so that forceCleanup()
+        // can signal it once the windows are actually disposed, unblocking this thread.
+        // It must be initialised to null here (not yet) so the initial forceCleanup() call
+        // below does not accidentally signal a latch that nobody is waiting on yet.
+        final CountDownLatch completeLatch = new CountDownLatch(1);
+
+        try {
         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Flash requested for " + events.size() + " event(s), duration: " + flashDurationMs / 1000 + " seconds");
 
         // Validate system state before proceeding
@@ -325,7 +366,9 @@ public class MacScreenFlasher implements ScreenFlasher {
             return;
         }
 
-        // Clean up any existing windows first
+        // Clean up any existing windows first.
+        // activeFlashLatch is still null here so forceCleanup will not mistakenly
+        // fire the completion signal for this (not-yet-started) flash.
         forceCleanup();
 
         // Create and show flash windows ON THE EDT for Swing thread safety
@@ -404,8 +447,37 @@ public class MacScreenFlasher implements ScreenFlasher {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Could not request user attention: " + e.getMessage());
         }
 
+        // Arm the completion latch AFTER windows are in activeFlashFrames but BEFORE
+        // starting timers so forceCleanup() (whether called by a timer, a wake handler,
+        // or a subsequent flashMultiple()) will always signal it.
+        activeFlashLatch = completeLatch;
+
         // Set up cleanup timer
         setupCleanupTimer();
+
+        // Block until the flash is fully cleaned up (signalled by forceCleanup).
+        // This is what makes flashMultiple() act as a serialisation point: the semaphore
+        // is not released until cleanup is confirmed, so the next queued request starts
+        // on a completely clean slate.
+        try {
+            boolean completed = completeLatch.await(flashDurationMs + 10000L, TimeUnit.MILLISECONDS);
+            if (!completed) {
+                LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING,
+                    "MacScreenFlasher: Flash did not complete within timeout, forcing cleanup");
+                forceCleanup();
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: Flash wait interrupted, forcing cleanup");
+            forceCleanup();
+        }
+
+        } finally {
+            activeFlashLatch = null;
+            flashSemaphore.release();
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Flash serialisation lock released");
+        }
     }
 
     /**

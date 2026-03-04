@@ -80,14 +80,39 @@ interface ScreenFlasher {
 | `flashOpacity` | `1.0` | Window opacity |
 | `flashDurationSeconds` | `5` | Display duration |
 
-**Window creation (`flashMultiple`):**
-1. Validates system state, display environment, and event content
-2. Cleans up any existing flash windows (`forceCleanup()`)
-3. On EDT (via `invokeAndWait`): iterates `GraphicsEnvironment.getScreenDevices()`, calls `createFlashWindowForScreen()` per screen
-4. Adds frames to `activeFlashFrames` tracking list
-5. Fires one-shot `onFlashReady` callback via `invokeLater`
-6. Requests macOS user attention via `Taskbar.requestUserAttention(true, true)`
-7. Starts cleanup timer
+**Window creation (`flashMultiple`) — blocking call:**
+1. Acquires per-instance `Semaphore(1)` (serialises concurrent requests)
+2. Validates system state, display environment, and event content
+3. Cleans up any existing flash windows (`forceCleanup()`)
+4. On EDT (via `invokeAndWait`): iterates `GraphicsEnvironment.getScreenDevices()`, calls `createFlashWindowForScreen()` per screen
+5. Adds frames to `activeFlashFrames` tracking list
+6. Creates a `CountDownLatch(1)` and stores it in `activeFlashLatch`
+7. Fires one-shot `onFlashReady` callback via `invokeLater`
+8. Requests macOS user attention via `Taskbar.requestUserAttention(true, true)`
+9. Starts cleanup timer
+10. **Blocks** on `activeFlashLatch.await(flashDurationMs + 10 000ms)` until `forceCleanup()` signals completion
+11. Releases the `Semaphore` in the `finally` block
+
+> **Why blocking?** Making `flashMultiple()` block until `forceCleanup()` runs eliminates
+> two race conditions that caused flash windows to remain stuck on screen when a laptop-wake
+> alert and an upcoming-meeting alert fired at the same time:
+>
+> 1. *Stale `invokeLater` race* — a deferred `cleanupTask` could snapshot `activeFlashFrames`
+>    before new frames were added, clear the list, and silently lose track of the new windows;
+>    those windows would stay visible forever.
+>
+> 2. *`activeTimers` strip race* — `forceCleanup()` iterates and stops timers while
+>    `setupCleanupTimer()` in a concurrent thread is simultaneously inserting new timers;
+>    the new timers were cleared from `activeTimers` but continued firing against stale state.
+>
+> With the `Semaphore` the second `flashMultiple()` call cannot start until the first
+> has been fully cleaned up, eliminating both races on a clean-slate basis.
+
+**`forceCleanup()` interaction:**
+- When `forceCleanup()` runs (timer, wake handler, or next `flashMultiple()`), its `finally`
+  block reads `activeFlashLatch`, clears the field to `null`, and calls `latch.countDown()`.
+- This is an atomic read-and-clear pattern (local variable) so backup/failsafe timers that
+  call `forceCleanup()` a second time are no-ops (they find `null`).
 
 **Flash window properties:**
 - `JFrame`, undecorated, `Type.POPUP`
@@ -423,3 +448,34 @@ Uses `sun.misc.Unsafe.allocateInstance()` to create a minimal `OutlookAlerterUI`
 | alertsForUpcomingOnWake | Upcoming meeting within threshold fires via `checkForEventAlerts` path |
 | doesNothingWithNoCachedEvents | No cached events → no exception, no flash |
 | alertsBothInProgressAndUpcoming | In-progress + upcoming → two separate flash batches |
+
+---
+
+**File:** `MacScreenFlasherTest.java`
+
+Targets `MacScreenFlasher` directly. In headless environments `flashMultiple()` short-circuits
+after display-environment validation, but the serialisation infrastructure (Semaphore +
+completion latch) runs before that guard and is fully exercisable without a real display.
+
+### Semaphore management tests
+| Test | Verifies |
+|------|----------|
+| semaphoreInitialPermit | `flashSemaphore` starts at 1 permit |
+| semaphoreReleasedAfterHeadlessCall | Headless short-circuit still releases the semaphore |
+| semaphoreReleasedOnEarlyExit | Empty-list early return (before semaphore acquire) leaves permit count at 1 |
+| semaphoreReleasedAfterForceCleanup | `forceCleanup()` does not consume/alter the semaphore |
+| semaphoreReleasedAfterRepeatedCalls | 5 sequential headless calls leave exactly 1 permit |
+
+### Concurrency tests
+| Test | Verifies |
+|------|----------|
+| concurrentCallsCompleteWithoutDeadlock | 2 simultaneous `flashMultiple()` calls both complete within 5 s |
+| manyConurrentCallsCompleteWithoutDeadlock | 5 simultaneous calls all complete within 10 s; permit back to 1 |
+
+### Completion latch tests
+| Test | Verifies |
+|------|----------|
+| latchNullAfterHeadlessCall | `activeFlashLatch` is `null` before and after a headless call |
+| forceCleanupSignalsLatch | Injected latch is counted down to 0 and field cleared to `null` |
+| forceCleanupIdempotentWithNullLatch | `forceCleanup()` with `null` latch never throws |
+| forceCleanupRepeatedDoesNotDoubleSignal | Second `forceCleanup()` after latch already cleared is a no-op |
