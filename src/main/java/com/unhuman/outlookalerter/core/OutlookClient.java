@@ -353,6 +353,13 @@ public class OutlookClient {
 
     /**
      * Perform direct authentication via browser SSO or GUI token entry.
+     *
+     * <p>Before presenting the token dialog the method performs a final
+     * server-side token validation and a silent-refresh attempt.  This guards
+     * against the race condition that occurs on system wake: the network may
+     * not be ready when the initial validation runs, so the token appears
+     * expired even though it is still valid (or can be refreshed silently).
+     * If either pre-check succeeds the dialog is skipped entirely.</p>
      */
     protected boolean performDirectAuthentication() {
         synchronized (authLock) {
@@ -364,6 +371,35 @@ public class OutlookClient {
         }
 
         try {
+            // ── Pre-dialog validation guard ──────────────────────────────────────
+            // Make one final attempt to validate the existing token or refresh it
+            // silently before bothering the user with the token-entry dialog.
+            // After a system wake the network may take a few seconds to
+            // re-establish; without this guard the dialog can appear and
+            // immediately self-resolve once the app validates on the next cycle.
+            LogManager.getInstance().info(LogCategory.GENERAL,
+                    "performDirectAuthentication: verifying token validity before showing dialog...");
+            try {
+                if (hasValidToken()) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                            "performDirectAuthentication: token is valid — skipping manual token dialog.");
+                    lastTokenValidationResult = TOKEN_VALID_AFTER_SERVER_VALIDATION;
+                    return true;
+                }
+                if (attemptSilentTokenRefresh()) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                            "performDirectAuthentication: silent token refresh succeeded — skipping manual token dialog.");
+                    lastTokenValidationResult = TOKEN_REFRESHED;
+                    return true;
+                }
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                        "performDirectAuthentication: token invalid and silent refresh failed — will show token dialog.");
+            } catch (Exception preCheckEx) {
+                // Network unreachable or other transient error — fall through to the dialog.
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                        "performDirectAuthentication: pre-dialog check failed (non-fatal): " + preCheckEx.getMessage());
+            }
+
             Map<String, String> tokens = getTokensFromUser();
             if (tokens == null) {
                 LogManager.getInstance().info(LogCategory.GENERAL,

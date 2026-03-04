@@ -10,7 +10,7 @@ OutlookAlerter is a macOS/Windows desktop application (Java Swing) that monitors
 |---|---|
 | Group ID | `com.unhuman` |
 | Artifact ID | `OutlookAlerter` |
-| Version | `2.0.0` |
+| Version | `2.2.0` |
 | Java Target | 21 (minimum 11) |
 | Language | Java 21 |
 | Build | Maven (`mvn package`) |
@@ -105,7 +105,13 @@ All `ScheduledExecutorService` tasks are wrapped with `safeRunScheduledTask(name
 - Authentication prompts during direct auth use tray notifications instead of blocking dialogs.
 
 ### Sleep/Wake Recovery
-`MacSleepWakeMonitor` detects sleep via time-jump polling (threshold: 65s). On wake, registered listeners restart both schedulers and trigger an immediate calendar refresh.
+`MacSleepWakeMonitor` detects sleep via time-jump polling (threshold: 65s). On wake, registered listeners:
+1. Attempt a silent token refresh (MSAL → Okta DCF cache → legacy) before restarting schedulers.
+2. Restart both schedulers.
+3. Trigger an immediate calendar refresh.
+4. Schedule `checkAlertsOnWake()` after a 3-second stabilisation delay.
+
+Additionally, `performDirectAuthentication()` contains a **pre-dialog guard** that re-validates the current token and attempts a silent refresh immediately before showing the token-entry dialog.  This prevents spurious token dialogs that appear valid after the network stabilises post-wake.
 
 ## Data Flow
 
@@ -133,11 +139,20 @@ OutlookClient.authenticate()
   ├── Check existing token → isTokenAlreadyValid()
   ├── Try refresh token → refreshToken() via tokenEndpoint
   ├── If refresh fails → performDirectAuthentication()
-  │     └── getTokensFromUser()
+  │     ├── [Pre-dialog guard] hasValidToken()           → skip dialog if token now valid
+  │     ├── [Pre-dialog guard] attemptSilentTokenRefresh() → skip dialog if silent refresh
+  │     │     succeeds (MSAL → Okta DCF → legacy refresh token)
+  │     └── getTokensFromUser()   (only if both guards fail)
   │           ├── GUI mode → outlookAlerterUI.performFullAlert() + promptForTokens()
   │           └── Console mode → SimpleTokenDialog.show()
   └── validateTokenWithServer(token) → HTTP GET /me with token
 ```
+
+**Pre-dialog guard rationale:** After system wake the network may not have
+re-established by the time the first `hasValidToken()` call runs.  The guard
+adds a final server validation + silent-refresh attempt immediately before
+showing the manual token dialog.  Both calls are wrapped in `try/catch` so a
+still-unavailable network is non-fatal and falls through to the dialog.
 
 ## Threading Model
 
@@ -186,7 +201,7 @@ src/test/java/com/unhuman/outlookalerter/
 │   └── CalendarEventTest          # 24 tests — time math, state, properties, edge cases
 ├── core/
 │   ├── ConfigManagerTest           # 24 tests — singleton, load/save, all update methods
-│   ├── OutlookClientTest           # 11 tests — exception types, constants, constructors
+│   ├── OutlookClientTest           # 14 tests — exception types, constants, constructors, pre-dialog guard
 │   └── SingleInstanceManagerTest   #  6 tests — file lock acquire/release/exclusive
 ├── ui/
 │   └── IconManagerTest             # 12 tests — icon generation, caching, valid/invalid
@@ -197,7 +212,7 @@ src/test/java/com/unhuman/outlookalerter/
     └── MacSleepWakeMonitorTest     #  9 tests — singleton, lifecycle, listeners
 ```
 
-Total: **124 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
+Total: **127 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
 
 Tests call Java source classes directly. Private fields (e.g., `OutlookClient.GRAPH_ENDPOINT`) are accessed via reflection where necessary.
 
@@ -218,10 +233,10 @@ mvn test
 mvn package
 
 # Run (GUI mode, default)
-java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar
+java -jar target/OutlookAlerter-2.2.0-jar-with-dependencies.jar
 
 # Run (console mode)
-java -jar target/OutlookAlerter-2.0.0-jar-with-dependencies.jar --console
+java -jar target/OutlookAlerter-2.2.0-jar-with-dependencies.jar --console
 
 # macOS app bundle is at: target/OutlookAlerter.app
 ```

@@ -36,7 +36,7 @@ if [ ! -f "$JAR_PATH" ]; then
 fi
 
 java -cp "$JAR_PATH:target/test-classes" \
-     com.unhuman.outlookalerter.ScreenFlashTest
+     com.unhuman.outlookalerter.util.FlashOverlapIntegrationTest
 
 # Capture exit code
 EXIT_CODE=$?

@@ -267,4 +267,74 @@ class OutlookClientTest {
             assertDoesNotThrow(() -> client.attemptSilentTokenRefresh());
         }
     }
+
+    // ───────── performDirectAuthentication pre-dialog guard ─────────
+
+    /**
+     * Subclass of OutlookClient that lets tests control hasValidToken() and
+     * attemptSilentTokenRefresh() without real network calls, so we can verify
+     * that performDirectAuthentication() skips the manual token dialog when
+     * either pre-check succeeds.
+     */
+    private static class ControllableOutlookClient extends OutlookClient {
+        private final boolean validToken;
+        private final boolean silentRefreshResult;
+
+        ControllableOutlookClient(ConfigManager cfg, boolean validToken, boolean silentRefreshResult) {
+            super(cfg);
+            this.validToken = validToken;
+            this.silentRefreshResult = silentRefreshResult;
+        }
+
+        @Override
+        public boolean hasValidToken() {
+            return validToken;
+        }
+
+        @Override
+        public boolean attemptSilentTokenRefresh() {
+            return silentRefreshResult;
+        }
+    }
+
+    @Nested
+    @DisplayName("performDirectAuthentication pre-dialog guard")
+    class PerformDirectAuthenticationGuard {
+
+        @Test
+        @DisplayName("returns true and sets TOKEN_VALID_AFTER_SERVER_VALIDATION when current token is valid")
+        void skipsDialogWhenTokenAlreadyValid() {
+            ControllableOutlookClient client =
+                    new ControllableOutlookClient(configManager, /* validToken */ true, /* silentRefresh */ false);
+
+            boolean result = client.performDirectAuthentication();
+
+            assertTrue(result, "Should return true when current token is valid");
+            assertEquals(OutlookClient.TOKEN_VALID_AFTER_SERVER_VALIDATION,
+                    client.getLastTokenValidationResult(),
+                    "Should record TOKEN_VALID_AFTER_SERVER_VALIDATION when skipping dialog via valid token");
+        }
+
+        @Test
+        @DisplayName("returns true and sets TOKEN_REFRESHED when silent refresh succeeds")
+        void skipsDialogWhenSilentRefreshSucceeds() {
+            ControllableOutlookClient client =
+                    new ControllableOutlookClient(configManager, /* validToken */ false, /* silentRefresh */ true);
+
+            boolean result = client.performDirectAuthentication();
+
+            assertTrue(result, "Should return true when silent refresh succeeds");
+            assertEquals(OutlookClient.TOKEN_REFRESHED,
+                    client.getLastTokenValidationResult(),
+                    "Should record TOKEN_REFRESHED when skipping dialog via silent refresh");
+        }
+
+        @Test
+        @DisplayName("performDirectAuthentication method is protected")
+        void methodIsProtected() throws Exception {
+            Method method = OutlookClient.class.getDeclaredMethod("performDirectAuthentication");
+            assertTrue(java.lang.reflect.Modifier.isProtected(method.getModifiers()),
+                    "performDirectAuthentication should be protected so subclasses can override it");
+        }
+    }
 }
