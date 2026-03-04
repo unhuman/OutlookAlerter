@@ -75,8 +75,9 @@ interface ScreenFlasher {
 
 | Property | Default | Description |
 |---|---|---|
-| `flashColor` | `#800000` | Background color |
-| `flashTextColor` | `#ffffff` | Text color |
+| `flashColor` | `#800000` | Alert flash background color |
+| `flashTextColor` | `#ffffff` | Alert flash text color |
+| `alertBannerColor` | `#dc0000` | Banner/border overlay color |
 | `flashOpacity` | `1.0` | Window opacity |
 | `flashDurationSeconds` | `5` | Display duration |
 

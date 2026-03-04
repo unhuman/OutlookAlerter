@@ -175,9 +175,11 @@ still-unavailable network is non-fatal and falls through to the dialog.
 |---|---|---|---|
 | `preferredTimezone` | String | System default | Display timezone |
 | `alertMinutes` | int | 1 | Minutes before meeting to alert |
-| `flashColor` | String | `#800000` | Flash background color (hex) |
-| `flashTextColor` | String | `#ffffff` | Flash text color (hex) |
-| `flashOpacity` | double | 1.0 | Flash window opacity (0.0-1.0) |
+| `flashColor` | String | `#800000` | Alert flash background color (hex) |
+| `flashTextColor` | String | `#ffffff` | Alert flash text color (hex) |
+| `alertBannerColor` | String | `#dc0000` | Alert banner/border overlay background color (hex) |
+| `alertBannerTextColor` | String | `#ffffff` | Alert banner/border overlay text color (hex) |
+| `flashOpacity` | double | 1.0 | Alert flash window opacity (0.0-1.0) |
 | `flashDurationSeconds` | int | 5 | How long flash stays visible |
 | `resyncIntervalMinutes` | int | 240 | Calendar refresh interval |
 | `alertBeepCount` | int | 5 | Number of audio beeps per alert |

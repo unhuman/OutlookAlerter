@@ -96,6 +96,8 @@ class ConfigManagerTest {
             assertFalse(configManager.getIgnoreCertValidation());
             assertEquals("#800000", configManager.getFlashColor());
             assertEquals("#ffffff", configManager.getFlashTextColor());
+            assertEquals("#dc0000", configManager.getAlertBannerColor());
+            assertEquals("#ffffff", configManager.getAlertBannerTextColor());
             assertEquals(1.0d, configManager.getFlashOpacity(), 0.001);
             assertEquals(5, configManager.getFlashDurationSeconds());
             assertEquals(240, configManager.getResyncIntervalMinutes());
@@ -225,6 +227,20 @@ class ConfigManagerTest {
         void updateFlashTextColor() {
             configManager.updateFlashTextColor("#000000");
             assertEquals("#000000", configManager.getFlashTextColor());
+        }
+
+        @Test
+        @DisplayName("updateAlertBannerColor")
+        void updateAlertBannerColor() {
+            configManager.updateAlertBannerColor("#0000FF");
+            assertEquals("#0000FF", configManager.getAlertBannerColor());
+        }
+
+        @Test
+        @DisplayName("updateAlertBannerTextColor")
+        void updateAlertBannerTextColor() {
+            configManager.updateAlertBannerTextColor("#000000");
+            assertEquals("#000000", configManager.getAlertBannerTextColor());
         }
 
         @Test
@@ -427,6 +443,7 @@ class ConfigManagerTest {
             assertEquals("common", raw.getProperty("tenantId"));
             assertEquals("http://localhost:8888", raw.getProperty("redirectUri"));
             assertEquals("#ffffff", raw.getProperty("flashTextColor"));
+            assertEquals("#dc0000", raw.getProperty("alertBannerColor"));
             assertEquals("5", raw.getProperty("flashDurationSeconds"));
             assertEquals("240", raw.getProperty("resyncIntervalMinutes"));
             assertEquals("5", raw.getProperty("alertBeepCount"));
@@ -498,6 +515,7 @@ class ConfigManagerTest {
             assertNotNull(raw.getProperty("alertMinutes"));
             assertNotNull(raw.getProperty("flashColor"));
             assertNotNull(raw.getProperty("flashTextColor"));
+            assertNotNull(raw.getProperty("alertBannerColor"));
             assertNotNull(raw.getProperty("flashOpacity"));
             assertNotNull(raw.getProperty("flashDurationSeconds"));
             assertNotNull(raw.getProperty("resyncIntervalMinutes"));

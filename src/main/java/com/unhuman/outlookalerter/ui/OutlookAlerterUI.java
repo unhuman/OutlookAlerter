@@ -2165,8 +2165,16 @@ public class OutlookAlerterUI extends JFrame {
             }
             alertBannerWindows.clear();
 
-            final Color bg = new Color(220, 0, 0);
-            final Color fg = Color.WHITE;
+            String bannerColorHex = (configManager != null && configManager.getAlertBannerColor() != null)
+                    ? configManager.getAlertBannerColor() : "#dc0000";
+            Color bgTemp;
+            try { bgTemp = Color.decode(bannerColorHex); } catch (Exception colorEx) { bgTemp = new Color(220, 0, 0); }
+            final Color bg = bgTemp;
+            String bannerTextColorHex = (configManager != null && configManager.getAlertBannerTextColor() != null)
+                    ? configManager.getAlertBannerTextColor() : "#ffffff";
+            Color fgTemp;
+            try { fgTemp = Color.decode(bannerTextColorHex); } catch (Exception colorEx) { fgTemp = Color.WHITE; }
+            final Color fg = fgTemp;
 
             // Use a single full-screen transparent window per monitor to paint the
             // border frame + top text banner. This eliminates seam artifacts that

@@ -6,6 +6,7 @@ import com.unhuman.outlookalerter.util.LogManager;
 import com.unhuman.outlookalerter.util.LogCategory;
 
 import javax.swing.*;
+import javax.swing.colorchooser.AbstractColorChooserPanel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -27,6 +28,10 @@ public class SettingsDialog extends JDialog {
     private JSpinner resyncIntervalSpinner;
     private JSpinner flashDurationSpinner;
     private JSpinner flashOpacitySpinner;
+    private JButton flashColorButton;
+    private JButton flashTextColorButton;
+    private JButton alertBannerColorButton;
+    private JButton alertBannerTextColorButton;
     private JSpinner alertBeepCountSpinner;
     private JCheckBox alertBeepAfterFlashCheckbox;
     private JCheckBox ignoreAllDayEventsCheckbox;
@@ -79,25 +84,9 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 0;
         formPanel.add(timezoneField, gbc);
 
-        // Alert minutes setting
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        formPanel.add(new JLabel("Alert Minutes Before Meeting:"), gbc);
-
-        SpinnerNumberModel alertMinutesModel = new SpinnerNumberModel(
-            configManager.getAlertMinutes(),  // initial value
-            1,                               // min
-            60,                              // max
-            1                                // step
-        );
-        alertMinutesSpinner = new JSpinner(alertMinutesModel);
-        gbc.gridx = 1;
-        gbc.gridy = 1;
-        formPanel.add(alertMinutesSpinner, gbc);
-
         // Resync interval setting
         gbc.gridx = 0;
-        gbc.gridy = 2;
+        gbc.gridy = 1;
         formPanel.add(new JLabel("Resync Calendar Every (minutes):"), gbc);
 
         SpinnerNumberModel resyncModel = new SpinnerNumberModel(
@@ -108,13 +97,46 @@ public class SettingsDialog extends JDialog {
         );
         resyncIntervalSpinner = new JSpinner(resyncModel);
         gbc.gridx = 1;
-        gbc.gridy = 2;
+        gbc.gridy = 1;
         formPanel.add(resyncIntervalSpinner, gbc);
+
+        // Ignore All Day Events setting
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        formPanel.add(new JLabel("Ignore All Day Events:"), gbc);
+
+        ignoreAllDayEventsCheckbox = new JCheckBox("", configManager.getIgnoreAllDayEvents());
+        gbc.gridx = 1;
+        gbc.gridy = 2;
+        formPanel.add(ignoreAllDayEventsCheckbox, gbc);
+
+        // Separator before alert settings
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        gbc.gridwidth = 2;
+        formPanel.add(new JSeparator(SwingConstants.HORIZONTAL), gbc);
+        gbc.gridwidth = 1;
+
+        // Alert minutes setting
+        gbc.gridx = 0;
+        gbc.gridy = 4;
+        formPanel.add(new JLabel("Alert Minutes Before Meeting:"), gbc);
+
+        SpinnerNumberModel alertMinutesModel = new SpinnerNumberModel(
+            configManager.getAlertMinutes(),  // initial value
+            1,                               // min
+            60,                              // max
+            1                                // step
+        );
+        alertMinutesSpinner = new JSpinner(alertMinutesModel);
+        gbc.gridx = 1;
+        gbc.gridy = 4;
+        formPanel.add(alertMinutesSpinner, gbc);
 
         // Flash duration setting
         gbc.gridx = 0;
-        gbc.gridy = 3;
-        formPanel.add(new JLabel("Screen Flash Duration (seconds):"), gbc);
+        gbc.gridy = 5;
+        formPanel.add(new JLabel("Alert Flash Duration (seconds):"), gbc);
 
         SpinnerNumberModel flashDurationModel = new SpinnerNumberModel(
             configManager.getFlashDurationSeconds(),  // initial value
@@ -124,13 +146,68 @@ public class SettingsDialog extends JDialog {
         );
         flashDurationSpinner = new JSpinner(flashDurationModel);
         gbc.gridx = 1;
-        gbc.gridy = 3;
+        gbc.gridy = 5;
         formPanel.add(flashDurationSpinner, gbc);
 
-        // Flash opacity setting
+        // Flash colors setting (background + text on same row)
         gbc.gridx = 0;
-        gbc.gridy = 4;
-        formPanel.add(new JLabel("Screen Flash Opacity (%):"), gbc);
+        gbc.gridy = 6;
+        formPanel.add(new JLabel("Alert Flash Colors:"), gbc);
+
+        String initialFlashColorHex = configManager.getFlashColor() != null ? configManager.getFlashColor() : "#800000";
+        Color initialFlashColor;
+        try { initialFlashColor = Color.decode(initialFlashColorHex); } catch (Exception ex) { initialFlashColor = new Color(128, 0, 0); }
+        flashColorButton = new JButton("  ");
+        flashColorButton.setBackground(initialFlashColor);
+        flashColorButton.setOpaque(true);
+        flashColorButton.setContentAreaFilled(true);
+        flashColorButton.setBorderPainted(true);
+        flashColorButton.setFocusPainted(false);
+        flashColorButton.setPreferredSize(new Dimension(40, 20));
+        flashColorButton.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+        flashColorButton.addActionListener(e -> {
+            Color chosen = showSwatchesColorChooser("Choose Alert Flash Background Color", flashColorButton.getBackground());
+            if (chosen != null) {
+                flashColorButton.setBackground(chosen);
+                flashColorButton.repaint();
+                flashColorButton.revalidate();
+            }
+        });
+
+        String initialFlashTextColorHex = configManager.getFlashTextColor() != null ? configManager.getFlashTextColor() : "#ffffff";
+        Color initialFlashTextColor;
+        try { initialFlashTextColor = Color.decode(initialFlashTextColorHex); } catch (Exception ex) { initialFlashTextColor = Color.WHITE; }
+        flashTextColorButton = new JButton("  ");
+        flashTextColorButton.setBackground(initialFlashTextColor);
+        flashTextColorButton.setOpaque(true);
+        flashTextColorButton.setContentAreaFilled(true);
+        flashTextColorButton.setBorderPainted(true);
+        flashTextColorButton.setFocusPainted(false);
+        flashTextColorButton.setPreferredSize(new Dimension(40, 20));
+        flashTextColorButton.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+        flashTextColorButton.addActionListener(e -> {
+            Color chosen = showSwatchesColorChooser("Choose Alert Flash Text Color", flashTextColorButton.getBackground());
+            if (chosen != null) {
+                flashTextColorButton.setBackground(chosen);
+                flashTextColorButton.repaint();
+                flashTextColorButton.revalidate();
+            }
+        });
+
+        JPanel flashColorsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        flashColorsPanel.setOpaque(false);
+        flashColorsPanel.add(new JLabel("Flash Background:"));
+        flashColorsPanel.add(flashColorButton);
+        flashColorsPanel.add(new JLabel("   Flash Text:"));
+        flashColorsPanel.add(flashTextColorButton);
+        gbc.gridx = 1;
+        gbc.gridy = 6;
+        formPanel.add(flashColorsPanel, gbc);
+
+        // Alert flash opacity setting
+        gbc.gridx = 0;
+        gbc.gridy = 7;
+        formPanel.add(new JLabel("Alert Flash Opacity (%):"), gbc);
 
         SpinnerNumberModel flashOpacityModel = new SpinnerNumberModel(
             (int) Math.round(configManager.getFlashOpacity() * 100),  // convert decimal to percentage
@@ -140,12 +217,67 @@ public class SettingsDialog extends JDialog {
         );
         flashOpacitySpinner = new JSpinner(flashOpacityModel);
         gbc.gridx = 1;
-        gbc.gridy = 4;
+        gbc.gridy = 7;
         formPanel.add(flashOpacitySpinner, gbc);
+
+        // Alert banner colors setting (background + text on same row)
+        gbc.gridx = 0;
+        gbc.gridy = 8;
+        formPanel.add(new JLabel("Alert Banner Colors:"), gbc);
+
+        String initialBannerColorHex = configManager.getAlertBannerColor() != null ? configManager.getAlertBannerColor() : "#dc0000";
+        Color initialBannerColor;
+        try { initialBannerColor = Color.decode(initialBannerColorHex); } catch (Exception ex) { initialBannerColor = new Color(220, 0, 0); }
+        alertBannerColorButton = new JButton("  ");
+        alertBannerColorButton.setBackground(initialBannerColor);
+        alertBannerColorButton.setOpaque(true);
+        alertBannerColorButton.setContentAreaFilled(true);
+        alertBannerColorButton.setBorderPainted(true);
+        alertBannerColorButton.setFocusPainted(false);
+        alertBannerColorButton.setPreferredSize(new Dimension(40, 20));
+        alertBannerColorButton.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+        alertBannerColorButton.addActionListener(e -> {
+            Color chosen = showSwatchesColorChooser("Choose Alert Banner Background Color", alertBannerColorButton.getBackground());
+            if (chosen != null) {
+                alertBannerColorButton.setBackground(chosen);
+                alertBannerColorButton.repaint();
+                alertBannerColorButton.revalidate();
+            }
+        });
+
+        String initialBannerTextColorHex = configManager.getAlertBannerTextColor() != null ? configManager.getAlertBannerTextColor() : "#ffffff";
+        Color initialBannerTextColor;
+        try { initialBannerTextColor = Color.decode(initialBannerTextColorHex); } catch (Exception ex) { initialBannerTextColor = Color.WHITE; }
+        alertBannerTextColorButton = new JButton("  ");
+        alertBannerTextColorButton.setBackground(initialBannerTextColor);
+        alertBannerTextColorButton.setOpaque(true);
+        alertBannerTextColorButton.setContentAreaFilled(true);
+        alertBannerTextColorButton.setBorderPainted(true);
+        alertBannerTextColorButton.setFocusPainted(false);
+        alertBannerTextColorButton.setPreferredSize(new Dimension(40, 20));
+        alertBannerTextColorButton.setBorder(BorderFactory.createLineBorder(Color.DARK_GRAY));
+        alertBannerTextColorButton.addActionListener(e -> {
+            Color chosen = showSwatchesColorChooser("Choose Alert Banner Text Color", alertBannerTextColorButton.getBackground());
+            if (chosen != null) {
+                alertBannerTextColorButton.setBackground(chosen);
+                alertBannerTextColorButton.repaint();
+                alertBannerTextColorButton.revalidate();
+            }
+        });
+
+        JPanel bannerColorsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        bannerColorsPanel.setOpaque(false);
+        bannerColorsPanel.add(new JLabel("Banner Background:"));
+        bannerColorsPanel.add(alertBannerColorButton);
+        bannerColorsPanel.add(new JLabel("   Banner Text:"));
+        bannerColorsPanel.add(alertBannerTextColorButton);
+        gbc.gridx = 1;
+        gbc.gridy = 8;
+        formPanel.add(bannerColorsPanel, gbc);
 
         // Alert beep count setting
         gbc.gridx = 0;
-        gbc.gridy = 5;
+        gbc.gridy = 9;
         formPanel.add(new JLabel("Alert Beep Count:"), gbc);
 
         SpinnerNumberModel beepCountModel = new SpinnerNumberModel(
@@ -156,32 +288,22 @@ public class SettingsDialog extends JDialog {
         );
         alertBeepCountSpinner = new JSpinner(beepCountModel);
         gbc.gridx = 1;
-        gbc.gridy = 5;
+        gbc.gridy = 9;
         formPanel.add(alertBeepCountSpinner, gbc);
 
         // Alert beep after flash setting
         gbc.gridx = 0;
-        gbc.gridy = 6;
+        gbc.gridy = 10;
         formPanel.add(new JLabel("Alert Beep Again After Flash:"), gbc);
 
         alertBeepAfterFlashCheckbox = new JCheckBox("", configManager.getAlertBeepAfterFlash());
         gbc.gridx = 1;
-        gbc.gridy = 6;
+        gbc.gridy = 10;
         formPanel.add(alertBeepAfterFlashCheckbox, gbc);
-
-        // Ignore All Day Events setting
-        gbc.gridx = 0;
-        gbc.gridy = 7;
-        formPanel.add(new JLabel("Ignore All Day Events:"), gbc);
-
-        ignoreAllDayEventsCheckbox = new JCheckBox("", configManager.getIgnoreAllDayEvents());
-        gbc.gridx = 1;
-        gbc.gridy = 7;
-        formPanel.add(ignoreAllDayEventsCheckbox, gbc);
 
         // Alert sound path setting (macOS only)
         gbc.gridx = 0;
-        gbc.gridy = 8;
+        gbc.gridy = 11;
         formPanel.add(new JLabel("Alert Sound File (macOS):"), gbc);
 
         JPanel soundPanel = new JPanel(new BorderLayout(4, 0));
@@ -306,67 +428,74 @@ public class SettingsDialog extends JDialog {
         soundPanel.add(alertSoundPathField, BorderLayout.CENTER);
         soundPanel.add(soundButtonPanel, BorderLayout.EAST);
         gbc.gridx = 1;
-        gbc.gridy = 8;
+        gbc.gridy = 11;
         formPanel.add(soundPanel, gbc);
+
+        // Separator after alert settings
+        gbc.gridx = 0;
+        gbc.gridy = 12;
+        gbc.gridwidth = 2;
+        formPanel.add(new JSeparator(SwingConstants.HORIZONTAL), gbc);
+        gbc.gridwidth = 1;
 
         // Sign-in URL setting
         gbc.gridx = 0;
-        gbc.gridy = 9;
+        gbc.gridy = 13;
         formPanel.add(new JLabel("Sign-in URL:"), gbc);
 
         signInUrlField = new JTextField(configManager.getSignInUrl() != null ? configManager.getSignInUrl() : "", 20);
         gbc.gridx = 1;
-        gbc.gridy = 9;
+        gbc.gridy = 13;
         formPanel.add(signInUrlField, gbc);
 
         // OAuth Client ID setting
         gbc.gridx = 0;
-        gbc.gridy = 10;
+        gbc.gridy = 14;
         formPanel.add(new JLabel("Client ID (Azure AD App):"), gbc);
 
         clientIdField = new JTextField(configManager.getClientId() != null ? configManager.getClientId() : "", 20);
         clientIdField.setToolTipText("Register an app at portal.azure.com to enable automatic browser sign-in");
         gbc.gridx = 1;
-        gbc.gridy = 10;
+        gbc.gridy = 14;
         formPanel.add(clientIdField, gbc);
 
         // OAuth Tenant ID setting
         gbc.gridx = 0;
-        gbc.gridy = 11;
+        gbc.gridy = 15;
         formPanel.add(new JLabel("Tenant ID (default: common):"), gbc);
 
         tenantIdField = new JTextField(configManager.getTenantId() != null ? configManager.getTenantId() : "common", 20);
         tenantIdField.setToolTipText("Your Azure AD tenant ID or 'common' for multi-tenant");
         gbc.gridx = 1;
-        gbc.gridy = 11;
+        gbc.gridy = 15;
         formPanel.add(tenantIdField, gbc);
 
         // Test Sign In button
         gbc.gridx = 0;
-        gbc.gridy = 12;
+        gbc.gridy = 16;
         formPanel.add(new JLabel("Test OAuth Sign-in:"), gbc);
 
         JButton testSignInButton = new JButton("Test Sign In");
         testSignInButton.setToolTipText("Test MSAL browser sign-in with the configured Client ID");
         testSignInButton.addActionListener(e -> testMsalSignIn(testSignInButton));
         gbc.gridx = 1;
-        gbc.gridy = 12;
+        gbc.gridy = 16;
         formPanel.add(testSignInButton, gbc);
 
         // Default Ignore SSL certificate validation setting
         gbc.gridx = 0;
-        gbc.gridy = 13;
+        gbc.gridy = 17;
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc);
 
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation());
         // No longer update immediately when checkbox changes
         gbc.gridx = 1;
-        gbc.gridy = 13;
+        gbc.gridy = 17;
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc);
 
         // Okta SSO email setting
         gbc.gridx = 0;
-        gbc.gridy = 14;
+        gbc.gridy = 18;
         formPanel.add(new JLabel("Okta SSO Email:"), gbc);
 
         userEmailField = new JTextField(
@@ -375,7 +504,7 @@ public class SettingsDialog extends JDialog {
                 "Your work email used for Okta SSO federation discovery. "
                 + "Set automatically when you click \"Sign In with Okta SSO\"");
         gbc.gridx = 1;
-        gbc.gridy = 14;
+        gbc.gridy = 18;
         formPanel.add(userEmailField, gbc);
 
         // Button panel
@@ -454,6 +583,26 @@ public class SettingsDialog extends JDialog {
             // Save flash duration
             int flashDuration = (Integer) flashDurationSpinner.getValue();
             configManager.updateFlashDurationSeconds(flashDuration);
+
+            // Save flash color
+            Color chosenFlashColor = flashColorButton.getBackground();
+            configManager.updateFlashColor(String.format("#%02x%02x%02x",
+                    chosenFlashColor.getRed(), chosenFlashColor.getGreen(), chosenFlashColor.getBlue()));
+
+            // Save flash text color
+            Color chosenFlashTextColor = flashTextColorButton.getBackground();
+            configManager.updateFlashTextColor(String.format("#%02x%02x%02x",
+                    chosenFlashTextColor.getRed(), chosenFlashTextColor.getGreen(), chosenFlashTextColor.getBlue()));
+
+            // Save alert banner color
+            Color chosenBannerColor = alertBannerColorButton.getBackground();
+            configManager.updateAlertBannerColor(String.format("#%02x%02x%02x",
+                    chosenBannerColor.getRed(), chosenBannerColor.getGreen(), chosenBannerColor.getBlue()));
+
+            // Save alert banner text color
+            Color chosenBannerTextColor = alertBannerTextColorButton.getBackground();
+            configManager.updateAlertBannerTextColor(String.format("#%02x%02x%02x",
+                    chosenBannerTextColor.getRed(), chosenBannerTextColor.getGreen(), chosenBannerTextColor.getBlue()));
 
             // Save flash opacity (convert percentage to decimal)
             int flashOpacityPercent = (Integer) flashOpacitySpinner.getValue();
@@ -560,5 +709,25 @@ public class SettingsDialog extends JDialog {
         }, "MsalTestSignInThread");
         testThread.setDaemon(true);
         testThread.start();
+    }
+
+    /**
+     * Shows a color chooser dialog restricted to the Swatches panel only,
+     * giving users a simple color grid instead of the full tabbed chooser.
+     */
+    private Color showSwatchesColorChooser(String title, Color initial) {
+        JColorChooser chooser = new JColorChooser(initial != null ? initial : Color.WHITE);
+        // Remove all panels except Swatches
+        for (AbstractColorChooserPanel panel : chooser.getChooserPanels()) {
+            if (!panel.getDisplayName().equals("Swatches")) {
+                chooser.removeChooserPanel(panel);
+            }
+        }
+        chooser.setPreviewPanel(new JPanel()); // hide the preview strip
+        int result = JOptionPane.showConfirmDialog(
+                this, chooser, title,
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+        return (result == JOptionPane.OK_OPTION) ? chooser.getColor() : null;
     }
 }

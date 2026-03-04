@@ -70,6 +70,8 @@ All property keys and default values are defined as `private static final String
 | `alertBeepCount` | int | `5` | Alert |
 | `flashColor` | String | `"#800000"` | Flash |
 | `flashTextColor` | String | `"#ffffff"` | Flash |
+| `alertBannerColor` | String | `"#dc0000"` | Banner overlay background color |
+| `alertBannerTextColor` | String | `"#ffffff"` | Banner overlay text color |
 | `flashOpacity` | double | `1.0` | Flash |
 | `flashDurationSeconds` | int | `5` | Flash |
 | `resyncIntervalMinutes` | int | `240` | Scheduler |
@@ -98,6 +100,8 @@ void updateFlashDurationSeconds(int seconds)
 void updateSignInUrl(String url)
 void updateFlashColor(String color)
 void updateFlashTextColor(String color)
+void updateAlertBannerColor(String color)
+void updateAlertBannerTextColor(String color)
 void updateFlashOpacity(double opacity)
 void updateResyncIntervalMinutes(int minutes)
 void updateAlertBeepCount(int count)

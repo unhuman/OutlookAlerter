@@ -32,6 +32,8 @@ public class ConfigManager {
     private static final String KEY_IGNORE_CERT = "ignoreCertValidation";
     private static final String KEY_FLASH_COLOR = "flashColor";
     private static final String KEY_FLASH_TEXT_COLOR = "flashTextColor";
+    private static final String KEY_ALERT_BANNER_COLOR = "alertBannerColor";
+    private static final String KEY_ALERT_BANNER_TEXT_COLOR = "alertBannerTextColor";
     private static final String KEY_FLASH_OPACITY = "flashOpacity";
     private static final String KEY_FLASH_DURATION = "flashDurationSeconds";
     private static final String KEY_RESYNC_INTERVAL = "resyncIntervalMinutes";
@@ -54,6 +56,8 @@ public class ConfigManager {
     private static final String DEFAULT_REDIRECT_URI = "http://localhost:8888";
     private static final String DEFAULT_FLASH_COLOR = "#800000";
     private static final String DEFAULT_FLASH_TEXT_COLOR = "#ffffff";
+    private static final String DEFAULT_ALERT_BANNER_COLOR = "#dc0000";
+    private static final String DEFAULT_ALERT_BANNER_TEXT_COLOR = "#ffffff";
     private static final String DEFAULT_FLASH_OPACITY = "1.0";
     private static final String DEFAULT_ALERT_MINUTES = "1";
     private static final String DEFAULT_FLASH_DURATION = "5";
@@ -76,6 +80,8 @@ public class ConfigManager {
     private boolean ignoreCertValidation;
     private String flashColor = DEFAULT_FLASH_COLOR;
     private String flashTextColor = DEFAULT_FLASH_TEXT_COLOR;
+    private String alertBannerColor = DEFAULT_ALERT_BANNER_COLOR;
+    private String alertBannerTextColor = DEFAULT_ALERT_BANNER_TEXT_COLOR;
     private double flashOpacity = 1.0d;
     private int flashDurationSeconds = 5;
     private int resyncIntervalMinutes = 240;
@@ -133,6 +139,8 @@ public class ConfigManager {
         properties.setProperty(KEY_IGNORE_CERT, DEFAULT_FALSE);
         properties.setProperty(KEY_FLASH_COLOR, DEFAULT_FLASH_COLOR);
         properties.setProperty(KEY_FLASH_TEXT_COLOR, DEFAULT_FLASH_TEXT_COLOR);
+        properties.setProperty(KEY_ALERT_BANNER_COLOR, DEFAULT_ALERT_BANNER_COLOR);
+        properties.setProperty(KEY_ALERT_BANNER_TEXT_COLOR, DEFAULT_ALERT_BANNER_TEXT_COLOR);
         properties.setProperty(KEY_FLASH_OPACITY, DEFAULT_FLASH_OPACITY);
         properties.setProperty(KEY_FLASH_DURATION, DEFAULT_FLASH_DURATION);
         properties.setProperty(KEY_RESYNC_INTERVAL, DEFAULT_RESYNC_INTERVAL);
@@ -185,6 +193,8 @@ public class ConfigManager {
         ignoreCertValidation = Boolean.parseBoolean(properties.getProperty(KEY_IGNORE_CERT, DEFAULT_FALSE));
         flashColor = properties.getProperty(KEY_FLASH_COLOR, DEFAULT_FLASH_COLOR);
         flashTextColor = properties.getProperty(KEY_FLASH_TEXT_COLOR, DEFAULT_FLASH_TEXT_COLOR);
+        alertBannerColor = properties.getProperty(KEY_ALERT_BANNER_COLOR, DEFAULT_ALERT_BANNER_COLOR);
+        alertBannerTextColor = properties.getProperty(KEY_ALERT_BANNER_TEXT_COLOR, DEFAULT_ALERT_BANNER_TEXT_COLOR);
         try {
             flashOpacity = Double.parseDouble(properties.getProperty(KEY_FLASH_OPACITY, DEFAULT_FLASH_OPACITY));
         } catch (NumberFormatException e) {
@@ -230,6 +240,8 @@ public class ConfigManager {
             properties.setProperty(KEY_IGNORE_CERT, String.valueOf(ignoreCertValidation));
             properties.setProperty(KEY_FLASH_COLOR, flashColor != null ? flashColor : DEFAULT_FLASH_COLOR);
             properties.setProperty(KEY_FLASH_TEXT_COLOR, flashTextColor != null ? flashTextColor : DEFAULT_FLASH_TEXT_COLOR);
+            properties.setProperty(KEY_ALERT_BANNER_COLOR, alertBannerColor != null ? alertBannerColor : DEFAULT_ALERT_BANNER_COLOR);
+            properties.setProperty(KEY_ALERT_BANNER_TEXT_COLOR, alertBannerTextColor != null ? alertBannerTextColor : DEFAULT_ALERT_BANNER_TEXT_COLOR);
             properties.setProperty(KEY_FLASH_OPACITY, String.valueOf(flashOpacity));
             properties.setProperty(KEY_FLASH_DURATION, String.valueOf(flashDurationSeconds));
             properties.setProperty(KEY_RESYNC_INTERVAL, String.valueOf(resyncIntervalMinutes));
@@ -290,6 +302,8 @@ public class ConfigManager {
     public boolean getIgnoreCertValidation() { return ignoreCertValidation; }
     public String getFlashColor() { return flashColor; }
     public String getFlashTextColor() { return flashTextColor; }
+    public String getAlertBannerColor() { return alertBannerColor; }
+    public String getAlertBannerTextColor() { return alertBannerTextColor; }
     public double getFlashOpacity() { return flashOpacity; }
     public int getFlashDurationSeconds() { return flashDurationSeconds; }
     public int getResyncIntervalMinutes() { return resyncIntervalMinutes; }
@@ -308,6 +322,8 @@ public class ConfigManager {
     public void updateSignInUrl(String url) { this.signInUrl = url; saveConfiguration(); }
     public void updateFlashColor(String color) { this.flashColor = color; saveConfiguration(); }
     public void updateFlashTextColor(String color) { this.flashTextColor = color; saveConfiguration(); }
+    public void updateAlertBannerColor(String color) { this.alertBannerColor = color; saveConfiguration(); }
+    public void updateAlertBannerTextColor(String color) { this.alertBannerTextColor = color; saveConfiguration(); }
     public void updateFlashOpacity(double opacity) { this.flashOpacity = opacity; saveConfiguration(); }
     public void updateResyncIntervalMinutes(int minutes) { this.resyncIntervalMinutes = minutes; saveConfiguration(); }
     public void updateAlertBeepCount(int count) { this.alertBeepCount = count; saveConfiguration(); }

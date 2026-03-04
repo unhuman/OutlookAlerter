@@ -604,9 +604,14 @@ public class MacScreenFlasher implements ScreenFlasher {
             String bannerMsg = (events.size() == 1)
                 ? "Upcoming meeting: " + HtmlUtil.escapeHtml(events.get(0).getSubject())
                 : events.size() + " upcoming meetings starting soon";
+            ConfigManager bannerConfig = ConfigManager.getInstance();
+            String bannerBgHex = (bannerConfig != null && bannerConfig.getAlertBannerColor() != null)
+                ? bannerConfig.getAlertBannerColor() : "#dc0000";
+            String bannerTextHex = (bannerConfig != null && bannerConfig.getAlertBannerTextColor() != null)
+                ? bannerConfig.getAlertBannerTextColor() : "#ffffff";
 
             StringBuilder labelContent = new StringBuilder("<html><div style='text-align: center; width: 100%;'>" +
-                "<div style='background-color: #DC0000; color: white; font-size: 18px; font-weight: bold; " +
+                "<div style='background-color: " + bannerBgHex + "; color: " + bannerTextHex + "; font-size: 18px; font-weight: bold; " +
                 "padding: 10px 20px; margin-bottom: 20px; width: 100%;'>" + bannerMsg + "</div>" +
                 "<h1 style='color: " + textColorHex + "; font-size: 48px; margin-bottom: 30px; white-space: nowrap;'>\u26A0\uFE0F MEETING ALERT \u26A0\uFE0F</h1>" +
                 "<div style='color: " + textColorHex + "; font-size: 36px; margin-bottom: 10px;'>");

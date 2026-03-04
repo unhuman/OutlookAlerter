@@ -163,16 +163,25 @@ Exit
 | Setting | Control | Range | Config Key |
 |---|---|---|---|
 | Preferred Timezone | `JTextField` | Valid timezone ID | `preferredTimezone` |
-| Alert Minutes Before | `JSpinner` | 1–60 | `alertMinutes` |
 | Resync Interval (min) | `JSpinner` | 5–1440 | `resyncIntervalMinutes` |
-| Flash Duration (sec) | `JSpinner` | 1–30 | `flashDurationSeconds` |
-| Flash Opacity (%) | `JSpinner` | 10–100 (step 10) | `flashOpacity` |
-| Alert Beep Count | `JSpinner` | 0–20 | `alertBeepCount` |
 | Ignore All Day Events | `JCheckBox` | boolean | `ignoreAllDayEvents` |
-| Alert Sound File (macOS) | `JTextField` + Preview + Browse button | File path string | `alertSoundPath` |
+| *(separator)* | — | — | — |
+| Alert Minutes Before | `JSpinner` | 1–60 | `alertMinutes` |
+| Alert Flash Duration (sec) | `JSpinner` | 1–30 | `flashDurationSeconds` |
+| Alert Flash Color | `JButton` (swatch) | Color chooser | `flashColor` |
+| Alert Flash Text Color | `JButton` (swatch) | Color chooser | `flashTextColor` |
+| Alert Flash Opacity (%) | `JSpinner` | 10–100 (step 10) | `flashOpacity` |
+| Alert Banner Color | `JButton` (swatch) | Color chooser | `alertBannerColor` |
+| Alert Beep Count | `JSpinner` | 0–20 | `alertBeepCount` |
 | Alert Beep After Flash | `JCheckBox` | boolean | `alertBeepAfterFlash` |
+| Alert Sound File (macOS) | `JTextField` + Preview + Browse button | File path string | `alertSoundPath` |
+| *(separator)* | — | — | — |
 | Sign-in URL | `JTextField` | URL | `signInUrl` |
+| Client ID (Azure AD App) | `JTextField` | UUID string | `clientId` |
+| Tenant ID | `JTextField` | UUID / `common` | `tenantId` |
+| Test OAuth Sign-in | `JButton` | — | (action) |
 | Ignore SSL Cert | `JCheckBox` | boolean | `defaultIgnoreCertValidation` |
+| Okta SSO Email | `JTextField` | Email address | `userEmail` |
 
 ### Save Flow
 
