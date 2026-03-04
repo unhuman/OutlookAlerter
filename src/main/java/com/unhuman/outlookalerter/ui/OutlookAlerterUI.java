@@ -1319,8 +1319,16 @@ public class OutlookAlerterUI extends JFrame {
                 settingsDialog.requestFocusInWindow();
             }
 
+            settingsDialog.pack();
+            moveWindowToMouseScreen(settingsDialog);
             settingsDialog.setVisible(true);
         } else {
+            // Hide then re-show so macOS moves the dialog to the current Space.
+            if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+                settingsDialog.setVisible(false);
+            }
+            moveWindowToMouseScreen(settingsDialog);
+            settingsDialog.setVisible(true);
             settingsDialog.toFront();
         }
     }
@@ -1498,9 +1506,44 @@ public class OutlookAlerterUI extends JFrame {
     /**
      * Activate window and request user attention, with special handling for macOS
      */
+    /**
+     * Moves a window to the screen that currently contains the mouse cursor,
+     * centering it there. Falls back to the primary screen if detection fails.
+     */
+    private void moveWindowToMouseScreen(Window window) {
+        try {
+            Point mousePos = MouseInfo.getPointerInfo().getLocation();
+            GraphicsConfiguration targetGC = null;
+            for (GraphicsDevice gd : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
+                Rectangle bounds = gd.getDefaultConfiguration().getBounds();
+                if (bounds.contains(mousePos)) {
+                    targetGC = gd.getDefaultConfiguration();
+                    break;
+                }
+            }
+            if (targetGC == null) {
+                targetGC = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                        .getDefaultScreenDevice().getDefaultConfiguration();
+            }
+            Rectangle screenBounds = targetGC.getBounds();
+            Dimension wSize = window.getSize();
+            int x = screenBounds.x + (screenBounds.width  - wSize.width)  / 2;
+            int y = screenBounds.y + (screenBounds.height - wSize.height) / 2;
+            window.setLocation(x, y);
+        } catch (Exception ex) {
+            // ignore — window stays wherever it was
+        }
+    }
+
     private void activateWindow() {
         SwingUtilities.invokeLater(() -> {
             try {
+                moveWindowToMouseScreen(OutlookAlerterUI.this);
+                // On macOS, hide then re-show to force the window into the
+                // currently active Space (desktop / full-screen app space).
+                if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+                    setVisible(false);
+                }
                 setVisible(true);
                 setExtendedState(JFrame.NORMAL);
 
