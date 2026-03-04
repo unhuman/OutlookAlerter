@@ -1301,7 +1301,15 @@ public class OutlookAlerterUI extends JFrame {
         // Token dialog is non-modal, so settings can coexist with it
 
         if (settingsDialog == null || !settingsDialog.isShowing()) {
-            // Create and show the new settings dialog
+            // If the main window is already visible, bring it to the current Space
+            // so the new settings dialog appears alongside it.
+            // Only do this when already showing — we must not force it visible.
+            if (OutlookAlerterUI.this.isShowing()) {
+                bringToCurrentSpace(OutlookAlerterUI.this, null);
+            } else {
+                moveWindowToMouseScreen(OutlookAlerterUI.this);
+            }
+
             settingsDialog = new SettingsDialog(this, configManager, outlookClient);
 
             // Clean up the reference when closed
@@ -1323,12 +1331,9 @@ public class OutlookAlerterUI extends JFrame {
             moveWindowToMouseScreen(settingsDialog);
             settingsDialog.setVisible(true);
         } else {
-            // Hide then re-show so macOS moves the dialog to the current Space.
-            if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
-                settingsDialog.setVisible(false);
-            }
-            moveWindowToMouseScreen(settingsDialog);
-            settingsDialog.setVisible(true);
+            // Both windows are showing. Move them together to the current Space,
+            // same as activateWindow() does in the other direction.
+            bringToCurrentSpace(OutlookAlerterUI.this, settingsDialog);
             settingsDialog.toFront();
         }
     }
@@ -1535,16 +1540,58 @@ public class OutlookAlerterUI extends JFrame {
         }
     }
 
+    /**
+     * Moves a window to the mouse screen and forces it into the currently active
+     * macOS Space (desktop / full-screen app) by toggling visibility.
+     * Safe to call whether the window is already visible or not.
+     */
+    private void bringToCurrentSpace(Window window) {
+        bringToCurrentSpace(window, null);
+    }
+
+    /**
+     * Moves two windows to the mouse screen and forces both into the currently
+     * active macOS Space.
+     *
+     * Key invariant: each window must receive exactly ONE show event from the
+     * macOS window server. The double-close bug is caused by a window receiving
+     * two show events (the close button then needs a click to "consume" the
+     * extra show before it can actually close).
+     *
+     * Strategy:
+     *   1. If companion is visible, hide it BEFORE hiding the primary, so that
+     *      primary.setVisible(true) does NOT auto-restore it (Swing only
+     *      auto-restores owned windows whose java visible flag is still true).
+     *   2. Toggle primary (hide→show) to reassign it to the current Space.
+     *   3. Reposition and show companion manually — exactly 1 show event.
+     */
+    private void bringToCurrentSpace(Window primary, Window companion) {
+        if (primary == null) return;
+        boolean isMac = System.getProperty("os.name", "").toLowerCase().contains("mac");
+        // 1. Hide companion first so JFrame auto-restore won't re-show it
+        boolean companionWasShowing = companion != null && companion.isShowing();
+        if (isMac && companionWasShowing) {
+            companion.setVisible(false);
+        }
+        // 2. Reposition and toggle primary
+        moveWindowToMouseScreen(primary);
+        if (isMac) {
+            primary.setVisible(false);
+        }
+        primary.setVisible(true);
+        // 3. Reposition and show companion — exactly 1 show event
+        if (companionWasShowing) {
+            moveWindowToMouseScreen(companion);
+            companion.setVisible(true);
+        }
+    }
+
     private void activateWindow() {
         SwingUtilities.invokeLater(() -> {
             try {
-                moveWindowToMouseScreen(OutlookAlerterUI.this);
-                // On macOS, hide then re-show to force the window into the
-                // currently active Space (desktop / full-screen app space).
-                if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
-                    setVisible(false);
-                }
-                setVisible(true);
+                // Bring main window (and any open settings dialog) to current Space together
+                Window companion = (settingsDialog != null && settingsDialog.isShowing()) ? settingsDialog : null;
+                bringToCurrentSpace(OutlookAlerterUI.this, companion);
                 setExtendedState(JFrame.NORMAL);
 
                 // If token dialog is active, just make the main window visible
