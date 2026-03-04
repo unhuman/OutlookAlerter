@@ -250,6 +250,20 @@ void addWakeListener(Runnable listener)   // called on wake
 
 **On wake:** Triggers `OutlookAlerterUI.restartSchedulers()` + `refreshCalendarEvents()`.
 
+### MacLockUnlockMonitor
+
+**Location:** `com.unhuman.outlookalerter.util.MacLockUnlockMonitor`  
+**Pattern:** Singleton  
+**Detection:** Polls `ioreg -n Root -d1` every 2 seconds for `CGSSessionScreenIsLocked` transition
+
+```java
+static synchronized MacLockUnlockMonitor getInstance()
+void startMonitoring()
+void addUnlockListener(Runnable listener)   // called on screen unlock
+```
+
+**On unlock:** Schedules `checkAlertsOnWake()` after a 1.5-second delay.
+
 ### SingleInstanceManager
 
 **Location:** `com.unhuman.outlookalerter.core.SingleInstanceManager`  
@@ -260,17 +274,22 @@ boolean tryAcquireLock()   // returns false if already locked
 void releaseLock()
 ```
 
-### SSLUtils
+### FederationDiscovery
 
-**Location:** `com.unhuman.outlookalerter.core.SSLUtils`
+**Location:** `com.unhuman.outlookalerter.core.FederationDiscovery`  
+**Purpose:** Resolves the tenant-specific OAuth token endpoint from a user's email domain via Microsoft federation metadata.
 
 ```java
-static void initializeSSLContext()
-static SSLContext createPermissiveSSLContext()   // for ignoreCertValidation
+static String discoverTokenEndpoint(String email)   // returns tenant token URL or null
 ```
 
-### OAuthRedirectServer
+### MsalAuthProvider
 
-**Location:** `com.unhuman.outlookalerter.core.OAuthRedirectServer`
+**Location:** `com.unhuman.outlookalerter.core.MsalAuthProvider`  
+**Purpose:** Wraps MSAL4J for silent token acquisition (MSAL cache) and Okta Device Code Flow token caching.
 
-Lightweight HTTP server on `localhost:8888` that listens for OAuth redirect callbacks and extracts the authorization code.
+```java
+boolean isConfigured()
+String acquireTokenSilently()                // tries MSAL in-memory cache
+String acquireTokenSilentlyFromOktaCache()   // tries persisted Okta DCF cache
+```

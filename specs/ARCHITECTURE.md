@@ -22,6 +22,7 @@ OutlookAlerter is a macOS/Windows desktop application (Java Swing) that monitors
 
 - **org.json 20240303** — JSON parsing
 - **JNA 5.17.0** — `jna`, `jna-platform` (native OS access, Windows flash)
+- **MSAL4J 1.17.2** — `com.microsoft.azure:msal4j` (MSAL / Okta Device Code Flow silent token acquisition)
 - **JUnit Jupiter 5.11.4** — unit test framework (test scope)
 
 ## Package Structure
@@ -33,9 +34,9 @@ com.unhuman.outlookalerter
 │   └── CalendarEvent           # Data model for calendar events
 ├── core/
 │   ├── ConfigManager           # Singleton config (properties file I/O)
+│   ├── FederationDiscovery     # OAuth federation metadata discovery (tenant endpoint resolution)
+│   ├── MsalAuthProvider        # MSAL / Okta Device Code Flow silent token acquisition
 │   ├── OutlookClient           # Graph API client (auth, events, HTTP)
-│   ├── OAuthRedirectServer     # Local HTTP server for OAuth redirect
-│   ├── SSLUtils                # SSL/TLS truststore setup
 │   └── SingleInstanceManager   # File lock for single-instance enforcement
 ├── ui/
 │   ├── OutlookAlerterUI        # Main GUI (JFrame, schedulers, alert orchestration)
@@ -52,8 +53,9 @@ com.unhuman.outlookalerter
     ├── WindowsScreenFlasher    # Windows flash implementation (JNA + Swing fallback)
     ├── CrossPlatformScreenFlasher  # Generic Swing flash
     ├── MacSleepWakeMonitor     # Sleep/wake detection via time-jump polling
-    ├── MacWindowHelper         # Native window handle (blocked on modern macOS)
+    ├── MacLockUnlockMonitor    # macOS screen lock/unlock detection via ioreg polling
     ├── LogManager              # Singleton log buffer with categories
+    ├── LogEntry                # Immutable log entry record (level, category, message, timestamp)
     └── LogCategory             # Enum: DATA_FETCH, MEETING_INFO, ALERT_PROCESSING, GENERAL
 ```
 
@@ -63,7 +65,6 @@ com.unhuman.outlookalerter
 main(args)
   ├── Parse CLI: --config, --console, --debug, --timezone, --help
   ├── SingleInstanceManager.tryAcquireLock()  → exit if locked
-  ├── SSLUtils.initializeSSLContext()
   ├── ConfigManager.getInstance()  → loads ~/.outlookalerter/config.properties
   ├── OutlookClient(configManager, ui?)
   └── Launch mode:
@@ -88,7 +89,7 @@ main(args)
 The application is designed for long-running, unattended operation (days/weeks). Multiple independent recovery mechanisms ensure it survives network failures, laptop sleep/wake cycles, and transient errors:
 
 ### HTTP Timeouts
-All Graph API requests use a 30-second read timeout (`REQUEST_TIMEOUT`). This prevents the HTTP client from hanging indefinitely on stale TCP connections after network changes or sleep/wake.
+All Graph API requests use a 60-second read timeout (`REQUEST_TIMEOUT`). This prevents the HTTP client from hanging indefinitely on stale TCP connections after network changes or sleep/wake.
 
 ### Stale-Fetch Detection
 `refreshCalendarEvents()` records `fetchStartTimeMs` at entry. If a new refresh is requested while an old one appears stuck (>`FETCH_TIMEOUT_MS` = 45s), the stale `fetchInProgress` flag is forcibly cleared and the new fetch proceeds. The flag is always reset in a `finally` block.
@@ -198,21 +199,28 @@ still-unavailable network is non-fatal and falls through to the dialog.
 ```
 src/test/java/com/unhuman/outlookalerter/
 ├── model/
-│   └── CalendarEventTest          # 24 tests — time math, state, properties, edge cases
+│   └── CalendarEventTest               # 34 tests — time math, state, properties, edge cases
 ├── core/
-│   ├── ConfigManagerTest           # 24 tests — singleton, load/save, all update methods
-│   ├── OutlookClientTest           # 14 tests — exception types, constants, constructors, pre-dialog guard
-│   └── SingleInstanceManagerTest   #  6 tests — file lock acquire/release/exclusive
+│   ├── ConfigManagerTest               # 42 tests — singleton, load/save, all update methods
+│   ├── FederationDiscoveryTest         # 10 tests — OAuth federation metadata parsing
+│   ├── MsalAuthProviderTest            # 22 tests — MSAL configuration, token cache operations
+│   ├── OutlookClientTest               # 25 tests — exception types, constants, constructors, pre-dialog guard
+│   └── SingleInstanceManagerTest       #  6 tests — file lock acquire/release/exclusive
 ├── ui/
-│   └── IconManagerTest             # 12 tests — icon generation, caching, valid/invalid
+│   ├── IconManagerTest                 # 12 tests — icon generation, caching, valid/invalid
+│   ├── OutlookAlerterUIAlertTest       # 25 tests — alert pipeline, flash, checkForEventAlerts, checkAlertsOnWake
+│   └── OutlookAlerterUITrayMenuTest    # 33 tests — tray menu, event display, status label, refresh flow
 └── util/
-    ├── HtmlUtilTest                # 11 tests — HTML escaping, null, XSS, unicode
-    ├── LogManagerTest              # 22 tests — singleton, levels, buffer, filtering
-    ├── ScreenFlasherFactoryTest    #  5 tests — platform factory, interface contract
-    └── MacSleepWakeMonitorTest     #  9 tests — singleton, lifecycle, listeners
+    ├── FlashOverlapIntegrationTest     # manual visual test only (no @Test methods — requires real display)
+    ├── HtmlUtilTest                    # 11 tests — HTML escaping, null, XSS, unicode
+    ├── LogManagerTest                  # 29 tests — singleton, levels, buffer, filtering
+    ├── MacLockUnlockMonitorTest        #  6 tests — lock/unlock detection, listener registration
+    ├── MacScreenFlasherTest            # 11 tests — flash semaphore, concurrency, completion latch
+    ├── MacSleepWakeMonitorTest         # 10 tests — singleton, lifecycle, listeners
+    └── ScreenFlasherFactoryTest        #  5 tests — platform factory, interface contract
 ```
 
-Total: **127 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
+Total: **281 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
 
 Tests call Java source classes directly. Private fields (e.g., `OutlookClient.GRAPH_ENDPOINT`) are accessed via reflection where necessary.
 
