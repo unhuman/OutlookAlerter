@@ -4,6 +4,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.AWTEventListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import com.unhuman.outlookalerter.core.ConfigManager;
@@ -247,6 +250,15 @@ public class OutlookAlerterUI extends JFrame {
 
         // Set up the UI
         initializeUI();
+
+        // Register global key/mouse listener to dismiss active alerts immediately
+        Toolkit.getDefaultToolkit().addAWTEventListener(event -> {
+            if (alertBannerWindows.isEmpty() && !trayIconFlashing) return;
+            int id = event.getID();
+            if (id == KeyEvent.KEY_PRESSED || id == MouseEvent.MOUSE_PRESSED) {
+                SwingUtilities.invokeLater(this::dismissAlerts);
+            }
+        }, AWTEvent.KEY_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK);
 
         // Configure window behavior for system tray support
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);  // We'll handle window closing ourselves
@@ -2148,6 +2160,24 @@ public class OutlookAlerterUI extends JFrame {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                 "AlertBeep: Could not start afplay: " + afEx.getMessage());
         }
+    }
+
+    /**
+     * Immediately dismiss any active alert flash windows and banner overlays.
+     * Called when the user presses a key or clicks the mouse during an alert.
+     */
+    private void dismissAlerts() {
+        if (screenFlasher != null) {
+            screenFlasher.forceCleanup();
+        }
+        for (JFrame banner : alertBannerWindows) {
+            banner.dispose();
+        }
+        alertBannerWindows.clear();
+        if (trayFlashTimer != null && trayFlashTimer.isRunning()) {
+            trayFlashTimer.stop();
+        }
+        restoreTrayIcon();
     }
 
     /**
