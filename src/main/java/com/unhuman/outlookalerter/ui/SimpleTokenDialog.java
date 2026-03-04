@@ -775,6 +775,14 @@ public class SimpleTokenDialog {
      * </ol>
      */
     private void performOktaAuth(JButton triggerButton) {
+        // Sync checkbox state to ConfigManager before any network I/O so that
+        // MsalAuthProvider.acquireTokenDeviceCode() picks up the current cert setting.
+        if (ignoreCertCheckbox != null) {
+            boolean certIgnore = ignoreCertCheckbox.isSelected();
+            ConfigManager.getInstance().updateIgnoreCertValidation(certIgnore);
+            ConfigManager.getInstance().updateDefaultIgnoreCertValidation(certIgnore);
+        }
+
         // Prompt for email — pre-populate from config
         String savedEmail = ConfigManager.getInstance().getUserEmail();
         if (savedEmail == null || savedEmail.isBlank()) {
