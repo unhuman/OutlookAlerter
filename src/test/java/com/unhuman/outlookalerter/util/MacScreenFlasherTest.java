@@ -247,6 +247,47 @@ class MacScreenFlasherTest {
         return e;
     }
 
+    // ───────── User-dismissal flag ─────────
+
+    @Nested
+    @DisplayName("User-dismissal flag")
+    class UserDismissalTests {
+
+        @Test
+        @DisplayName("wasUserDismissed() returns false before any flash")
+        void falseBeforeAnyFlash() {
+            assertFalse(flasher.wasUserDismissed(),
+                "wasUserDismissed() should be false on a fresh instance");
+        }
+
+        @Test
+        @DisplayName("wasUserDismissed() returns false after timer-based headless completion")
+        void falseAfterTimerBasedCompletion() throws Exception {
+            // Headless: flashMultiple() returns without showing windows (display validation fails),
+            // so the flag should remain false — no user actually dismissed anything.
+            CalendarEvent event = makeEvent("Timer Dismiss Test", 1);
+            flasher.flashMultiple(List.of(event));
+            assertFalse(flasher.wasUserDismissed(),
+                "wasUserDismissed() should be false when flash expired via timer (no user action)");
+        }
+
+        @Test
+        @DisplayName("wasUserDismissed() resets to false at the start of each new flashMultiple() call")
+        void resetsAtStartOfFlashMultiple() throws Exception {
+            // Manually set the flag to true as if a previous dismiss happened
+            Field f = MacScreenFlasher.class.getDeclaredField("userDismissed");
+            f.setAccessible(true);
+            ((java.util.concurrent.atomic.AtomicBoolean) f.get(flasher)).set(true);
+
+            // The next flashMultiple() should reset it to false before proceeding
+            CalendarEvent event = makeEvent("Reset Test", 1);
+            flasher.flashMultiple(List.of(event));
+
+            assertFalse(flasher.wasUserDismissed(),
+                "wasUserDismissed() should be reset to false at the start of each flashMultiple() call");
+        }
+    }
+
     private Semaphore getFlashSemaphore() throws Exception {
         Field f = MacScreenFlasher.class.getDeclaredField("flashSemaphore");
         f.setAccessible(true);

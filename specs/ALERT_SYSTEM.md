@@ -59,6 +59,7 @@ performFullAlert()
 interface ScreenFlasher {
     void flash(CalendarEvent event)
     void flashMultiple(List<CalendarEvent> events)
+    default boolean wasUserDismissed()   // true if dismissed by click/key; false if timer
 }
 ```
 
@@ -118,6 +119,15 @@ interface ScreenFlasher {
 **Flash window properties:**
 - `JFrame`, undecorated, `Type.POPUP`
 - Full-screen bounds per monitor
+
+**Click / Key-press dismissal:**
+Each flash window registers a `MouseAdapter.mouseClicked()` and a `KeyAdapter.keyPressed()`
+listener (on the frame, panel, and label). When triggered:
+1. Sets `userDismissed = true`
+2. Calls `forceCleanup()` — which disposes all windows and unblocks `flashMultiple()`
+
+`wasUserDismissed()` returns `userDismissed.get()`. The flag is reset to `false` at the
+start of every new `flashMultiple()` call.
 - `alwaysOnTop = true`
 - Custom `JPanel` painting: colored background + event text
 
@@ -172,6 +182,39 @@ static void setOnFlashReady(Runnable callback)
 - **One-shot:** cleared to `null` after firing
 - **Purpose:** Shows banner at exactly the right moment — after flash windows exist but before elevation timer fights begin
 - **Volatile:** ensures visibility across threads (set on caller thread, read on flash thread)
+
+---
+
+## Click-to-Dismiss and Join Meeting Dialog
+
+When the user clicks or presses any key on a flash window, the flash is dismissed early and
+`OutlookAlerterUI.ScreenFlasherThread` uses `screenFlasher.wasUserDismissed()` to detect this.
+If `true`, it schedules `showJoinMeetingDialog(events)` via `SwingUtilities.invokeLater()`.
+
+### JoinMeetingDialog
+
+**Location:** `com.unhuman.outlookalerter.ui.JoinMeetingDialog`  
+**Extends:** `JDialog` (modal, `APPLICATION_MODAL`)  
+**Factory:** `JoinMeetingDialog.show(Window parent, List<CalendarEvent>, Function<CalendarEvent,String>)`
+
+**Layout (one button per alerted event, sorted by start time):**
+```
+┌─────────────────────────────────────┐
+│  Join Meeting?                      │
+│  ─────────────────────────────────  │
+│  [Team Standup (in 1m)]             │  ← enabled; click opens URL + closes dialog
+│  [Design Review (now)]              │  ← enabled
+│  [Budget Review (in 3m) (No Link)]  │  ← disabled; no join URL found
+│  ─────────────────────────────────  │
+│  [Cancel]                           │
+└─────────────────────────────────────┘
+```
+
+- Events **with** a join URL: enabled `JButton`; clicking opens `Desktop.browse(url)` and disposes dialog
+- Events **without** a join URL: disabled `JButton` with `" (No Link)"` suffix
+- URL resolution uses the same four-tier priority as the tray menu (`getEffectiveJoinUrl()`)
+- Escape key and Cancel button both dispose without opening any URL
+- `urlResolver` is injected as a `Function<CalendarEvent, String>` for headless testability
 
 ---
 

@@ -26,4 +26,20 @@ public interface ScreenFlasher {
     default void forceCleanup() {
         // Default no-op; implementations may override
     }
+
+    /**
+     * Returns true if the most recent flash was dismissed early by the user
+     * (mouse click or key press), false if it expired normally via timer.
+     */
+    default boolean wasUserDismissed() {
+        return false;
+    }
+
+    /**
+     * Returns the screen bounds of the monitor on which the user dismissed the flash,
+     * or {@code null} if the flash expired by timer or no screen information is available.
+     */
+    default java.awt.Rectangle getInteractionScreenBounds() {
+        return null;
+    }
 }

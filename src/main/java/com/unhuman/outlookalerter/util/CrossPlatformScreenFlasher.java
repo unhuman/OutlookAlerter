@@ -15,6 +15,9 @@ import java.awt.RenderingHints;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -29,6 +32,13 @@ public class CrossPlatformScreenFlasher implements ScreenFlasher {
     // Track active flash windows for external cleanup
     private final List<JFrame> activeFlashWindows = new CopyOnWriteArrayList<>();
     private final List<javax.swing.Timer> activeTimers = new CopyOnWriteArrayList<>();
+
+    // Track the active flash thread for early interrupt on user-dismiss
+    private volatile Thread activeFlashThread = null;
+    // Completion latch — signalled by the flash thread (done or forceCleanup on early dismiss)
+    private volatile CountDownLatch activeFlashLatch = null;
+    // True if the most recent flash was dismissed by user interaction (click/key) rather than timer.
+    private final AtomicBoolean userDismissed = new AtomicBoolean(false);
 
     /**
      * Constructor that initializes the flash duration from ConfigManager
@@ -166,6 +176,8 @@ public class CrossPlatformScreenFlasher implements ScreenFlasher {
     @Override
     public void flashMultiple(List<CalendarEvent> events) {
         if (events == null || events.isEmpty()) return;
+        userDismissed.set(false);
+        final CountDownLatch completeLatch = new CountDownLatch(1);
         try {
             GraphicsDevice[] screens = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices();
             List<JFrame> flashWindows = new ArrayList<>();
@@ -174,13 +186,36 @@ public class CrossPlatformScreenFlasher implements ScreenFlasher {
                 JFrame frame = new JFrame(screen.getDefaultConfiguration());
                 frame.setUndecorated(true);
                 frame.setAlwaysOnTop(true);
-                frame.add(new MultipleMeetingsPanel(events));
+                frame.setFocusableWindowState(true);
+                MultipleMeetingsPanel meetingsPanel = new MultipleMeetingsPanel(events);
+                frame.add(meetingsPanel);
                 frame.setBounds(bounds);
+                // Dismiss listeners: mouse press or key press dismisses flash early
+                // NOTE: mousePressed (not mouseClicked) is required — on macOS the first
+                // click on an inactive window is consumed for activation and never delivers
+                // mouseClicked to the Swing component.
+                java.awt.event.MouseAdapter dismissOnClick = new java.awt.event.MouseAdapter() {
+                    @Override
+                    public void mousePressed(java.awt.event.MouseEvent e) {
+                        userDismissed.set(true);
+                        forceCleanup();
+                    }
+                };
+                frame.addMouseListener(dismissOnClick);
+                meetingsPanel.addMouseListener(dismissOnClick);
+                frame.addKeyListener(new java.awt.event.KeyAdapter() {
+                    @Override
+                    public void keyPressed(java.awt.event.KeyEvent e) {
+                        userDismissed.set(true);
+                        forceCleanup();
+                    }
+                });
                 flashWindows.add(frame);
             }
             // Track windows for external cleanup BEFORE starting flash thread,
             // so forceCleanup() can dispose them even during setup
             activeFlashWindows.addAll(flashWindows);
+            activeFlashLatch = completeLatch;
             Thread flashThread = new Thread(() -> {
                 try {
                     // Record start time for proper duration tracking
@@ -231,7 +266,7 @@ public class CrossPlatformScreenFlasher implements ScreenFlasher {
                     activeTimers.add(colorTimer);
                     colorTimer.start();
 
-                    // Wait exactly for the configured duration
+                    // Wait for the configured duration (interruptible for early user-dismiss)
                     Thread.sleep(flashDurationMs);
 
                     // Stop timers
@@ -250,22 +285,51 @@ public class CrossPlatformScreenFlasher implements ScreenFlasher {
 
                     long endTimeMs = System.currentTimeMillis();
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Flash (multiple) completed after " + (endTimeMs - startTimeMs) / 1000.0 + " seconds");
-
+                } catch (InterruptedException ie) {
+                    // Early dismissal by user — cleanup already done by forceCleanup()
+                    Thread.currentThread().interrupt();
                 } catch (Exception e) {
                     LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error during screen flash: " + e.getMessage());
+                } finally {
+                    CountDownLatch latch = activeFlashLatch;
+                    if (latch != null) {
+                        activeFlashLatch = null;
+                        latch.countDown();
+                    }
                 }
             });
+            activeFlashThread = flashThread;
             flashThread.setDaemon(true);
             flashThread.start();
+            // Block until flash completes (timer-based or user-dismissed via forceCleanup)
+            try {
+                boolean completed = completeLatch.await(flashDurationMs + 10000L, TimeUnit.MILLISECONDS);
+                if (!completed) {
+                    LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "Cross-platform flash did not complete within timeout, forcing cleanup");
+                    forceCleanup();
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                forceCleanup();
+            }
         } catch (Exception e) {
             LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "Error initializing screen flash: " + e.getMessage());
+            completeLatch.countDown(); // ensure we unblock even on setup failure
+        } finally {
+            activeFlashLatch = null;
+            activeFlashThread = null;
         }
+    }
+
+    @Override
+    public boolean wasUserDismissed() {
+        return userDismissed.get();
     }
 
     @Override
     public void forceCleanup() {
         // Stop all active timers
-        for (javax.swing.Timer timer : activeTimers) {
+        for (javax.swing.Timer timer : new ArrayList<>(activeTimers)) {
             try {
                 timer.stop();
             } catch (Exception ignored) {
@@ -273,9 +337,15 @@ public class CrossPlatformScreenFlasher implements ScreenFlasher {
         }
         activeTimers.clear();
 
+        // Interrupt the flash thread to wake it from sleep early
+        Thread t = activeFlashThread;
+        if (t != null && t.isAlive()) {
+            t.interrupt();
+        }
+
         // Dispose all active flash windows
         SwingUtilities.invokeLater(() -> {
-            for (JFrame frame : activeFlashWindows) {
+            for (JFrame frame : new ArrayList<>(activeFlashWindows)) {
                 try {
                     if (frame.isDisplayable()) {
                         frame.dispose();
@@ -285,6 +355,13 @@ public class CrossPlatformScreenFlasher implements ScreenFlasher {
             }
             activeFlashWindows.clear();
         });
+
+        // Signal completion latch (unblocks flashMultiple if it is blocking)
+        CountDownLatch latch = activeFlashLatch;
+        if (latch != null) {
+            activeFlashLatch = null;
+            latch.countDown();
+        }
     }
 
     /**

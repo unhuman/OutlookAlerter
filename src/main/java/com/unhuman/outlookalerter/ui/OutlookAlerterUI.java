@@ -1797,6 +1797,30 @@ public class OutlookAlerterUI extends JFrame {
     }
 
     /**
+     * Shows the join meeting dialog after a flash is dismissed by user interaction.
+     * Presents each alerted event with a join button (enabled if a URL was found,
+     * disabled with "(No Link)" suffix otherwise).
+     */
+    private void showJoinMeetingDialog(List<CalendarEvent> events) {
+        showJoinMeetingDialog(events, null);
+    }
+
+    private void showJoinMeetingDialog(List<CalendarEvent> events, java.awt.Rectangle screenBounds) {
+        if (events == null || events.isEmpty()) return;
+        try {
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "JoinMeetingDialog: showing for " + events.size() + " event(s) on screen=" + screenBounds);
+            // Pass 'this' as parent so APPLICATION_MODAL works correctly — Java
+            // requires a non-null owner window for modality to take effect on macOS.
+            // Positioning is handled separately via screenBounds, not via the parent.
+            JoinMeetingDialog.show(this, events, this::getEffectiveJoinUrl, screenBounds);
+        } catch (Exception ex) {
+            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
+                "JoinMeetingDialog: failed to show dialog: " + ex.getMessage(), ex);
+        }
+    }
+
+    /**
      * Builds a concise tray menu label for a meeting join item.
      * Format:  "Subject (now)"  or  "Subject (in 5m)"
      */
@@ -2109,6 +2133,15 @@ public class OutlookAlerterUI extends JFrame {
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Starting flashMultiple for " + events.size() + " events");
                     screenFlasher.flashMultiple(events);
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Finished flashMultiple");
+                    // If the user clicked or pressed a key to dismiss the flash early,
+                    // show a dialog so they can jump directly into a meeting.
+                    boolean dismissed = screenFlasher.wasUserDismissed();
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                        "ScreenFlasher: wasUserDismissed=" + dismissed);
+                    if (dismissed) {
+                        java.awt.Rectangle screenBounds = screenFlasher.getInteractionScreenBounds();
+                        SwingUtilities.invokeLater(() -> showJoinMeetingDialog(events, screenBounds));
+                    }
                     // Post-flash beep if enabled.
                     // flashMultiple() is now a blocking call on MacScreenFlasher: it returns only
                     // after forceCleanup() has run (i.e. the flash windows have been disposed).

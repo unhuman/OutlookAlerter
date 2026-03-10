@@ -196,6 +196,47 @@ Save button →
 
 ---
 
+## JoinMeetingDialog
+
+**Location:** `com.unhuman.outlookalerter.ui.JoinMeetingDialog`  
+**Extends:** `JDialog` (modal, `APPLICATION_MODAL`)  
+**Trigger:** Shown by `OutlookAlerterUI.showJoinMeetingDialog()` when the user dismisses a flash
+window early (mouse click or key press).
+
+### Dialog Layout
+
+```
+┌────────────────────────────────────────┐
+│  Join Meeting?  (or "Join a Meeting")  │
+│                                        │
+│  [Team Standup (in 1m)]                │  ← enabled (has join URL)
+│  [Design Review (now)]                 │  ← enabled
+│  [Budget Review (in 3m) (No Link)]     │  ← disabled (no URL found)
+│                                        │
+│  [Cancel]                              │
+└────────────────────────────────────────┘
+```
+
+- **Events with a join URL:** enabled `JButton`; clicking opens the URL in the default browser via
+  `Desktop.getDesktop().browse(URI)` then disposes the dialog
+- **Events without a join URL:** disabled `JButton` with `" (No Link)"` suffix
+- Events are sorted by start time (earliest first)
+- Button label format: `"Subject (in Nm)"` or `"Subject (now)"` for current/past meetings
+- Escape key and Cancel button close without opening any URL
+- URL resolution delegates to `OutlookAlerterUI.getEffectiveJoinUrl()` (same four-tier logic used by the tray menu)
+
+### Construction
+
+```java
+// Factory method called on EDT from OutlookAlerterUI:
+JoinMeetingDialog.show(Window parent, List<CalendarEvent> events,
+                       Function<CalendarEvent, String> urlResolver)
+```
+
+The `urlResolver` parameter is injected to keep the dialog testable in headless environments.
+
+---
+
 ## SimpleTokenDialog
 
 **Location:** `com.unhuman.outlookalerter.ui.SimpleTokenDialog`  

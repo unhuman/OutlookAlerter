@@ -43,15 +43,16 @@ com.unhuman.outlookalerter
 │   ├── OutlookAlerterConsole   # Console/headless mode
 │   ├── SettingsDialog          # Settings form (JDialog)
 │   ├── SimpleTokenDialog       # Token entry dialog (singleton JDialog)
+│   ├── JoinMeetingDialog       # Post-flash join meeting dialog (modal JDialog, per-event buttons)
 │   ├── LogViewer               # Log display window (JFrame)
 │   ├── IconManager             # Programmatic icon generation (normal/invalid states)
 │   └── IconGenerator           # CLI tool to export icons as PNG
 └── util/
-    ├── ScreenFlasher           # Interface: flash(event), flashMultiple(events)
+    ├── ScreenFlasher           # Interface: flash(event), flashMultiple(events), wasUserDismissed()
     ├── ScreenFlasherFactory    # Platform-specific factory
-    ├── MacScreenFlasher        # macOS flash implementation
+    ├── MacScreenFlasher        # macOS flash implementation (click/key dismissal → join dialog)
     ├── WindowsScreenFlasher    # Windows flash implementation (JNA + Swing fallback)
-    ├── CrossPlatformScreenFlasher  # Generic Swing flash
+    ├── CrossPlatformScreenFlasher  # Generic Swing flash (blocking flashMultiple, click/key dismissal)
     ├── MacSleepWakeMonitor     # Sleep/wake detection via time-jump polling
     ├── MacLockUnlockMonitor    # macOS screen lock/unlock detection via ioreg polling
     ├── LogManager              # Singleton log buffer with categories
@@ -210,19 +211,21 @@ src/test/java/com/unhuman/outlookalerter/
 │   └── SingleInstanceManagerTest       #  6 tests — file lock acquire/release/exclusive
 ├── ui/
 │   ├── IconManagerTest                 # 12 tests — icon generation, caching, valid/invalid
-│   ├── OutlookAlerterUIAlertTest       # 25 tests — alert pipeline, flash, checkForEventAlerts, checkAlertsOnWake
+│   ├── JoinMeetingDialogTest           # 10 tests — button rendering, URL resolver, Cancel, factory
+    ├── OutlookAlerterUIAlertTest       # 31 tests — alert pipeline, flash, checkForEventAlerts, checkAlertsOnWake, join dialog
 │   └── OutlookAlerterUITrayMenuTest    # 33 tests — tray menu, event display, status label, refresh flow
 └── util/
     ├── FlashOverlapIntegrationTest     # manual visual test only (no @Test methods — requires real display)
     ├── HtmlUtilTest                    # 11 tests — HTML escaping, null, XSS, unicode
     ├── LogManagerTest                  # 29 tests — singleton, levels, buffer, filtering
     ├── MacLockUnlockMonitorTest        #  6 tests — lock/unlock detection, listener registration
-    ├── MacScreenFlasherTest            # 11 tests — flash semaphore, concurrency, completion latch
+    ├── MacScreenFlasherTest            # 14 tests — flash semaphore, concurrency, completion latch, user-dismissal flag
     ├── MacSleepWakeMonitorTest         # 10 tests — singleton, lifecycle, listeners
     └── ScreenFlasherFactoryTest        #  5 tests — platform factory, interface contract
 ```
 
-Total: **281 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
+Total: **306 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
+(`JoinMeetingDialogTest` tests are disabled in headless CI via `@DisabledIfSystemProperty`.)
 
 Tests call Java source classes directly. Private fields (e.g., `OutlookClient.GRAPH_ENDPOINT`) are accessed via reflection where necessary.
 

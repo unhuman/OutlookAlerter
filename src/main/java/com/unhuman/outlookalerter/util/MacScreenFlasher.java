@@ -1,14 +1,22 @@
 package com.unhuman.outlookalerter.util;
 
+import java.awt.AWTEvent;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
+import java.awt.event.AWTEventListener;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -90,6 +98,19 @@ public class MacScreenFlasher implements ScreenFlasher {
     // races that cause stuck flash windows when wake and upcoming-meeting alerts overlap.
     private final Semaphore flashSemaphore = new Semaphore(1);
     private volatile CountDownLatch activeFlashLatch = null;
+
+    // True if the most recent flash was dismissed by user interaction (click/key) rather than timer.
+    private final AtomicBoolean userDismissed = new AtomicBoolean(false);
+
+    // Screen bounds of the monitor where the dismissal interaction occurred.
+    // Null when the flash expired by timer or no component source was available.
+    private volatile Rectangle interactionScreenBounds = null;
+
+    // Global AWT event listener used to catch clicks/keypresses while a flash is active.
+    // This is necessary because the full-screen banner overlay window sits on top of the
+    // flash frames and interceptss all mouse events before they reach the flash windows.
+    // A global listener fires before any window receives the event, bypassing that issue.
+    private volatile AWTEventListener globalFlashDismissListener = null;
 
     // Guard against duplicate shutdown hooks
     private static volatile boolean shutdownHookRegistered = false;
@@ -224,6 +245,13 @@ public class MacScreenFlasher implements ScreenFlasher {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                 "MacScreenFlasher: Starting cleanup of " + activeFlashFrames.size() + " frames and " + activeTimers.size() + " timers");
 
+            // Remove the global dismiss listener so it doesn't fire after cleanup.
+            AWTEventListener listenerToRemove = globalFlashDismissListener;
+            if (listenerToRemove != null) {
+                globalFlashDismissListener = null;
+                Toolkit.getDefaultToolkit().removeAWTEventListener(listenerToRemove);
+            }
+
             // Stop all active timers first (CopyOnWriteArrayList is already thread-safe)
             for (Timer timer : new ArrayList<Timer>(activeTimers)) {
                 try {
@@ -313,9 +341,71 @@ public class MacScreenFlasher implements ScreenFlasher {
         }
     }
 
+    /**
+     * Registers a one-shot global AWTEventListener that catches the first mouse-press or
+     * key-press anywhere on screen while the flash is active.  This is the primary dismiss
+     * mechanism because the full-screen banner overlay intercepts clicks before they reach
+     * per-window MouseAdapters.  The listener removes itself immediately after firing so
+     * subsequent events (e.g. cursor movement) do not re-trigger cleanup.
+     */
+    private void armGlobalFlashDismissListener() {
+        AWTEventListener listener = new AWTEventListener() {
+            @Override
+            public void eventDispatched(AWTEvent event) {
+                int id = event.getID();
+                if (id == MouseEvent.MOUSE_PRESSED || id == KeyEvent.KEY_PRESSED) {
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                        "FlashWindow: global " + (id == MouseEvent.MOUSE_PRESSED ? "mousePressed" : "keyPressed")
+                        + " — dismissing flash");
+                    // Remove immediately so no further events re-enter this block.
+                    Toolkit.getDefaultToolkit().removeAWTEventListener(this);
+                    globalFlashDismissListener = null;
+                    // Capture the screen where the interaction occurred so the
+                    // join-meeting dialog can be shown on that same monitor.
+                    if (id == MouseEvent.MOUSE_PRESSED && event instanceof MouseEvent) {
+                        Component src = ((MouseEvent) event).getComponent();
+                        if (src != null) {
+                            GraphicsConfiguration gc = src.getGraphicsConfiguration();
+                            if (gc != null) {
+                                interactionScreenBounds = gc.getBounds();
+                                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                                    "FlashWindow: interaction screen=" + interactionScreenBounds);
+                            }
+                        }
+                    } else if (id == KeyEvent.KEY_PRESSED && event instanceof KeyEvent) {
+                        Component src = ((KeyEvent) event).getComponent();
+                        if (src != null) {
+                            GraphicsConfiguration gc = src.getGraphicsConfiguration();
+                            if (gc != null) {
+                                interactionScreenBounds = gc.getBounds();
+                            }
+                        }
+                    }
+                    userDismissed.set(true);
+                    forceCleanup();
+                }
+            }
+        };
+        globalFlashDismissListener = listener;
+        Toolkit.getDefaultToolkit().addAWTEventListener(listener,
+            AWTEvent.MOUSE_EVENT_MASK | AWTEvent.KEY_EVENT_MASK);
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+            "FlashWindow: global dismiss listener armed");
+    }
+
     @Override
     public void flash(CalendarEvent event) {
         flashMultiple(Arrays.asList(event));
+    }
+
+    @Override
+    public boolean wasUserDismissed() {
+        return userDismissed.get();
+    }
+
+    @Override
+    public Rectangle getInteractionScreenBounds() {
+        return interactionScreenBounds;
     }
 
     @Override
@@ -338,6 +428,9 @@ public class MacScreenFlasher implements ScreenFlasher {
             LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Interrupted while waiting for flash lock, skipping");
             return;
         }
+
+        userDismissed.set(false);
+        interactionScreenBounds = null;
 
         // This latch is set just before the cleanup timers are armed so that forceCleanup()
         // can signal it once the windows are actually disposed, unblocking this thread.
@@ -433,6 +526,10 @@ public class MacScreenFlasher implements ScreenFlasher {
         if (readyCallback != null) {
             SwingUtilities.invokeLater(readyCallback);
         }
+
+        // Register global dismiss listener AFTER windows are visible so the banner
+        // callback above doesn't accidentally trigger it during setup.
+        armGlobalFlashDismissListener();
 
         // Request user attention on macOS to help bring windows above full-screen apps
         try {
@@ -664,6 +761,9 @@ public class MacScreenFlasher implements ScreenFlasher {
 
             // Store the label for countdown updates
             countdownLabels.put(frame, label);
+
+            // Per-window dismiss listeners as fallback (the primary mechanism is the
+            // global AWTEventListener registered in armGlobalFlashDismissListener()).
 
             // Show the frame and force it to front immediately
             // Note: pack() was intentionally removed — it resizes the frame to preferred size
