@@ -3,8 +3,11 @@ package com.unhuman.outlookalerter.ui;
 import com.unhuman.outlookalerter.model.CalendarEvent;
 
 import javax.swing.*;
+import javax.swing.plaf.basic.BasicButtonUI;
 import java.awt.*;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.net.URI;
 import java.util.Comparator;
 import java.util.List;
@@ -23,6 +26,76 @@ public class JoinMeetingDialog extends JDialog {
 
     static final int AUTO_DISMISS_SECONDS = 15;
 
+    // ── Fixed structural colours (independent of user settings) ──────────────
+    private static final Color BG_DIALOG    = new Color( 28,  28,  42);
+    private static final Color BTN_DISABLED = new Color( 55,  55,  75);
+    private static final Color BTN_CANCEL   = new Color( 65,  65,  90);
+    private static final Color BTN_CANCEL_HOV = new Color( 90,  90, 120);
+    private static final Color PROGRESS_BG  = new Color( 50,  50,  70);
+
+    /** Decodes a hex color string, returning {@code fallback} on any failure. */
+    private static Color configColor(String hex, Color fallback) {
+        if (hex == null || hex.isBlank()) return fallback;
+        try { return Color.decode(hex); } catch (Exception e) { return fallback; }
+    }
+
+    /** Returns a brighter version of {@code c} by scaling each channel by {@code factor}. */
+    private static Color brighten(Color c, float factor) {
+        return new Color(
+            Math.min(255, (int) (c.getRed()   * factor)),
+            Math.min(255, (int) (c.getGreen() * factor)),
+            Math.min(255, (int) (c.getBlue()  * factor)));
+    }
+
+    // ── WCAG 2.1 contrast utilities ──────────────────────────────────────────
+
+    private static double srgbLinear(int channel) {
+        double c = channel / 255.0;
+        return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    private static double relativeLuminance(Color c) {
+        return 0.2126 * srgbLinear(c.getRed())
+             + 0.7152 * srgbLinear(c.getGreen())
+             + 0.0722 * srgbLinear(c.getBlue());
+    }
+
+    private static double contrastRatio(Color c1, Color c2) {
+        double l1 = relativeLuminance(c1), l2 = relativeLuminance(c2);
+        return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    }
+
+    /**
+     * Returns white or near-black, whichever has higher contrast against {@code bg}.
+     * Used as the starting point for text on an unknown background colour.
+     */
+    private static Color contrastingText(Color bg) {
+        return relativeLuminance(bg) > 0.179 ? new Color(28, 28, 42) : Color.WHITE;
+    }
+
+    /**
+     * Binary-searches for the most blended colour between {@code fg} and {@code bg}
+     * that still achieves a contrast ratio of at least {@code minRatio} against {@code bg}.
+     * Returns unmodified {@code fg} if even that fails (caller fallback).
+     */
+    private static Color wcagBlend(Color fg, Color bg, double minRatio) {
+        if (contrastRatio(fg, bg) < minRatio) return fg;   // starting colour already fails
+        float lo = 0, hi = 1;
+        for (int i = 0; i < 16; i++) {
+            float mid = (lo + hi) / 2f;
+            Color blended = blend(fg, bg, mid);
+            if (contrastRatio(blended, bg) >= minRatio) lo = mid; else hi = mid;
+        }
+        return blend(fg, bg, lo);
+    }
+
+    private static Color blend(Color a, Color b, float t) {
+        return new Color(
+            Math.min(255, Math.max(0, (int) (a.getRed()   * (1-t) + b.getRed()   * t))),
+            Math.min(255, Math.max(0, (int) (a.getGreen() * (1-t) + b.getGreen() * t))),
+            Math.min(255, Math.max(0, (int) (a.getBlue()  * (1-t) + b.getBlue()  * t))));
+    }
+
     private final List<CalendarEvent> displayedEvents;
 
     /**
@@ -34,22 +107,65 @@ public class JoinMeetingDialog extends JDialog {
      */
     public JoinMeetingDialog(Window parent, List<CalendarEvent> events,
             Function<CalendarEvent, String> urlResolver) {
-        super(parent, events.size() == 1 ? "Join Meeting?" : "Join a Meeting",
-                ModalityType.APPLICATION_MODAL);
+        super(parent, "Meeting Alert", ModalityType.APPLICATION_MODAL);
         this.displayedEvents = new java.util.ArrayList<>(events);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setResizable(false);
 
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(BorderFactory.createEmptyBorder(14, 18, 14, 18));
+        // ── Resolve colours from configuration ───────────────────────────────
+        com.unhuman.outlookalerter.core.ConfigManager cfg =
+                com.unhuman.outlookalerter.core.ConfigManager.getInstance();
+        Color headerBg   = configColor(cfg != null ? cfg.getAlertBannerColor()     : null, new Color(220, 48,  0));
+        Color headerFg   = configColor(cfg != null ? cfg.getAlertBannerTextColor() : null, Color.WHITE);
+        // Subtitle: blend toward bg as far as possible while keeping ≥4.5:1 contrast (WCAG AA)
+        Color headerSub  = wcagBlend(headerFg, headerBg, 4.5);
+        Color btnJoinBg  = configColor(cfg != null ? cfg.getFlashColor()     : null, new Color(128, 0, 0));
+        Color btnJoinFg  = configColor(cfg != null ? cfg.getFlashTextColor() : null, Color.WHITE);
+        Color btnJoinHov = brighten(btnJoinBg, 1.35f);
+        // Disabled button: maximally muted text that still clears WCAG AA against the dark bg
+        Color btnDisabledFg = wcagBlend(contrastingText(BTN_DISABLED), BTN_DISABLED, 4.5);
 
-        // Title label
+        // ── Root: dark background ─────────────────────────────────────────────
+        JPanel root = new JPanel(new BorderLayout(0, 0));
+        root.setBackground(BG_DIALOG);
+
+        // ── Header: coloured band with icon and title ─────────────────────────
+        JPanel header = new JPanel(new BorderLayout(12, 0));
+        header.setBackground(headerBg);
+        header.setOpaque(true);
+        header.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
+
+        JLabel iconLabel = new JLabel("\u25B6");
+        iconLabel.setFont(iconLabel.getFont().deriveFont(Font.BOLD, 28f));
+        iconLabel.setForeground(headerFg);
+        iconLabel.setOpaque(false);
+        header.add(iconLabel, BorderLayout.WEST);
+
+        JPanel headerText = new JPanel();
+        headerText.setLayout(new BoxLayout(headerText, BoxLayout.Y_AXIS));
+        headerText.setOpaque(false);
+
         JLabel titleLabel = new JLabel(events.size() == 1 ? "Join Meeting?" : "Join a Meeting");
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 14f));
-        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        content.add(titleLabel);
-        content.add(Box.createVerticalStrut(12));
+        titleLabel.setForeground(headerFg);
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 16f));
+        headerText.add(titleLabel);
+
+        String subText = events.size() == 1
+                ? "A meeting is starting soon"
+                : events.size() + " meetings are starting soon";
+        JLabel subLabel = new JLabel(subText);
+        subLabel.setForeground(headerSub);
+        subLabel.setFont(subLabel.getFont().deriveFont(Font.PLAIN, 12f));
+        headerText.add(subLabel);
+
+        header.add(headerText, BorderLayout.CENTER);
+        root.add(header, BorderLayout.NORTH);
+
+        // ── Body: per-meeting join buttons ────────────────────────────────────
+        JPanel body = new JPanel();
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.setBackground(BG_DIALOG);
+        body.setBorder(BorderFactory.createEmptyBorder(12, 16, 8, 16));
 
         // Sort events by start time (earliest first)
         List<CalendarEvent> sorted = events.stream()
@@ -61,10 +177,20 @@ public class JoinMeetingDialog extends JDialog {
         for (CalendarEvent event : sorted) {
             String url = urlResolver.apply(event);
             String buttonText = buildButtonLabel(event);
-
-            JButton btn;
+            JButton btn = makeStyledButton(
+                    url != null ? "\u25B6  " + buttonText : buttonText + "  (No Link)",
+                    url != null ? btnJoinBg      : BTN_DISABLED,
+                    url != null ? btnJoinHov     : BTN_DISABLED,
+                    url != null ? btnJoinFg      : btnDisabledFg);
+            // Never call setEnabled(false): BasicButtonUI ignores setForeground() when
+            // disabled and paints its own barely-visible disabled colour instead.
+            // Visual cues (dark bg, italic, default cursor, no hover, "(No Link)" label)
+            // communicate non-interactivity without sacrificing legibility.
+            if (url == null) {
+                btn.setFont(btn.getFont().deriveFont(Font.ITALIC, 13f));
+                btn.setCursor(Cursor.getDefaultCursor());
+            }
             if (url != null) {
-                btn = new JButton(buttonText);
                 final String finalUrl = url;
                 btn.addActionListener(e -> {
                     try {
@@ -74,24 +200,47 @@ public class JoinMeetingDialog extends JDialog {
                     }
                     dispose();
                 });
-            } else {
-                btn = new JButton(buttonText + " (No Link)");
-                btn.setEnabled(false);
             }
-
-            btn.setAlignmentX(Component.CENTER_ALIGNMENT);
-            btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, btn.getPreferredSize().height));
-            content.add(btn);
-            content.add(Box.createVerticalStrut(6));
+            body.add(btn);
+            body.add(Box.createVerticalStrut(8));
         }
+        root.add(body, BorderLayout.CENTER);
 
-        content.add(Box.createVerticalStrut(4));
+        // ── Footer: shrinking countdown bar + cancel button ───────────────────
+        JPanel footer = new JPanel();
+        footer.setLayout(new BoxLayout(footer, BoxLayout.Y_AXIS));
+        footer.setBackground(BG_DIALOG);
+        footer.setBorder(BorderFactory.createEmptyBorder(0, 16, 14, 16));
 
-        // Cancel button — label shows countdown seconds and auto-disposes on expiry
-        JButton cancelBtn = new JButton(cancelLabel(AUTO_DISMISS_SECONDS));
-        cancelBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        // Custom-painted so macOS Aqua L&F cannot override the colours.
+        // headerBg is effectively-final — captured by the anonymous paintComponent below.
+        JProgressBar bar = new JProgressBar(0, AUTO_DISMISS_SECONDS) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setColor(PROGRESS_BG);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                int filled = (int) Math.round(getWidth() * (double) getValue() / getMaximum());
+                g2.setColor(headerBg);
+                g2.fillRect(0, 0, filled, getHeight());
+                g2.dispose();
+            }
+        };
+        bar.setValue(AUTO_DISMISS_SECONDS);
+        bar.setMinimumSize(new Dimension(0, 6));
+        bar.setPreferredSize(new Dimension(380, 6));
+        bar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 6));
+        bar.setOpaque(false);
+        bar.setBorderPainted(false);
+        bar.setStringPainted(false);
+        bar.setAlignmentX(Component.LEFT_ALIGNMENT);
+        footer.add(bar);
+        footer.add(Box.createVerticalStrut(8));
+
+        JButton cancelBtn = makeStyledButton(cancelLabel(AUTO_DISMISS_SECONDS), BTN_CANCEL, BTN_CANCEL_HOV, Color.WHITE);
         cancelBtn.addActionListener(e -> dispose());
-        content.add(cancelBtn);
+        footer.add(cancelBtn);
+        root.add(footer, BorderLayout.SOUTH);
 
         // Escape also closes
         getRootPane().registerKeyboardAction(
@@ -100,15 +249,15 @@ public class JoinMeetingDialog extends JDialog {
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
         getRootPane().setDefaultButton(cancelBtn);
 
-        setContentPane(content);
+        setContentPane(root);
         pack();
-        setMinimumSize(new Dimension(340, getHeight()));
+        setMinimumSize(new Dimension(380, getHeight()));
         // Stay on top of all other windows — critical on macOS where the app may be
         // in the background (system tray) and a dialog with an invisible parent would
         // otherwise appear behind the frontmost application.
         setAlwaysOnTop(true);
 
-        // Start countdown: tick every second, dispose when it reaches 0.
+        // ── Countdown timer ───────────────────────────────────────────────────
         AtomicInteger remaining = new AtomicInteger(AUTO_DISMISS_SECONDS);
         Timer countdown = new Timer(1000, null);
         countdown.addActionListener(tick -> {
@@ -118,6 +267,7 @@ public class JoinMeetingDialog extends JDialog {
                 dispose();
             } else {
                 cancelBtn.setText(cancelLabel(left));
+                bar.setValue(left);
             }
         });
         // Stop the timer when the dialog closes (user clicked a button or Escape).
@@ -128,6 +278,33 @@ public class JoinMeetingDialog extends JDialog {
             }
         });
         countdown.start();
+    }
+
+    /**
+     * Creates a flat, custom-coloured button that bypasses the macOS Aqua L&F
+     * so {@code bg} and {@code hoverBg} are always respected.
+     */
+    private static JButton makeStyledButton(String text, Color bg, Color hoverBg, Color fg) {
+        JButton btn = new JButton(text);
+        btn.setUI(new BasicButtonUI());
+        btn.setBackground(bg);
+        btn.setForeground(fg);
+        btn.setFont(btn.getFont().deriveFont(Font.BOLD, 13f));
+        btn.setOpaque(true);
+        btn.setBorderPainted(false);
+        btn.setFocusPainted(false);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        btn.setPreferredSize(new Dimension(380, 44));
+        btn.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
+        if (!hoverBg.equals(bg)) {
+            btn.addMouseListener(new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) { btn.setBackground(hoverBg); }
+                @Override public void mouseExited(MouseEvent e)  { btn.setBackground(bg); }
+            });
+        }
+        return btn;
     }
 
     private static String cancelLabel(int seconds) {
