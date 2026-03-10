@@ -154,6 +154,10 @@ class OutlookAlerterUIAlertTest {
 
         // Set lastTokenValidationTime to now so token validation is skipped
         setField(ui, "lastTokenValidationTime", System.currentTimeMillis());
+
+        // activeJoinDialog is skipped by Unsafe.allocateInstance — initialise it so
+        // showJoinMeetingDialog does not NPE when checking for an existing open dialog.
+        setField(ui, "activeJoinDialog", new java.util.concurrent.atomic.AtomicReference<>());
     }
 
     @AfterEach

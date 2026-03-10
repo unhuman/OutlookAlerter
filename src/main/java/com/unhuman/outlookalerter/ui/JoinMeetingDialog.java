@@ -8,6 +8,7 @@ import java.awt.event.KeyEvent;
 import java.net.URI;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -20,6 +21,10 @@ import java.util.stream.Collectors;
  */
 public class JoinMeetingDialog extends JDialog {
 
+    static final int AUTO_DISMISS_SECONDS = 15;
+
+    private final List<CalendarEvent> displayedEvents;
+
     /**
      * Creates the dialog.
      *
@@ -31,6 +36,7 @@ public class JoinMeetingDialog extends JDialog {
             Function<CalendarEvent, String> urlResolver) {
         super(parent, events.size() == 1 ? "Join Meeting?" : "Join a Meeting",
                 ModalityType.APPLICATION_MODAL);
+        this.displayedEvents = new java.util.ArrayList<>(events);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setResizable(false);
 
@@ -81,8 +87,8 @@ public class JoinMeetingDialog extends JDialog {
 
         content.add(Box.createVerticalStrut(4));
 
-        // Cancel button
-        JButton cancelBtn = new JButton("Cancel");
+        // Cancel button — label shows countdown seconds and auto-disposes on expiry
+        JButton cancelBtn = new JButton(cancelLabel(AUTO_DISMISS_SECONDS));
         cancelBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
         cancelBtn.addActionListener(e -> dispose());
         content.add(cancelBtn);
@@ -101,13 +107,43 @@ public class JoinMeetingDialog extends JDialog {
         // in the background (system tray) and a dialog with an invisible parent would
         // otherwise appear behind the frontmost application.
         setAlwaysOnTop(true);
+
+        // Start countdown: tick every second, dispose when it reaches 0.
+        AtomicInteger remaining = new AtomicInteger(AUTO_DISMISS_SECONDS);
+        Timer countdown = new Timer(1000, null);
+        countdown.addActionListener(tick -> {
+            int left = remaining.decrementAndGet();
+            if (left <= 0) {
+                countdown.stop();
+                dispose();
+            } else {
+                cancelBtn.setText(cancelLabel(left));
+            }
+        });
+        // Stop the timer when the dialog closes (user clicked a button or Escape).
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                countdown.stop();
+            }
+        });
+        countdown.start();
+    }
+
+    private static String cancelLabel(int seconds) {
+        return "Cancel (" + seconds + "s)";
+    }
+
+    /** Returns an unmodifiable view of the events this dialog was built with. */
+    public List<CalendarEvent> getDisplayedEvents() {
+        return java.util.Collections.unmodifiableList(displayedEvents);
     }
 
     /**
      * Positions the dialog centered on the given screen rectangle.
      * If {@code screenBounds} is null, falls back to centering relative to {@code parent}.
      */
-    private void positionOnScreen(Rectangle screenBounds) {
+    void positionOnScreen(Rectangle screenBounds) {
         if (screenBounds == null) {
             // null centers the dialog on the primary display regardless of owner visibility
             setLocationRelativeTo(null);

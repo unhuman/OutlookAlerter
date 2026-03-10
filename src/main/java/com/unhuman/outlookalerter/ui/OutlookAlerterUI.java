@@ -157,6 +157,12 @@ public class OutlookAlerterUI extends JFrame {
     private final OutlookClient outlookClient;
     private ScreenFlasher screenFlasher;
 
+    // Tracks the currently open JoinMeetingDialog so a second flash-dismiss does not
+    // stack a new modal dialog on top — instead the open dialog is replaced with the
+    // merged event list.
+    private final java.util.concurrent.atomic.AtomicReference<JoinMeetingDialog> activeJoinDialog =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
     // UI Components
     private JTextArea eventsTextArea;
     private JButton refreshButton;
@@ -1808,12 +1814,41 @@ public class OutlookAlerterUI extends JFrame {
     private void showJoinMeetingDialog(List<CalendarEvent> events, java.awt.Rectangle screenBounds) {
         if (events == null || events.isEmpty()) return;
         try {
+            // If a dialog is already open, close it and reopen with the merged event list
+            // to prevent stacked APPLICATION_MODAL dialogs.
+            if (activeJoinDialog != null) {
+                JoinMeetingDialog existing = activeJoinDialog.get();
+                if (existing != null && existing.isDisplayable()) {
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                        "JoinMeetingDialog: replacing existing dialog with " + events.size() + " new event(s)");
+                    List<CalendarEvent> merged = new java.util.ArrayList<>(existing.getDisplayedEvents());
+                    for (CalendarEvent e : events) {
+                        if (merged.stream().noneMatch(m -> java.util.Objects.equals(m.getId(), e.getId()))) {
+                            merged.add(e);
+                        }
+                    }
+                    existing.dispose();
+                    events = merged;
+                }
+            }
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                 "JoinMeetingDialog: showing for " + events.size() + " event(s) on screen=" + screenBounds);
             // Pass 'this' as parent so APPLICATION_MODAL works correctly — Java
             // requires a non-null owner window for modality to take effect on macOS.
             // Positioning is handled separately via screenBounds, not via the parent.
-            JoinMeetingDialog.show(this, events, this::getEffectiveJoinUrl, screenBounds);
+            JoinMeetingDialog dialog = new JoinMeetingDialog(this, events, this::getEffectiveJoinUrl);
+            if (activeJoinDialog != null) {
+                activeJoinDialog.set(dialog);
+                dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+                    @Override
+                    public void windowClosed(java.awt.event.WindowEvent e) {
+                        activeJoinDialog.compareAndSet(dialog, null);
+                    }
+                });
+            }
+            dialog.positionOnScreen(screenBounds);
+            SwingUtilities.invokeLater(dialog::toFront);
+            dialog.setVisible(true);
         } catch (Exception ex) {
             LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
                 "JoinMeetingDialog: failed to show dialog: " + ex.getMessage(), ex);

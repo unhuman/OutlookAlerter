@@ -191,7 +191,7 @@ class JoinMeetingDialogTest {
                 // Find the Cancel button and click it
                 List<JButton> buttons = collectButtons(dialog);
                 JButton cancelBtn = buttons.stream()
-                        .filter(b -> "Cancel".equals(b.getText()))
+                        .filter(b -> b.getText().startsWith("Cancel"))
                         .findFirst()
                         .orElseThrow(() -> new AssertionError("Cancel button not found"));
 
