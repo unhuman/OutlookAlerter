@@ -39,6 +39,10 @@ public class SimpleTokenDialog {
     // Default Microsoft Graph URL
     public static final String DEFAULT_GRAPH_URL = "https://developer.microsoft.com/en-us/graph";
 
+    // Sentinel key placed in the tokens map when the dialog is dismissed automatically
+    // because a background silent re-authentication succeeded.
+    public static final String BACKGROUND_AUTH_SUCCESS_KEY = "backgroundAuthSuccess";
+
     // Instance variables
     private JDialog frame;
     private JFrame parentFrame;
@@ -486,6 +490,45 @@ public class SimpleTokenDialog {
         synchronized (LOCK) {
             return instance;
         }
+    }
+
+    /**
+     * Dismiss the dialog automatically when a background silent re-authentication has
+     * already succeeded.  The dialog closes without showing a cancellation message, and
+     * {@link #getTokens()} will return a map containing {@link #BACKGROUND_AUTH_SUCCESS_KEY}
+     * so that callers can distinguish this path from a user-initiated cancel.
+     *
+     * Safe to call from any thread.
+     */
+    public void dismissWithBackgroundSuccess() {
+        synchronized (LOCK) {
+            if (!isShowing) {
+                return; // Dialog is not currently visible — nothing to dismiss
+            }
+            LogManager.getInstance().info(LogCategory.GENERAL,
+                    "SimpleTokenDialog: Background authentication succeeded — dismissing login dialog automatically");
+            tokens = new HashMap<>();
+            tokens.put(BACKGROUND_AUTH_SUCCESS_KEY, "true");
+            isTokenSubmitted = true;
+            isShowing = false;
+            if (latch != null && latch.getCount() > 0) {
+                latch.countDown();
+            }
+        }
+        SwingUtilities.invokeLater(() -> {
+            try {
+                if (frame != null) {
+                    frame.setVisible(false);
+                    frame.dispose();
+                }
+                if (parentFrame != null && parentFrame.isUndecorated()) {
+                    parentFrame.dispose();
+                }
+            } catch (Exception e) {
+                LogManager.getInstance().error(LogCategory.GENERAL,
+                        "SimpleTokenDialog: Error disposing frame after background auth success: " + e.getMessage());
+            }
+        });
     }
 
     /**

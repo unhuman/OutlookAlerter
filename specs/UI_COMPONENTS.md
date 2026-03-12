@@ -279,6 +279,18 @@ Caller                     SimpleTokenDialog
 
 **Returns:** `{accessToken: "...", ignoreCertValidation: "true"/"false"}` or `null` on cancel/timeout.
 
+### Auto-dismiss on Background Authentication
+
+If a background silent re-authentication succeeds while the dialog is already visible (e.g. the periodic token-validation timer in `checkForEventAlerts()` or a post-wake silent refresh call refreshes the token without user interaction), the dialog is automatically dismissed without requiring any input:
+
+1. `OutlookAlerterUI.dismissTokenDialogIfActive()` is called after any successful silent refresh.
+2. `SimpleTokenDialog.dismissWithBackgroundSuccess()` releases the latch, sets a sentinel entry `{backgroundAuthSuccess: "true"}` in the tokens map, marks `isShowing = false`, and disposes the frame.
+3. `getTokens()` returns the sentinel map (non-null, no `accessToken` key).
+4. `OutlookClient.performDirectAuthentication()` detects `backgroundAuthSuccess = "true"` and returns `true` immediately, treating the token already stored in `ConfigManager` as authoritative.
+
+**Constants:**
+- `SimpleTokenDialog.BACKGROUND_AUTH_SUCCESS_KEY = "backgroundAuthSuccess"` — sentinel key placed in the returned map when auto-dismissed.
+
 ---
 
 ## LogViewer

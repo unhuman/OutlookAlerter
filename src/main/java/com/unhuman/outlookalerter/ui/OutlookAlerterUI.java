@@ -574,6 +574,7 @@ public class OutlookAlerterUI extends JFrame {
                             configManager.updateTokens(refreshed, null, configManager.getIgnoreCertValidation());
                             LogManager.getInstance().info(LogCategory.GENERAL,
                                     "[OutlookAlerterUI] Post-wake: silent token refresh successful");
+                            dismissTokenDialogIfActive();
                         } else {
                             LogManager.getInstance().info(LogCategory.GENERAL,
                                     "[OutlookAlerterUI] Post-wake: silent refresh failed — will prompt on next calendar fetch");
@@ -1143,6 +1144,7 @@ public class OutlookAlerterUI extends JFrame {
                         // before falling back to showing the interactive dialog
                         if (outlookClient.attemptSilentTokenRefresh()) {
                             LogManager.getInstance().info(LogCategory.DATA_FETCH, "Token refreshed successfully via silent authentication.");
+                            dismissTokenDialogIfActive();
                         } else {
                             LogManager.getInstance().info(LogCategory.DATA_FETCH, "Silent refresh failed. Prompting for new token.");
                             if (!isTokenDialogActive) {
@@ -1944,6 +1946,23 @@ public class OutlookAlerterUI extends JFrame {
         SimpleTokenDialog dialog = SimpleTokenDialog.getCurrentInstance();
         if (dialog != null) {
             dialog.bringToFront();
+        }
+    }
+
+    /**
+     * Dismiss the login/token dialog automatically when a background
+     * silent re-authentication has already succeeded.
+     * If the dialog is not currently showing this is a no-op.
+     * Safe to call from any thread.
+     */
+    private void dismissTokenDialogIfActive() {
+        if (isTokenDialogActive) {
+            SimpleTokenDialog dialog = SimpleTokenDialog.getCurrentInstance();
+            if (dialog != null && dialog.isVisible()) {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                        "Auto-dismissing token dialog — background authentication succeeded");
+                dialog.dismissWithBackgroundSuccess();
+            }
         }
     }
 

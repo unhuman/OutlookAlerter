@@ -408,6 +408,15 @@ public class OutlookClient {
                 throw new AuthenticationCancelledException("Authentication was cancelled by the user.", "user_cancelled");
             }
 
+            // The dialog was dismissed automatically because a background re-auth already
+            // refreshed the token — nothing more to do here.
+            if ("true".equals(tokens.get(SimpleTokenDialog.BACKGROUND_AUTH_SUCCESS_KEY))) {
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                        "performDirectAuthentication: background auth succeeded — token already updated, skipping manual entry");
+                lastTokenValidationResult = TOKEN_REFRESHED;
+                return true;
+            }
+
             if (!tokens.containsKey("accessToken") || tokens.get("accessToken") == null || tokens.get("accessToken").isEmpty()) {
                 LogManager.getInstance().info(LogCategory.GENERAL,
                         "No access token was provided or dialog was cancelled.");
@@ -1201,6 +1210,14 @@ public class OutlookClient {
                             "Token dialog was cancelled or closed. No tokens obtained.");
                     throw new AuthenticationCancelledException(
                             "Authentication was cancelled by the user.", "user_cancelled");
+                }
+
+                // Background silent re-auth succeeded while the dialog was open — token
+                // is already stored in ConfigManager; signal this upstream and exit.
+                if ("true".equals(resultTokens.get(SimpleTokenDialog.BACKGROUND_AUTH_SUCCESS_KEY))) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                            "Token dialog dismissed automatically — background authentication succeeded.");
+                    return resultTokens;
                 }
 
                 if (resultTokens.containsKey("accessToken")
