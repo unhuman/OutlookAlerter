@@ -26,18 +26,20 @@ void performFullAlert(String bannerText, String notificationTitle,
 ```
 performFullAlert()
  ├─ 1. AudioBeepThread  → background thread → n beeps at 250ms intervals
- ├─ 2. onFlashReady callback registered → will fire showAlertBanner() once flash is visible
+ ├─ 2. onFlashReady callback registered → will fire showAlertBanner() AND
+ │      showJoinMeetingDialogOnAllScreens() once flash is visible
  ├─ 3. ScreenFlasherThread → background thread → flashMultiple(events)
  │     └─ invokeAndWait: create flash windows on EDT
- │     └─ invokeLater: fire onFlashReady → showAlertBanner() on EDT
+ │     └─ invokeLater: fire onFlashReady → showAlertBanner() + showJoinMeetingDialogOnAllScreens() on EDT
  └─ 4. invokeLater: showTrayNotification() on EDT
 ```
 
 **Key design constraints:**
 - Beeps start immediately on a daemon thread (highest urgency)
 - Flash windows are created on EDT via `invokeAndWait` (Swing thread safety)
-- Banner waits for flash via `onFlashReady` callback (prevents banner-under-flash flicker)
-- If `events` is null/empty, banner shows immediately without waiting for flash
+- Banner and join dialogs wait for flash via `onFlashReady` callback (prevents banner-under-flash flicker)
+- Join dialogs appear on **all connected screens** simultaneously, linked for coordinated close
+- If `events` is null/empty, banner shows immediately without waiting for flash; no join dial is shown
 - Tray notification is posted to EDT independently
 
 ---
@@ -185,36 +187,47 @@ static void setOnFlashReady(Runnable callback)
 
 ---
 
-## Click-to-Dismiss and Join Meeting Dialog
+## Immediate Join Meeting Dialog
 
-When the user clicks or presses any key on a flash window, the flash is dismissed early and
-`OutlookAlerterUI.ScreenFlasherThread` uses `screenFlasher.wasUserDismissed()` to detect this.
-If `true`, it schedules `showJoinMeetingDialog(events)` via `SwingUtilities.invokeLater()`.
+When a meeting alert fires, `OutlookAlerterUI.showJoinMeetingDialogOnAllScreens()` is called
+**inside the `onFlashReady` callback** (Mac) or the 300 ms banner-delay timer (non-Mac), so the
+dialogs appear the instant flash windows become visible — no user action required.
+
+### Multi-Screen Behavior
+
+- `JoinMeetingDialog.showOnAllScreens()` iterates `GraphicsEnvironment.getScreenDevices()` and
+  creates one modeless `JoinMeetingDialog` per screen.
+- All dialogs in a session share a coordinated-close `Runnable` (`dismissAll`): interacting with
+  **any** dialog calls `closeAll()` → disposes all sibling dialogs → calls `onDismiss` (which
+  calls `screenFlasher.forceCleanup()` and clears `activeDismissAll`).
+- When a new alert fires while dialogs are open, the previous `activeDismissAll` runnable is
+  invoked first, then a fresh session opens.
 
 ### JoinMeetingDialog
 
 **Location:** `com.unhuman.outlookalerter.ui.JoinMeetingDialog`  
-**Extends:** `JDialog` (modal, `APPLICATION_MODAL`)  
-**Factory:** `JoinMeetingDialog.show(Window parent, List<CalendarEvent>, Function<CalendarEvent,String>)`
+**Extends:** `JDialog` (modeless, `MODELESS`)  
+**Factory:** `JoinMeetingDialog.showOnAllScreens(Window, List<CalendarEvent>, Function, Runnable) → Runnable`
 
 **Layout (one button per alerted event, sorted by start time):**
 ```
 ┌─────────────────────────────────────┐
 │  Join Meeting?                      │
 │  ─────────────────────────────────  │
-│  [Team Standup (in 1m)]             │  ← enabled; click opens URL + closes dialog
+│  [Team Standup (in 1m)]             │  ← enabled; click opens URL + closes all
 │  [Design Review (now)]              │  ← enabled
 │  [Budget Review (in 3m) (No Link)]  │  ← disabled; no join URL found
 │  ─────────────────────────────────  │
-│  [Cancel]                           │
+│  [Cancel (Ns)]                      │  (plain "Cancel" when timeout=0)
 └─────────────────────────────────────┘
 ```
 
-- Events **with** a join URL: enabled `JButton`; clicking opens `Desktop.browse(url)` and disposes dialog
+- Events **with** a join URL: enabled `JButton`; clicking opens `Desktop.browse(url)` and calls `closeAll()` (all group dialogs + flash stop)
 - Events **without** a join URL: disabled `JButton` with `" (No Link)"` suffix
 - URL resolution uses the same four-tier priority as the tray menu (`getEffectiveJoinUrl()`)
-- Escape key and Cancel button both dispose without opening any URL
+- Escape key, Cancel button, and the countdown timer all call `closeAll()` (all group dialogs close + flash stops)
 - `urlResolver` is injected as a `Function<CalendarEvent, String>` for headless testability
+- Auto-dismiss timeout reads from `ConfigManager.getJoinDialogTimeoutSeconds()` (default 15 s; 0 = indefinite)
 
 ---
 

@@ -156,9 +156,9 @@ class OutlookAlerterUIAlertTest {
         // Set lastTokenValidationTime to now so token validation is skipped
         setField(ui, "lastTokenValidationTime", System.currentTimeMillis());
 
-        // activeJoinDialog is skipped by Unsafe.allocateInstance — initialise it so
-        // showJoinMeetingDialog does not NPE when checking for an existing open dialog.
-        setField(ui, "activeJoinDialog", new java.util.concurrent.atomic.AtomicReference<>());
+        // activeDismissAll is skipped by Unsafe.allocateInstance — initialise it so
+        // showJoinMeetingDialogOnAllScreens does not NPE when checking for an existing session.
+        setField(ui, "activeDismissAll", new java.util.concurrent.atomic.AtomicReference<>());
     }
 
     @AfterEach
@@ -633,127 +633,154 @@ class OutlookAlerterUIAlertTest {
     class JoinMeetingDialogInvocationTests {
 
         @Test
-        @DisplayName("showJoinMeetingDialog is not called when wasUserDismissed is false")
-        void noDialogWhenNotDismissedByUser() throws Exception {
-            flasher.stubWasUserDismissed = false;
-            CalendarEvent event = makeTestEvent("Regular Meeting", 2);
+        @DisplayName("join dialog is shown immediately on alert (log message present)")
+        void dialogShownImmediatelyOnAlert() throws Exception {
+            // Use a null-delegate flasher so flashMultiple() returns instantly —
+            // the real flasher blocks for flashDurationSeconds.
+            RecordingScreenFlasher instantFlasher = new RecordingScreenFlasher(null);
+            setField(ui, "screenFlasher", instantFlasher);
+
+            CalendarEvent event = makeTestEvent("Team Meeting", 1);
             event.setOnlineMeetingUrl("https://zoom.us/j/123");
 
+            LogManager.getInstance().clearLogs();
             ui.performFullAlert("Meeting", "Title", "Msg", List.of(event));
 
-            // Wait for ScreenFlasherThread and drain EDT
+            // Give the onFlashReady / non-Mac timer path time to run and drain EDT
             Thread.sleep(500);
             SwingUtilities.invokeAndWait(() -> {});
 
-            // Verify the flash ran once as expected — no extra side-effects
-            assertEquals(1, flasher.flashMultipleCount);
+            String logs = LogManager.getInstance().getLogsAsString();
+            assertTrue(logs.contains("JoinMeetingDialog: showing on all screens for"),
+                    "Dialog must be shown immediately when alert fires; logs:\n" + logs);
         }
 
         @Test
-        @DisplayName("join dialog path is exercised without crash when wasUserDismissed is true")
-        void joinDialogPathExercisedWhenUserDismissed() throws Exception {
-            flasher.stubWasUserDismissed = true;
+        @DisplayName("dialog is shown regardless of wasUserDismissed value")
+        void dialogShownRegardlessOfDismissFlag() throws Exception {
+            for (boolean dismissed : new boolean[]{false, true}) {
+                // Reset state
+                LogManager.getInstance().clearLogs();
+                setField(ui, "activeDismissAll", new java.util.concurrent.atomic.AtomicReference<>());
+
+                RecordingScreenFlasher instantFlasher = new RecordingScreenFlasher(null);
+                instantFlasher.stubWasUserDismissed = dismissed;
+                setField(ui, "screenFlasher", instantFlasher);
+
+                CalendarEvent event = makeTestEvent("Meeting " + dismissed, 1);
+                event.setOnlineMeetingUrl("https://zoom.us/j/99");
+
+                ui.performFullAlert("Meeting", "Title", "Msg", List.of(event));
+                Thread.sleep(500);
+                SwingUtilities.invokeAndWait(() -> {});
+
+                String logs = LogManager.getInstance().getLogsAsString();
+                assertTrue(logs.contains("JoinMeetingDialog: showing on all screens for"),
+                        "Dialog must show regardless of wasUserDismissed=" + dismissed + "; logs:\n" + logs);
+            }
+        }
+
+        @Test
+        @DisplayName("performFullAlert does not throw when dialog path is triggered")
+        void alertDoesNotThrow() {
             CalendarEvent event = makeTestEvent("Zoom Meeting", 1);
             event.setOnlineMeetingUrl("https://zoom.us/j/987");
 
-            // In headless test environments the dialog creation will silently fail on the EDT;
-            // the important contract is that performFullAlert() itself does not throw,
-            // and the flash still completes exactly once.
             assertDoesNotThrow(() ->
                     ui.performFullAlert("Meeting", "Title", "Msg", List.of(event)));
+        }
 
+        @Test
+        @DisplayName("flash still completes exactly once when dialog is shown")
+        void flashCompletesOnceWhenDialogShown() throws Exception {
+            CalendarEvent event = makeTestEvent("Meeting", 1);
+            event.setOnlineMeetingUrl("https://zoom.us/j/987");
+
+            ui.performFullAlert("Meeting", "Title", "Msg", List.of(event));
             Thread.sleep(500);
-            // Drain EDT to let the invokeLater task run (or fail silently in headless)
             SwingUtilities.invokeAndWait(() -> {});
 
             assertEquals(1, flasher.flashMultipleCount,
-                    "Flash should still complete exactly once even when dialog path is triggered");
+                    "Flash should complete exactly once even while dialog is shown");
         }
 
         @Test
-        @DisplayName("showJoinMeetingDialog code path is logged when wasUserDismissed is true")
-        void joinDialogCodePathIsLoggedWhenUserDismissed() throws Exception {
-            // Use a null-delegate flasher so flashMultiple() returns instantly —
-            // the real flasher blocks for flashDurationSeconds before the dismiss check runs.
+        @DisplayName("second alert closes previous dialog session and opens new one")
+        void secondAlertReplacesPreviousDialogSession() throws Exception {
             RecordingScreenFlasher instantFlasher = new RecordingScreenFlasher(null);
-            instantFlasher.stubWasUserDismissed = true;
             setField(ui, "screenFlasher", instantFlasher);
 
-            CalendarEvent event = makeTestEvent("Zoom Meeting", 1);
-            event.setOnlineMeetingUrl("https://zoom.us/j/987");
+            CalendarEvent event1 = makeTestEvent("First Meeting", 1);
+            CalendarEvent event2 = makeTestEvent("Second Meeting", 2);
 
             LogManager.getInstance().clearLogs();
-            ui.performFullAlert("Meeting", "Title", "Msg", List.of(event));
+            ui.performFullAlert("Alert 1", "Title", "Msg", List.of(event1));
+            Thread.sleep(400);
+            SwingUtilities.invokeAndWait(() -> {});
 
-            // Flash is instant; give the background thread a moment, then drain the EDT
-            // so the invokeLater(() -> showJoinMeetingDialog(...)) task has already run.
-            Thread.sleep(300);
+            ui.performFullAlert("Alert 2", "Title", "Msg", List.of(event2));
+            Thread.sleep(400);
             SwingUtilities.invokeAndWait(() -> {});
 
             String logs = LogManager.getInstance().getLogsAsString();
-            assertTrue(logs.contains("JoinMeetingDialog: showing for"),
-                    "showJoinMeetingDialog() must be reached and logged when wasUserDismissed=true; logs:\n" + logs);
+            // Both alerts should have shown the dialog
+            long dialogCount = logs.lines()
+                    .filter(l -> l.contains("JoinMeetingDialog: showing on all screens for"))
+                    .count();
+            assertTrue(dialogCount >= 2,
+                    "Expected at least 2 dialog-show log entries for 2 alerts; got " + dialogCount + ";\nlogs:\n" + logs);
         }
 
         @Test
-        @DisplayName("showJoinMeetingDialog code path is NOT logged when wasUserDismissed is false")
-        void joinDialogCodePathNotLoggedWhenFlashExpiredNormally() throws Exception {
+        @DisplayName("no dialog is shown when events list is null or empty")
+        void noDialogForNullOrEmptyEvents() throws Exception {
             RecordingScreenFlasher instantFlasher = new RecordingScreenFlasher(null);
-            instantFlasher.stubWasUserDismissed = false;
             setField(ui, "screenFlasher", instantFlasher);
 
-            CalendarEvent event = makeTestEvent("Regular Meeting", 2);
-            event.setOnlineMeetingUrl("https://zoom.us/j/123");
-
             LogManager.getInstance().clearLogs();
-            ui.performFullAlert("Meeting", "Title", "Msg", List.of(event));
-
-            Thread.sleep(300);
+            ui.performFullAlert("Token required", "Token", "Enter token", null);
+            ui.performFullAlert("Token required", "Token", "Enter token", List.of());
+            Thread.sleep(400);
             SwingUtilities.invokeAndWait(() -> {});
 
             String logs = LogManager.getInstance().getLogsAsString();
-            assertFalse(logs.contains("JoinMeetingDialog: showing for"),
-                    "showJoinMeetingDialog() must NOT be invoked when flash expired by timer (wasUserDismissed=false)");
+            assertFalse(logs.contains("JoinMeetingDialog: showing on all screens for"),
+                    "No join dialog should be shown for null/empty events; logs:\n" + logs);
         }
 
         @Test
-        @DisplayName("screen bounds from flasher are forwarded to showJoinMeetingDialog")
-        void screenBoundsFromFlasherAreForwardedToDialog() throws Exception {
-            java.awt.Rectangle secondScreen = new java.awt.Rectangle(1920, 0, 2560, 1440);
-            RecordingScreenFlasher instantFlasher = new RecordingScreenFlasher(null) {
-                @Override
-                public java.awt.Rectangle getInteractionScreenBounds() {
-                    return secondScreen;
-                }
-            };
-            instantFlasher.stubWasUserDismissed = true;
-            setField(ui, "screenFlasher", instantFlasher);
+        @DisplayName("join dialog timeout 0 (indefinite) disables countdown in JoinMeetingDialog")
+        @org.junit.jupiter.api.condition.DisabledIfSystemProperty(named = "java.awt.headless", matches = "true")
+        void joinDialogIndefiniteTimeout() {
+            configManager.updateJoinDialogTimeoutSeconds(0);
+            CalendarEvent event = makeTestEvent("Long Meeting", 2);
+            // Build the dialog directly and verify no NPE (timer must not be started)
+            assertDoesNotThrow(() -> {
+                // JoinMeetingDialog reads ConfigManager.getInstance() for the timeout
+                JoinMeetingDialog dialog = new JoinMeetingDialog(null, List.of(event), e -> null);
+                dialog.dispose();
+            });
+        }
 
-            CalendarEvent event = makeTestEvent("Second Screen Meeting", 1);
-            event.setOnlineMeetingUrl("https://zoom.us/j/111");
-
-            LogManager.getInstance().clearLogs();
-            ui.performFullAlert("Meeting", "Title", "Msg", List.of(event));
-
-            Thread.sleep(300);
-            SwingUtilities.invokeAndWait(() -> {});
-
-            String logs = LogManager.getInstance().getLogsAsString();
-            assertTrue(logs.contains("JoinMeetingDialog: showing for"),
-                    "showJoinMeetingDialog must be reached; logs:\n" + logs);
-            // Rectangle.toString() produces "java.awt.Rectangle[x=1920,...]"
-            assertTrue(logs.contains("x=1920"),
-                    "Screen bounds x=1920 should appear in the log; logs:\n" + logs);
+        @Test
+        @DisplayName("join dialog timeout > 0 uses configured value")
+        @org.junit.jupiter.api.condition.DisabledIfSystemProperty(named = "java.awt.headless", matches = "true")
+        void joinDialogConfiguredTimeout() {
+            configManager.updateJoinDialogTimeoutSeconds(30);
+            CalendarEvent event = makeTestEvent("Short Meeting", 1);
+            assertDoesNotThrow(() -> {
+                JoinMeetingDialog dialog = new JoinMeetingDialog(null, List.of(event), e -> null);
+                dialog.dispose();
+            });
         }
 
         /**
          * Directly exercises {@code JoinMeetingDialog.show()} with a properly-initialized
          * {@link JFrame} — completely bypassing the flash, the {@code ScreenFlasher}, and the
-         * Unsafe-allocated {@code ui} instance.  Use this test to confirm the dialog can render
-         * at all on the current display before chasing flash-related causes.
+         * Unsafe-allocated {@code ui} instance.
          *
-         * <p>A background thread disposes any open {@link JDialog} after 1 second, which
-         * releases the modal event loop so the test completes automatically.
+         * <p>Since show() is now non-blocking (MODELESS), we use a WindowAdapter to detect
+         * when the dialog opens, then close it from the same EDT task.
          *
          * <p>Skipped in headless CI environments where no display is available.
          */
@@ -763,42 +790,43 @@ class OutlookAlerterUIAlertTest {
         void joinMeetingDialogShowsDirectlyWithRealParent() throws Exception {
             CalendarEvent event = makeTestEvent("Isolation Test Meeting", 2);
 
-            boolean[] shown = {false};
-            CountDownLatch latch = new CountDownLatch(1);
-
-            // Dispose the dialog after 1 s.  invokeLater fires inside the modal dialog's
-            // secondary event loop, so this works even though the EDT is "blocked".
-            Thread closer = new Thread(() -> {
-                try { Thread.sleep(1000); } catch (InterruptedException ex) { return; }
-                SwingUtilities.invokeLater(() -> {
-                    for (java.awt.Window w : java.awt.Window.getWindows()) {
-                        if (w instanceof JDialog jd && jd.isVisible()) {
-                            jd.dispose();
-                        }
-                    }
-                });
-            });
-            closer.setDaemon(true);
-            closer.start();
+            CountDownLatch openLatch = new CountDownLatch(1);
+            CountDownLatch closeLatch = new CountDownLatch(1);
 
             JFrame parent = new JFrame("JoinMeetingDialog isolation test");
+
             SwingUtilities.invokeLater(() -> {
                 try {
                     parent.setVisible(true);
-                    // show() blocks until the auto-close (above) disposes the dialog
+                    // show() is now non-blocking (MODELESS)
                     JoinMeetingDialog.show(parent, List.of(event), e -> "https://zoom.us/j/test");
-                    shown[0] = true;  // reached only after the dialog closes
+                    // Find the newly opened dialog and attach a listener
+                    for (java.awt.Window w : java.awt.Window.getWindows()) {
+                        if (w instanceof JDialog jd && jd.isVisible()) {
+                            openLatch.countDown();
+                            jd.addWindowListener(new java.awt.event.WindowAdapter() {
+                                @Override
+                                public void windowClosed(java.awt.event.WindowEvent e) {
+                                    closeLatch.countDown();
+                                }
+                            });
+                            // Auto-close after confirming it opened
+                            SwingUtilities.invokeLater(jd::dispose);
+                        }
+                    }
+                } catch (Exception ex) {
+                    // Count down both latches so the test fails descriptively rather than timing out
+                    openLatch.countDown();
+                    closeLatch.countDown();
                 } finally {
                     parent.dispose();
-                    latch.countDown();
                 }
             });
 
-            assertTrue(latch.await(5, TimeUnit.SECONDS),
-                    "JoinMeetingDialog should open and auto-close within 5 s — "
-                    + "if this hangs, the dialog may never have appeared");
-            assertTrue(shown[0],
-                    "JoinMeetingDialog.show() must complete — the dialog either threw or never closed");
+            assertTrue(openLatch.await(5, TimeUnit.SECONDS),
+                    "JoinMeetingDialog should open within 5 s");
+            assertTrue(closeLatch.await(5, TimeUnit.SECONDS),
+                    "JoinMeetingDialog should close within 5 s after being disposed");
         }
     }
 

@@ -157,11 +157,10 @@ public class OutlookAlerterUI extends JFrame {
     private final OutlookClient outlookClient;
     private ScreenFlasher screenFlasher;
 
-    // Tracks the currently open JoinMeetingDialog so a second flash-dismiss does not
-    // stack a new modal dialog on top — instead the open dialog is replaced with the
-    // merged event list.
-    private final java.util.concurrent.atomic.AtomicReference<JoinMeetingDialog> activeJoinDialog =
-            new java.util.concurrent.atomic.AtomicReference<>();
+    // Tracks the active JoinMeetingDialog session (one per screen). Calling this Runnable
+    // closes all open dialogs in the current session (coordinated dismiss).
+    private final java.util.concurrent.atomic.AtomicReference<Runnable> activeDismissAll =
+            new java.util.concurrent.atomic.AtomicReference<>(null);
 
     // UI Components
     private JTextArea eventsTextArea;
@@ -1809,52 +1808,21 @@ public class OutlookAlerterUI extends JFrame {
      * Presents each alerted event with a join button (enabled if a URL was found,
      * disabled with "(No Link)" suffix otherwise).
      */
-    private void showJoinMeetingDialog(List<CalendarEvent> events) {
-        showJoinMeetingDialog(events, null);
-    }
-
-    private void showJoinMeetingDialog(List<CalendarEvent> events, java.awt.Rectangle screenBounds) {
+    private void showJoinMeetingDialogOnAllScreens(List<CalendarEvent> events) {
         if (events == null || events.isEmpty()) return;
-        try {
-            // If a dialog is already open, close it and reopen with the merged event list
-            // to prevent stacked APPLICATION_MODAL dialogs.
-            if (activeJoinDialog != null) {
-                JoinMeetingDialog existing = activeJoinDialog.get();
-                if (existing != null && existing.isDisplayable()) {
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                        "JoinMeetingDialog: replacing existing dialog with " + events.size() + " new event(s)");
-                    List<CalendarEvent> merged = new java.util.ArrayList<>(existing.getDisplayedEvents());
-                    for (CalendarEvent e : events) {
-                        if (merged.stream().noneMatch(m -> java.util.Objects.equals(m.getId(), e.getId()))) {
-                            merged.add(e);
-                        }
-                    }
-                    existing.dispose();
-                    events = merged;
-                }
-            }
-            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                "JoinMeetingDialog: showing for " + events.size() + " event(s) on screen=" + screenBounds);
-            // Pass 'this' as parent so APPLICATION_MODAL works correctly — Java
-            // requires a non-null owner window for modality to take effect on macOS.
-            // Positioning is handled separately via screenBounds, not via the parent.
-            JoinMeetingDialog dialog = new JoinMeetingDialog(this, events, this::getEffectiveJoinUrl);
-            if (activeJoinDialog != null) {
-                activeJoinDialog.set(dialog);
-                dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-                    @Override
-                    public void windowClosed(java.awt.event.WindowEvent e) {
-                        activeJoinDialog.compareAndSet(dialog, null);
-                    }
-                });
-            }
-            dialog.positionOnScreen(screenBounds);
-            SwingUtilities.invokeLater(dialog::toFront);
-            dialog.setVisible(true);
-        } catch (Exception ex) {
-            LogManager.getInstance().error(LogCategory.ALERT_PROCESSING,
-                "JoinMeetingDialog: failed to show dialog: " + ex.getMessage(), ex);
-        }
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+            "JoinMeetingDialog: showing on all screens for " + events.size() + " event(s)");
+        // Close any previously-open dialog session before opening a new one.
+        Runnable existing = activeDismissAll.getAndSet(null);
+        if (existing != null) existing.run();
+
+        Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
+            this, events, this::getEffectiveJoinUrl,
+            () -> {
+                screenFlasher.forceCleanup();
+                activeDismissAll.set(null);
+            });
+        activeDismissAll.set(dismissAll);
     }
 
     /**
@@ -2167,9 +2135,10 @@ public class OutlookAlerterUI extends JFrame {
                     // Firing it from the beep thread would play sound even when the flash
                     // silently fails validation (display not ready, headless, etc).
                     playMacAudio("AlertBeep: Started macOS afplay (flash confirmed visible)");
+                    showJoinMeetingDialogOnAllScreens(events);
                 });
             } else {
-                // Non-Mac: show banner after a brief delay to let flash windows render first
+                // Non-Mac: show banner and dialogs after a brief delay to let flash windows render first
                 Timer bannerDelayTimer = new Timer(300, (ActionEvent timerEvt) -> {
                     try {
                         showAlertBanner(bannerTextFinal);
@@ -2177,6 +2146,7 @@ public class OutlookAlerterUI extends JFrame {
                     } catch (Exception ex) {
                         LogManager.getInstance().error(LogCategory.ALERT_PROCESSING, "AlertBanner: Error showing banner: " + ex.getMessage(), ex);
                     }
+                    showJoinMeetingDialogOnAllScreens(events);
                 });
                 bannerDelayTimer.setRepeats(false);
                 bannerDelayTimer.start();
@@ -2187,15 +2157,6 @@ public class OutlookAlerterUI extends JFrame {
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Starting flashMultiple for " + events.size() + " events");
                     screenFlasher.flashMultiple(events);
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "ScreenFlasher: Finished flashMultiple");
-                    // If the user clicked or pressed a key to dismiss the flash early,
-                    // show a dialog so they can jump directly into a meeting.
-                    boolean dismissed = screenFlasher.wasUserDismissed();
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                        "ScreenFlasher: wasUserDismissed=" + dismissed);
-                    if (dismissed) {
-                        java.awt.Rectangle screenBounds = screenFlasher.getInteractionScreenBounds();
-                        SwingUtilities.invokeLater(() -> showJoinMeetingDialog(events, screenBounds));
-                    }
                     // Post-flash beep if enabled.
                     // flashMultiple() is now a blocking call on MacScreenFlasher: it returns only
                     // after forceCleanup() has run (i.e. the flash windows have been disposed).

@@ -199,9 +199,18 @@ Save button →
 ## JoinMeetingDialog
 
 **Location:** `com.unhuman.outlookalerter.ui.JoinMeetingDialog`  
-**Extends:** `JDialog` (modal, `APPLICATION_MODAL`)  
-**Trigger:** Shown by `OutlookAlerterUI.showJoinMeetingDialog()` when the user dismisses a flash
-window early (mouse click or key press).
+**Extends:** `JDialog` (modeless, `MODELESS`)  
+**Trigger:** Shown by `OutlookAlerterUI.showJoinMeetingDialogOnAllScreens()` **immediately** when
+a meeting alert fires — one dialog per connected screen. No user action on the flash is required.
+
+### Multi-Screen Behavior
+
+- One `JoinMeetingDialog` is created per `GraphicsDevice` and displayed simultaneously on all screens.
+- All dialogs in a session share a coordinated-close `Runnable` (`dismissAll`): interacting with
+  **any** one dialog (join, cancel, Escape, or auto-dismiss timer) closes **all** dialogs in the
+  group and calls `screenFlasher.forceCleanup()` to stop the flash.
+- When a new alert fires while dialogs are already open, the previous session is closed first and a
+  fresh set is opened for the new event list.
 
 ### Dialog Layout
 
@@ -213,24 +222,36 @@ window early (mouse click or key press).
 │  [Design Review (now)]                 │  ← enabled
 │  [Budget Review (in 3m) (No Link)]     │  ← disabled (no URL found)
 │                                        │
-│  [Cancel]                              │
+│  [Cancel (Ns)]  (or [Cancel] if timeout=0) │
 └────────────────────────────────────────┘
 ```
 
 - **Events with a join URL:** enabled `JButton`; clicking opens the URL in the default browser via
-  `Desktop.getDesktop().browse(URI)` then disposes the dialog
+  `Desktop.getDesktop().browse(URI)` then calls `closeAll()` to close all group dialogs + stop flash
 - **Events without a join URL:** disabled `JButton` with `" (No Link)"` suffix
 - Events are sorted by start time (earliest first)
 - Button label format: `"Subject (in Nm)"` or `"Subject (now)"` for current/past meetings
-- Escape key and Cancel button close without opening any URL
+- Escape key and Cancel button call `closeAll()` (all group dialogs close + flash stops)
 - URL resolution delegates to `OutlookAlerterUI.getEffectiveJoinUrl()` (same four-tier logic used by the tray menu)
 
-### Construction
+### Auto-Dismiss Timeout
+
+Controlled by `ConfigManager.getJoinDialogTimeoutSeconds()` (default `15`).  
+Users can change this in Settings → **Join Dialog Timeout (seconds, 0=indefinite)**.  
+When `0`: countdown timer is not started; progress bar is hidden; Cancel button shows plain "Cancel".
+
+### Factory Methods
 
 ```java
-// Factory method called on EDT from OutlookAlerterUI:
+// Show a single dialog on one screen (non-blocking since MODELESS).
 JoinMeetingDialog.show(Window parent, List<CalendarEvent> events,
                        Function<CalendarEvent, String> urlResolver)
+
+// Show one dialog per screen; returns a Runnable that closes the whole group.
+Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
+    Window parent, List<CalendarEvent> events,
+    Function<CalendarEvent, String> urlResolver,
+    Runnable onDismiss);
 ```
 
 The `urlResolver` parameter is injected to keep the dialog testable in headless environments.

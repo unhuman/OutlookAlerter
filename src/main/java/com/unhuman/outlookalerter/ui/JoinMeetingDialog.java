@@ -24,6 +24,8 @@ import java.util.stream.Collectors;
  */
 public class JoinMeetingDialog extends JDialog {
 
+    // Non-static: read from ConfigManager at construction time so tests can override it.
+    // The legacy constant is kept for test compatibility (tests may still read it).
     static final int AUTO_DISMISS_SECONDS = 15;
 
     // ── Fixed structural colours (independent of user settings) ──────────────
@@ -97,6 +99,23 @@ public class JoinMeetingDialog extends JDialog {
     }
 
     private final List<CalendarEvent> displayedEvents;
+    private final int autoDismissSeconds;
+    /** Shared closer: when set, closeAll() will invoke it after dispose(). */
+    private Runnable dismissAll = null;
+
+    /** Called by showOnAllScreens() to link sibling dialogs together. */
+    void setDismissAll(Runnable r) { this.dismissAll = r; }
+
+    /**
+     * Disposes this dialog and, if a shared closer is installed, closes all sibling
+     * dialogs in the same session (idempotent via null-clear to prevent re-entrancy).
+     */
+    private void closeAll() {
+        dispose();
+        Runnable r = dismissAll;
+        dismissAll = null;
+        if (r != null) r.run();
+    }
 
     /**
      * Creates the dialog.
@@ -107,8 +126,11 @@ public class JoinMeetingDialog extends JDialog {
      */
     public JoinMeetingDialog(Window parent, List<CalendarEvent> events,
             Function<CalendarEvent, String> urlResolver) {
-        super(parent, "Meeting Alert", ModalityType.APPLICATION_MODAL);
+        super(parent, "Meeting Alert", ModalityType.MODELESS);
         this.displayedEvents = new java.util.ArrayList<>(events);
+        com.unhuman.outlookalerter.core.ConfigManager cfgForTimeout =
+                com.unhuman.outlookalerter.core.ConfigManager.getInstance();
+        this.autoDismissSeconds = (cfgForTimeout != null) ? cfgForTimeout.getJoinDialogTimeoutSeconds() : AUTO_DISMISS_SECONDS;
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setResizable(false);
 
@@ -198,7 +220,7 @@ public class JoinMeetingDialog extends JDialog {
                     } catch (Exception ex) {
                         // Non-fatal — dialog still closes
                     }
-                    dispose();
+                    closeAll();
                 });
             }
             body.add(btn);
@@ -214,7 +236,7 @@ public class JoinMeetingDialog extends JDialog {
 
         // Custom-painted so macOS Aqua L&F cannot override the colours.
         // headerBg is effectively-final — captured by the anonymous paintComponent below.
-        JProgressBar bar = new JProgressBar(0, AUTO_DISMISS_SECONDS) {
+        JProgressBar bar = new JProgressBar(0, autoDismissSeconds > 0 ? autoDismissSeconds : AUTO_DISMISS_SECONDS) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
@@ -226,7 +248,7 @@ public class JoinMeetingDialog extends JDialog {
                 g2.dispose();
             }
         };
-        bar.setValue(AUTO_DISMISS_SECONDS);
+        bar.setValue(autoDismissSeconds > 0 ? autoDismissSeconds : AUTO_DISMISS_SECONDS);
         bar.setMinimumSize(new Dimension(0, 6));
         bar.setPreferredSize(new Dimension(380, 6));
         bar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 6));
@@ -237,14 +259,16 @@ public class JoinMeetingDialog extends JDialog {
         footer.add(bar);
         footer.add(Box.createVerticalStrut(8));
 
-        JButton cancelBtn = makeStyledButton(cancelLabel(AUTO_DISMISS_SECONDS), BTN_CANCEL, BTN_CANCEL_HOV, Color.WHITE);
-        cancelBtn.addActionListener(e -> dispose());
+        JButton cancelBtn = makeStyledButton(
+                autoDismissSeconds > 0 ? cancelLabel(autoDismissSeconds) : "Cancel",
+                BTN_CANCEL, BTN_CANCEL_HOV, Color.WHITE);
+        cancelBtn.addActionListener(e -> closeAll());
         footer.add(cancelBtn);
         root.add(footer, BorderLayout.SOUTH);
 
         // Escape also closes
         getRootPane().registerKeyboardAction(
-                e -> dispose(),
+                e -> closeAll(),
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
         getRootPane().setDefaultButton(cancelBtn);
@@ -258,26 +282,33 @@ public class JoinMeetingDialog extends JDialog {
         setAlwaysOnTop(true);
 
         // ── Countdown timer ───────────────────────────────────────────────────
-        AtomicInteger remaining = new AtomicInteger(AUTO_DISMISS_SECONDS);
-        Timer countdown = new Timer(1000, null);
-        countdown.addActionListener(tick -> {
-            int left = remaining.decrementAndGet();
-            if (left <= 0) {
-                countdown.stop();
-                dispose();
-            } else {
-                cancelBtn.setText(cancelLabel(left));
-                bar.setValue(left);
-            }
-        });
-        // Stop the timer when the dialog closes (user clicked a button or Escape).
-        addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosed(java.awt.event.WindowEvent e) {
-                countdown.stop();
-            }
-        });
-        countdown.start();
+        if (autoDismissSeconds > 0) {
+            AtomicInteger remaining = new AtomicInteger(autoDismissSeconds);
+            bar.setValue(autoDismissSeconds);
+            bar.setMaximum(autoDismissSeconds);
+            Timer countdown = new Timer(1000, null);
+            countdown.addActionListener(tick -> {
+                int left = remaining.decrementAndGet();
+                if (left <= 0) {
+                    countdown.stop();
+                    closeAll();
+                } else {
+                    cancelBtn.setText(cancelLabel(left));
+                    bar.setValue(left);
+                }
+            });
+            // Stop the timer when the dialog closes (user clicked a button or Escape).
+            addWindowListener(new java.awt.event.WindowAdapter() {
+                @Override
+                public void windowClosed(java.awt.event.WindowEvent e) {
+                    countdown.stop();
+                }
+            });
+            countdown.start();
+        } else {
+            // 0 = indefinite: hide the progress bar; cancel button has no countdown.
+            bar.setVisible(false);
+        }
     }
 
     /**
@@ -364,9 +395,62 @@ public class JoinMeetingDialog extends JDialog {
         if (events == null || events.isEmpty()) return;
         JoinMeetingDialog dialog = new JoinMeetingDialog(parent, events, urlResolver);
         dialog.positionOnScreen(screenBounds);
-        // Schedule toFront() to run inside the modal event loop so the dialog
-        // rises above other windows on the first pump of the event queue.
         SwingUtilities.invokeLater(dialog::toFront);
         dialog.setVisible(true);
+    }
+
+    /**
+     * Shows one {@link JoinMeetingDialog} per connected screen simultaneously.
+     * All dialogs are linked: interacting with any one (join, cancel, Escape, or the
+     * auto-dismiss timer reaching zero) disposes every dialog in the group and then
+     * invokes {@code onDismiss} exactly once.
+     *
+     * <p>Must be called on the EDT.  Does nothing if {@code events} is null or empty.
+     *
+     * @param parent      owning window; may be null
+     * @param events      alerted calendar events
+     * @param urlResolver maps each event to its join URL, or null if none
+     * @param onDismiss   called once when the group is closed; may be null
+     * @return a {@code Runnable} that closes all dialogs in the group when invoked
+     *         (safe to call even after the dialogs are already disposed)
+     */
+    public static Runnable showOnAllScreens(Window parent, List<CalendarEvent> events,
+            Function<CalendarEvent, String> urlResolver, Runnable onDismiss) {
+        if (events == null || events.isEmpty()) return () -> {};
+
+        GraphicsDevice[] screens = java.awt.GraphicsEnvironment
+                .getLocalGraphicsEnvironment().getScreenDevices();
+
+        java.util.List<JoinMeetingDialog> all = new java.util.ArrayList<>();
+        for (GraphicsDevice screen : screens) {
+            Rectangle bounds = screen.getDefaultConfiguration().getBounds();
+            JoinMeetingDialog d = new JoinMeetingDialog(parent, events, urlResolver);
+            d.positionOnScreen(bounds);
+            all.add(d);
+        }
+        if (all.isEmpty()) {
+            // Fallback: single dialog on default screen
+            JoinMeetingDialog d = new JoinMeetingDialog(parent, events, urlResolver);
+            d.positionOnScreen(null);
+            all.add(d);
+        }
+
+        java.util.concurrent.atomic.AtomicBoolean closing =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        Runnable dismissAll = () -> SwingUtilities.invokeLater(() -> {
+            if (closing.compareAndSet(false, true)) {
+                all.forEach(JDialog::dispose);
+                if (onDismiss != null) onDismiss.run();
+            }
+        });
+
+        all.forEach(d -> d.setDismissAll(dismissAll));
+
+        // Show all dialogs and schedule toFront
+        all.forEach(d -> {
+            d.setVisible(true);
+            SwingUtilities.invokeLater(d::toFront);
+        });
+        return dismissAll;
     }
 }
