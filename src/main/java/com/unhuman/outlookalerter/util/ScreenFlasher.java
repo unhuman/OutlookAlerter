@@ -36,6 +36,16 @@ public interface ScreenFlasher {
     }
 
     /**
+     * Marks the current alert as user-dismissed without requiring a direct
+     * interaction with the flash window.  Called when the user interacts with
+     * a related dialog (e.g. JoinMeetingDialog) so that post-flash audio is
+     * suppressed in the same way as a direct flash-window click.
+     */
+    default void markUserDismissed() {
+        // Default no-op; implementations may override
+    }
+
+    /**
      * Returns the screen bounds of the monitor on which the user dismissed the flash,
      * or {@code null} if the flash expired by timer or no screen information is available.
      */

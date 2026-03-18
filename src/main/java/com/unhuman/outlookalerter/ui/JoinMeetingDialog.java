@@ -1,6 +1,7 @@
 package com.unhuman.outlookalerter.ui;
 
 import com.unhuman.outlookalerter.model.CalendarEvent;
+import com.unhuman.outlookalerter.util.MacScreenFlasher;
 
 import javax.swing.*;
 import javax.swing.plaf.basic.BasicButtonUI;
@@ -439,6 +440,7 @@ public class JoinMeetingDialog extends JDialog {
                 new java.util.concurrent.atomic.AtomicBoolean(false);
         Runnable dismissAll = () -> SwingUtilities.invokeLater(() -> {
             if (closing.compareAndSet(false, true)) {
+                MacScreenFlasher.clearTopDialogWindows();
                 all.forEach(JDialog::dispose);
                 if (onDismiss != null) onDismiss.run();
             }
@@ -451,6 +453,11 @@ public class JoinMeetingDialog extends JDialog {
             d.setVisible(true);
             SwingUtilities.invokeLater(d::toFront);
         });
+
+        // Register with MacScreenFlasher so the elevation timer keeps these dialogs
+        // above the banner overlay windows (z-order: flash → banner → dialog).
+        MacScreenFlasher.registerTopDialogWindows(all);
+
         return dismissAll;
     }
 }

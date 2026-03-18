@@ -67,6 +67,21 @@ public class MacScreenFlasher implements ScreenFlasher {
         overlayWindows.clear();
     }
 
+    // Dialog windows that must remain above both flash windows AND overlay windows.
+    // Re-elevated by the elevation timer after banners, so z-order is:
+    // flash → banner overlay → top dialogs.
+    private static final List<java.awt.Window> topDialogWindows = new CopyOnWriteArrayList<>();
+
+    /** Register dialog windows that must remain above overlay (banner) windows. */
+    public static void registerTopDialogWindows(List<? extends java.awt.Window> windows) {
+        topDialogWindows.addAll(windows);
+    }
+
+    /** Remove all registered top dialog windows. */
+    public static void clearTopDialogWindows() {
+        topDialogWindows.clear();
+    }
+
     // Callback fired on the EDT once flash windows are visible.
     // Used by the banner to show itself at exactly the right moment.
     private static final AtomicReference<Runnable> onFlashReady =
@@ -401,6 +416,11 @@ public class MacScreenFlasher implements ScreenFlasher {
     @Override
     public boolean wasUserDismissed() {
         return userDismissed.get();
+    }
+
+    @Override
+    public void markUserDismissed() {
+        userDismissed.set(true);
     }
 
     @Override
@@ -828,6 +848,15 @@ public class MacScreenFlasher implements ScreenFlasher {
                         for (JFrame overlay : overlayWindows) {
                             if (overlay.isDisplayable()) {
                                 overlay.toFront();
+                            }
+                        }
+
+                        // Re-elevate top dialog windows (e.g. JoinMeetingDialog) so they
+                        // stay above the banner overlays. Called after banners so the
+                        // z-order is: flash → banner → dialog.
+                        for (java.awt.Window dialog : topDialogWindows) {
+                            if (dialog.isDisplayable()) {
+                                dialog.toFront();
                             }
                         }
 

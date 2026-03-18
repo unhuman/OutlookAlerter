@@ -162,6 +162,10 @@ public class OutlookAlerterUI extends JFrame {
     private final java.util.concurrent.atomic.AtomicReference<Runnable> activeDismissAll =
             new java.util.concurrent.atomic.AtomicReference<>(null);
 
+    // Reference to the currently-running beep thread so it can be interrupted when
+    // the user interacts with a dialog before the beep sequence finishes.
+    private volatile Thread activeBeepThread = null;
+
     // UI Components
     private JTextArea eventsTextArea;
     private JButton refreshButton;
@@ -1819,6 +1823,11 @@ public class OutlookAlerterUI extends JFrame {
         Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
             this, events, this::getEffectiveJoinUrl,
             () -> {
+                // User interacted with the dialog — stop any in-progress beeps and
+                // mark the flasher so post-flash audio is also suppressed.
+                Thread bt = activeBeepThread;
+                if (bt != null) bt.interrupt();
+                screenFlasher.markUserDismissed();
                 screenFlasher.forceCleanup();
                 activeDismissAll.set(null);
             });
@@ -2112,6 +2121,7 @@ public class OutlookAlerterUI extends JFrame {
         }, "AlertBeepThread");
         beepThread.setDaemon(true);
         beepThread.start();
+        activeBeepThread = beepThread;
 
         // ========== ALERT COMPONENT 3: Banner frame (shown once flash is visible) ==========
         final String bannerTextFinal = bannerText;
@@ -2161,7 +2171,7 @@ public class OutlookAlerterUI extends JFrame {
                     // flashMultiple() is now a blocking call on MacScreenFlasher: it returns only
                     // after forceCleanup() has run (i.e. the flash windows have been disposed).
                     // No extra sleep is needed here — the flash duration has already elapsed.
-                    if (configManager.getAlertBeepAfterFlash()) {
+                    if (configManager.getAlertBeepAfterFlash() && !screenFlasher.wasUserDismissed()) {
                         int postBeepCount = Math.max(0, configManager.getAlertBeepCount());
                         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "AlertBeep: Starting post-flash beep sequence (count: " + postBeepCount + ")");
 

@@ -19,8 +19,6 @@
         <jna.version>5.17.0</jna.version>
         <!-- Default: skip jpackage on non-macOS; overridden by mac profile -->
         <skip.jpackage>true</skip.jpackage>
-        <!-- Build macOS app-image in /tmp to avoid intermittent local path signing/permission issues -->
-        <jpackage.output.dir>${java.io.tmpdir}/OutlookAlerter-jpackage</jpackage.output.dir>
         <!-- Default: run tests headless. Use -Dheadless=false to see visual alerts -->
         <headless>true</headless>
     </properties>
@@ -223,7 +221,7 @@
                                 <argument>--input</argument>
                                 <argument>${project.build.directory}/jpackage-input</argument>
                                 <argument>--dest</argument>
-                                <argument>${jpackage.output.dir}</argument>
+                                <argument>${project.build.directory}</argument>
                                 <argument>--name</argument>
                                 <argument>OutlookAlerter</argument>
                                 <argument>--main-jar</argument>
@@ -281,21 +279,6 @@
                         <configuration>
                             <target>
                                 <delete dir="${project.build.directory}/OutlookAlerter.app" failonerror="false"/>
-                                <delete dir="${jpackage.output.dir}/OutlookAlerter.app" failonerror="false"/>
-                            </target>
-                        </configuration>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>copy-macos-app-bundle-to-target</id>
-                        <phase>package</phase>
-                        <configuration>
-                            <target>
-                                <copy todir="${project.build.directory}/OutlookAlerter.app" overwrite="true">
-                                    <fileset dir="${jpackage.output.dir}/OutlookAlerter.app"/>
-                                </copy>
                             </target>
                         </configuration>
                         <goals>
