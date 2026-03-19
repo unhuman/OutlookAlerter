@@ -438,13 +438,20 @@ public class JoinMeetingDialog extends JDialog {
 
         java.util.concurrent.atomic.AtomicBoolean closing =
                 new java.util.concurrent.atomic.AtomicBoolean(false);
-        Runnable dismissAll = () -> SwingUtilities.invokeLater(() -> {
+        Runnable doDispose = () -> {
             if (closing.compareAndSet(false, true)) {
                 MacScreenFlasher.clearTopDialogWindows();
                 all.forEach(JDialog::dispose);
                 if (onDismiss != null) onDismiss.run();
             }
-        });
+        };
+        Runnable dismissAll = () -> {
+            if (SwingUtilities.isEventDispatchThread()) {
+                doDispose.run();
+            } else {
+                SwingUtilities.invokeLater(doDispose);
+            }
+        };
 
         all.forEach(d -> d.setDismissAll(dismissAll));
 
