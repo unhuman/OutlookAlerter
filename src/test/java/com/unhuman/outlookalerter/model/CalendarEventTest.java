@@ -385,6 +385,77 @@ class CalendarEventTest {
         }
     }
 
+    // ───────── isEffectivelyAllDay ─────────
+
+    @Nested
+    @DisplayName("isEffectivelyAllDay()")
+    class IsEffectivelyAllDay {
+
+        @Test
+        @DisplayName("returns true when allDay flag is set")
+        void trueWhenAllDayFlag() {
+            CalendarEvent event = new CalendarEvent();
+            event.setAllDay(true);
+            assertTrue(event.isEffectivelyAllDay());
+        }
+
+        @Test
+        @DisplayName("returns false for a normal 1-hour meeting")
+        void falseForOneHourMeeting() {
+            CalendarEvent event = new CalendarEvent();
+            ZonedDateTime start = ZonedDateTime.now();
+            event.setStartTime(start);
+            event.setEndTime(start.plusHours(1));
+            assertFalse(event.isEffectivelyAllDay());
+        }
+
+        @Test
+        @DisplayName("returns false for a 23-hour event (under threshold)")
+        void falseForTwentyThreeHours() {
+            CalendarEvent event = new CalendarEvent();
+            ZonedDateTime start = ZonedDateTime.now();
+            event.setStartTime(start);
+            event.setEndTime(start.plusHours(23));
+            assertFalse(event.isEffectivelyAllDay());
+        }
+
+        @Test
+        @DisplayName("returns true for an event exactly 24 hours long")
+        void trueForTwentyFourHours() {
+            CalendarEvent event = new CalendarEvent();
+            ZonedDateTime start = ZonedDateTime.now();
+            event.setStartTime(start);
+            event.setEndTime(start.plusHours(24));
+            assertTrue(event.isEffectivelyAllDay());
+        }
+
+        @Test
+        @DisplayName("returns true for a multi-day event spanning 3 days")
+        void trueForMultiDayEvent() {
+            CalendarEvent event = new CalendarEvent();
+            ZonedDateTime start = ZonedDateTime.now();
+            event.setStartTime(start);
+            event.setEndTime(start.plusDays(3));
+            assertTrue(event.isEffectivelyAllDay());
+        }
+
+        @Test
+        @DisplayName("returns false when startTime is null")
+        void falseWhenStartNull() {
+            CalendarEvent event = new CalendarEvent();
+            event.setEndTime(ZonedDateTime.now());
+            assertFalse(event.isEffectivelyAllDay());
+        }
+
+        @Test
+        @DisplayName("returns false when endTime is null")
+        void falseWhenEndNull() {
+            CalendarEvent event = new CalendarEvent();
+            event.setStartTime(ZonedDateTime.now());
+            assertFalse(event.isEffectivelyAllDay());
+        }
+    }
+
     // ───────── isCancelled ─────────
 
     @Nested

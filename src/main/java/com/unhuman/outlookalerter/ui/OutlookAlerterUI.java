@@ -1066,14 +1066,15 @@ public class OutlookAlerterUI extends JFrame {
                 alertedEventIds.remove(event.getId()); // Remove from list if already ended
                 continue;
             }
-            // All-day events never participate in time-based alerting: their start times
-            // are unreliable (e.g. all-day events use non-standard timezones like
-            // "tzone://Microsoft/Custom" that fail to parse, falling back to "now").
-            // Wake/startup alerts are handled separately by checkAlertsOnWake().
-            if (event.isAllDay()) {
+            // Effectively-all-day events (Graph API all-day flag, or duration >= 24 h)
+            // never participate in time-based alerting. All-day events use a non-standard
+            // timezone ("tzone://Microsoft/Custom") that fails to parse, giving unreliable
+            // minutesToStart. Multi-day events are always in-progress and have no actionable
+            // join URL. Wake/startup alerts are handled separately by checkAlertsOnWake().
+            if (event.isEffectivelyAllDay()) {
                 String reason = configManager.getIgnoreAllDayEvents()
-                        ? " Skipping: All-day event (non-alertable per setting)"
-                        : " Skipping: All-day event (time-based alert not applicable)";
+                        ? " Skipping: Effectively all-day event (non-alertable per setting)"
+                        : " Skipping: Effectively all-day event (time-based alert not applicable)";
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                     event.getSubject() + reason);
                 continue;
@@ -1208,7 +1209,7 @@ public class OutlookAlerterUI extends JFrame {
             boolean ignoreAllDay = configManager.getIgnoreAllDayEvents();
             List<CalendarEvent> inProgressEvents = events.stream()
                 .filter(CalendarEvent::isInProgress)
-                .filter(e -> !(ignoreAllDay && e.isAllDay()))
+                .filter(e -> !(ignoreAllDay && e.isEffectivelyAllDay()))
                 .collect(Collectors.toList());
 
             if (!inProgressEvents.isEmpty()) {
@@ -1686,11 +1687,11 @@ public class OutlookAlerterUI extends JFrame {
 
         // --- Dynamic meeting items (show up to 10 min before start, through end) ---
         if (events != null) {
-            // All-day events are always excluded from the tray's time-based upcoming list.
+            // Effectively-all-day events are excluded from the tray's time-based upcoming list.
             // They do not have reliable start times and do not meaningfully "start in X minutes".
             List<CalendarEvent> upcoming = events.stream()
                     .filter(e -> !e.hasEnded())
-                    .filter(e -> !e.isAllDay())
+                    .filter(e -> !e.isEffectivelyAllDay())
                     .filter(e -> e.isInProgress() || e.getMinutesToStart() <= 10)
                     .sorted((a, b) -> {
                         if (a.getStartTime() == null) return 1;
@@ -1814,6 +1815,10 @@ public class OutlookAlerterUI extends JFrame {
      */
     private void showJoinMeetingDialogOnAllScreens(List<CalendarEvent> events) {
         if (events == null || events.isEmpty()) return;
+        if (configManager.getIgnoreAllDayEvents()) {
+            events = events.stream().filter(e -> !e.isEffectivelyAllDay()).collect(Collectors.toList());
+            if (events.isEmpty()) return;
+        }
         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
             "JoinMeetingDialog: showing on all screens for " + events.size() + " event(s)");
         // Close any previously-open dialog session before opening a new one.
@@ -1845,11 +1850,11 @@ public class OutlookAlerterUI extends JFrame {
      */
     String getNextMeetingTimeLabel(List<CalendarEvent> events) {
         if (events == null) return null;
-        // All-day events are always excluded from "next meeting starts at" calculations.
+        // Effectively-all-day events are always excluded from "next meeting starts at" calculations.
         // They span all day and have no specific/reliable start time in this context.
         return events.stream()
                 .filter(e -> !e.hasEnded())
-                .filter(e -> !e.isAllDay())
+                .filter(e -> !e.isEffectivelyAllDay())
                 .filter(e -> e.getStartTime() != null)
                 .min(Comparator.comparing(CalendarEvent::getStartTime))
                 .map(e -> "Next Meeting at " + e.getStartTime()

@@ -218,16 +218,17 @@ dialogs appear the instant flash windows become visible — no user action requi
 │  [Design Review (now)]              │  ← enabled
 │  [Budget Review (in 3m) (No Link)]  │  ← disabled; no join URL found
 │  ─────────────────────────────────  │
-│  [Cancel (Ns)]                      │  (plain "Cancel" when timeout=0)
+│  [Dismiss (Ns)]                     │  (plain "Dismiss" when timeout=0)
 └─────────────────────────────────────┘
 ```
 
 - Events **with** a join URL: enabled `JButton`; clicking opens `Desktop.browse(url)` and calls `closeAll()` (all group dialogs + flash stop)
 - Events **without** a join URL: disabled `JButton` with `" (No Link)"` suffix
 - URL resolution uses the same four-tier priority as the tray menu (`getEffectiveJoinUrl()`)
-- Escape key, Cancel button, and the countdown timer all call `closeAll()` (all group dialogs close + flash stops)
+- Escape key, Dismiss button, and the countdown timer all call `closeAll()` (all group dialogs close + flash stops)
 - `urlResolver` is injected as a `Function<CalendarEvent, String>` for headless testability
 - Auto-dismiss timeout reads from `ConfigManager.getJoinDialogTimeoutSeconds()` (default 15 s; 0 = indefinite)
+- **All-day events are excluded from the dialog when "Ignore All Day Events" is enabled** — they have no actionable join URL and would only appear as disabled `(No Link)` buttons. If filtering removes all events, the dialog is suppressed entirely.
 
 ---
 

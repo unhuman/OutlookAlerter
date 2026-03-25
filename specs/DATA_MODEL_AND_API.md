@@ -31,10 +31,11 @@
 | `getMinutesToStart()` | `int` | `(startTime.toInstant().toEpochMilli() - ZonedDateTime.now(startTime.zone).toInstant().toEpochMilli()) / 60000`. Returns `Integer.MIN_VALUE` if `startTime` is null. |
 | `isInProgress()` | `boolean` | `now` is after `startTime` and before `endTime` (compared as instants) |
 | `hasEnded()` | `boolean` | `now` is after `endTime.toInstant()` |
+| `isEffectivelyAllDay()` | `boolean` | `isAllDay() == true` OR `Duration.between(startTime, endTime) >= 24 h`. Returns `false` if either time is null. Use this instead of `isAllDay()` in all alert/filter logic. |
 
 **Note:** `getMinutesToStart()` uses the event's own timezone for the "now" reference, ensuring correct behavior when the event timezone differs from the system timezone.
 
-**Important — all-day events:** `isAllDay == true` events return `isInProgress() == true` for the entire day because their end time is midnight of the following day. Their `getMinutesToStart()` value is unreliable (often 0) because the Graph API all-day event timezone (`tzone://Microsoft/Custom`) fails to parse and falls back to `ZonedDateTime.now()`. All-day events must never be used in time-based alert calculations.
+**Important — all-day and multi-day events:** `isAllDay == true` events return `isInProgress() == true` for the entire day because their end time is midnight of the following day. Their `getMinutesToStart()` value is unreliable (often 0) because the Graph API all-day event timezone (`tzone://Microsoft/Custom`) fails to parse and falls back to `ZonedDateTime.now()`. Multi-day events (duration >= 24 h, `isAllDay == false`) are also continuously in-progress and have no actionable join URL. Use `isEffectivelyAllDay()` in all alert filtering and time-based calculations to cover both cases.
 
 ---
 

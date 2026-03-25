@@ -261,7 +261,7 @@ public class JoinMeetingDialog extends JDialog {
         footer.add(Box.createVerticalStrut(8));
 
         JButton cancelBtn = makeStyledButton(
-                autoDismissSeconds > 0 ? cancelLabel(autoDismissSeconds) : "Cancel",
+                autoDismissSeconds > 0 ? cancelLabel(autoDismissSeconds) : "Dismiss",
                 BTN_CANCEL, BTN_CANCEL_HOV, Color.WHITE);
         cancelBtn.addActionListener(e -> closeAll());
         footer.add(cancelBtn);
@@ -340,7 +340,7 @@ public class JoinMeetingDialog extends JDialog {
     }
 
     private static String cancelLabel(int seconds) {
-        return "Cancel (" + seconds + "s)";
+        return "Dismiss (" + seconds + "s)";
     }
 
     /** Returns an unmodifiable view of the events this dialog was built with. */

@@ -222,7 +222,7 @@ a meeting alert fires — one dialog per connected screen. No user action on the
 │  [Design Review (now)]                 │  ← enabled
 │  [Budget Review (in 3m) (No Link)]     │  ← disabled (no URL found)
 │                                        │
-│  [Cancel (Ns)]  (or [Cancel] if timeout=0) │
+│  [Dismiss (Ns)]  (or [Dismiss] if timeout=0) │
 └────────────────────────────────────────┘
 ```
 
@@ -231,14 +231,15 @@ a meeting alert fires — one dialog per connected screen. No user action on the
 - **Events without a join URL:** disabled `JButton` with `" (No Link)"` suffix
 - Events are sorted by start time (earliest first)
 - Button label format: `"Subject (in Nm)"` or `"Subject (now)"` for current/past meetings
-- Escape key and Cancel button call `closeAll()` (all group dialogs close + flash stops)
+- Escape key and Dismiss button call `closeAll()` (all group dialogs close + flash stops)
 - URL resolution delegates to `OutlookAlerterUI.getEffectiveJoinUrl()` (same four-tier logic used by the tray menu)
+- **All-day events are excluded from the dialog when "Ignore All Day Events" is enabled** — if filtering removes all events the dialog is suppressed entirely
 
 ### Auto-Dismiss Timeout
 
-Controlled by `ConfigManager.getJoinDialogTimeoutSeconds()` (default `15`).  
-Users can change this in Settings → **Join Dialog Timeout (seconds, 0=indefinite)**.  
-When `0`: countdown timer is not started; progress bar is hidden; Cancel button shows plain "Cancel".
+Controlled by `ConfigManager.getJoinDialogTimeoutSeconds()` (default `15`).
+Users can change this in Settings → **Join Dialog Timeout (seconds, 0=indefinite)**.
+When `0`: countdown timer is not started; progress bar is hidden; Dismiss button shows plain "Dismiss".
 
 ### Factory Methods
 

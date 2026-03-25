@@ -1,5 +1,6 @@
 package com.unhuman.outlookalerter.model;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -75,6 +76,19 @@ public class CalendarEvent {
     /** Returns {@code true} if this event spans the full day with no specific start/end time. */
     public boolean isAllDay() { return allDay; }
     public void setAllDay(boolean allDay) { this.allDay = allDay; }
+
+    /**
+     * Returns {@code true} if this event is effectively all-day for alerting purposes.
+     * This covers both Graph API all-day events ({@code isAllDay() == true}) and
+     * multi-day events that span 24 or more hours — e.g. a 3-day conference or an
+     * OOO block with explicit start/end times. Such events are always in progress
+     * throughout their duration and have no actionable join URL.
+     */
+    public boolean isEffectivelyAllDay() {
+        if (allDay) return true;
+        if (startTime == null || endTime == null) return false;
+        return Duration.between(startTime, endTime).toHours() >= 24;
+    }
 
     /** Returns an unmodifiable view of the resource-attendee map. */
     public Map<String, String> getResourceAttendees() { return Collections.unmodifiableMap(resourceAttendees); }
