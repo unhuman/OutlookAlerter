@@ -229,11 +229,23 @@ public class OutlookAlerterUI extends JFrame {
     // Banner components (CopyOnWriteArrayList for thread-safe access from EDT and timer callbacks)
     private final List<JFrame> alertBannerWindows = new java.util.concurrent.CopyOnWriteArrayList<>();
 
+    /** Returns the application version from the jar manifest, e.g. "v2.3.1", or "" when running from source. */
+    static String getAppVersion() {
+        String v = OutlookAlerterUI.class.getPackage().getImplementationVersion();
+        return v != null ? "v" + v : "";
+    }
+
+    /** Builds the base window title including the version when available. */
+    private static String baseTitle() {
+        String version = getAppVersion();
+        return version.isEmpty() ? "Outlook Alerter" : "Outlook Alerter - " + version;
+    }
+
     /**
      * Create a new OutlookAlerterUI
      */
     public OutlookAlerterUI(String configPath) {
-        super("Outlook Alerter - Meeting Alerts");
+        super(baseTitle() + " - Meeting Alerts");
 
         // Initialize components first so we can check token status
         this.configManager = new ConfigManager(configPath);
@@ -792,7 +804,7 @@ public class OutlookAlerterUI extends JFrame {
                                 .filter(event -> event.getStartTime() != null
                                         && event.getStartTime().toLocalDate().equals(today))
                                 .count();
-                            setTitle("Outlook Alerter - " + todayMeetingsCount + " meetings today");
+                            setTitle(baseTitle() + " - " + todayMeetingsCount + " meetings today");
 
                         } catch (Exception e) {
                             LogManager.getInstance().error(LogCategory.DATA_FETCH, "Error updating UI after refresh: " + e.getMessage(), e);
@@ -803,7 +815,7 @@ public class OutlookAlerterUI extends JFrame {
                     SwingUtilities.invokeLater(() -> {
                         statusLabel.setText("Status: No events found or error");
                         refreshButton.setEnabled(true);
-                        setTitle("Outlook Alerter - Meeting Alerts");
+                        setTitle(baseTitle() + " - Meeting Alerts");
                     });
                 }
             } catch (AuthenticationCancelledException ace) {
