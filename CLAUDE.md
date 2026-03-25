@@ -7,7 +7,7 @@
 
 ## Code Changes
 - When there are code updates, ensure we: 1. Update documentation 2. Update unit tests 3. Update spec files
-- When making code changes, automatically increment the semantic version in `pom.xml` based on the nature of the change:
+- When making code changes, automatically increment the semantic version in `pom.xml` based on the nature of the change, and do this **before** running any build so the version is baked into the artifact:
   - **Patch** (x.y.Z): Bug fixes, minor corrections, documentation-only changes
   - **Minor** (x.Y.0): New features or non-breaking improvements
   - **Major** (X.0.0): Breaking changes, major architectural changes, or API-incompatible changes

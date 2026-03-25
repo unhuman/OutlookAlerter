@@ -151,6 +151,103 @@ class JoinMeetingDialogTest {
         }
     }
 
+    // ───────── Physical location extraction ─────────
+
+    @Nested
+    @DisplayName("extractPhysicalLocation()")
+    class PhysicalLocationTests {
+
+        @Test
+        @DisplayName("null location returns null")
+        void nullLocationReturnsNull() {
+            CalendarEvent e = makeEvent("Meeting", 5);
+            assertNull(JoinMeetingDialog.extractPhysicalLocation(e));
+        }
+
+        @Test
+        @DisplayName("blank location returns null")
+        void blankLocationReturnsNull() {
+            CalendarEvent e = makeEvent("Meeting", 5);
+            e.setLocation("   ");
+            assertNull(JoinMeetingDialog.extractPhysicalLocation(e));
+        }
+
+        @Test
+        @DisplayName("URL-only location returns null")
+        void urlOnlyLocationReturnsNull() {
+            CalendarEvent e = makeEvent("Meeting", 5);
+            e.setLocation("https://zoom.us/j/12345");
+            assertNull(JoinMeetingDialog.extractPhysicalLocation(e));
+        }
+
+        @Test
+        @DisplayName("plain room name is returned as-is")
+        void plainRoomReturned() {
+            CalendarEvent e = makeEvent("Meeting", 5);
+            e.setLocation("Conference Room A");
+            assertEquals("Conference Room A", JoinMeetingDialog.extractPhysicalLocation(e));
+        }
+
+        @Test
+        @DisplayName("composite location strips URL and returns room")
+        void compositeLocationStripsUrl() {
+            CalendarEvent e = makeEvent("Meeting", 5);
+            e.setLocation("https://zoom.us/j/123; Conference Room B");
+            assertEquals("Conference Room B", JoinMeetingDialog.extractPhysicalLocation(e));
+        }
+
+        @Test
+        @DisplayName("tilde-delimited rooms are split and joined")
+        void tildeDelimitedRoomsJoined() {
+            CalendarEvent e = makeEvent("Meeting", 5);
+            e.setLocation("~ Room A~ Room B");
+            assertEquals("Room A, Room B", JoinMeetingDialog.extractPhysicalLocation(e));
+        }
+    }
+
+    // ───────── Button location subtitle ─────────
+
+    @Nested
+    @DisplayName("Button location subtitle")
+    class ButtonLocationSubtitleTests {
+
+        @Test
+        @DisplayName("button text contains location when event has a physical location")
+        void buttonContainsLocationWhenPresent() throws Exception {
+            CalendarEvent event = makeEvent("Team Standup", 5);
+            event.setLocation("Conference Room A");
+            Function<CalendarEvent, String> resolver = e -> "https://zoom.us/j/1";
+
+            JoinMeetingDialog dialog = createDialog(null, List.of(event), resolver);
+            try {
+                List<JButton> buttons = collectButtons(dialog);
+                JButton meetingBtn = buttons.get(0);
+                assertTrue(meetingBtn.getText().contains("Conference Room A"),
+                        "Button text should contain the physical location");
+            } finally {
+                disposeOnEdt(dialog);
+            }
+        }
+
+        @Test
+        @DisplayName("button text does not contain URL-only location")
+        void buttonDoesNotContainUrlLocation() throws Exception {
+            CalendarEvent event = makeEvent("Zoom Only", 5);
+            event.setLocation("https://zoom.us/j/99999");
+            Function<CalendarEvent, String> resolver = e -> "https://zoom.us/j/99999";
+
+            JoinMeetingDialog dialog = createDialog(null, List.of(event), resolver);
+            try {
+                List<JButton> buttons = collectButtons(dialog);
+                JButton meetingBtn = buttons.get(0);
+                assertFalse(meetingBtn.getText().contains("https://"),
+                        "Button text should not contain a URL from the location field");
+            } finally {
+                disposeOnEdt(dialog);
+            }
+        }
+    }
+
     // ───────── URL resolver interaction ─────────
 
     @Nested

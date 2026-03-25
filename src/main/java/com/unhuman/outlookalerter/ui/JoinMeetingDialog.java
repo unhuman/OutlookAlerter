@@ -99,6 +99,45 @@ public class JoinMeetingDialog extends JDialog {
             Math.min(255, Math.max(0, (int) (a.getBlue()  * (1-t) + b.getBlue()  * t))));
     }
 
+    private static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /**
+     * Extracts the physical (non-URL) room/location text from the event's location field.
+     * Splits on ";", discards URL segments, strips "~" delimiters, and de-duplicates.
+     * When the event carries resource-attendee data, only accepted rooms are included.
+     * Returns null when no non-URL content remains.
+     */
+    static String extractPhysicalLocation(CalendarEvent event) {
+        String location = event.getLocation();
+        if (location == null || location.isBlank()) return null;
+        java.util.Map<String, String> resourceAttendees = event.getResourceAttendees();
+        boolean hasAttendeeData = !resourceAttendees.isEmpty();
+        java.util.LinkedHashSet<String> rooms = new java.util.LinkedHashSet<>();
+        for (String part : location.split(";")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty() || trimmed.toLowerCase().startsWith("http")) continue;
+            for (String sub : trimmed.split("~")) {
+                String room = sub.trim();
+                if (!room.isEmpty()) rooms.add(room);
+            }
+        }
+        if (rooms.isEmpty()) return null;
+        if (!hasAttendeeData) return String.join(", ", rooms);
+        java.util.StringJoiner sj = new java.util.StringJoiner(", ");
+        for (String room : rooms) {
+            String status = null;
+            for (java.util.Map.Entry<String, String> entry : resourceAttendees.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(room)) { status = entry.getValue(); break; }
+            }
+            if ("accepted".equalsIgnoreCase(status)) sj.add(room);
+        }
+        String result = sj.toString();
+        return result.isEmpty() ? null : result;
+    }
+
     private final List<CalendarEvent> displayedEvents;
     private final int autoDismissSeconds;
     /** Shared closer: when set, closeAll() will invoke it after dispose(). */
@@ -200,8 +239,10 @@ public class JoinMeetingDialog extends JDialog {
         for (CalendarEvent event : sorted) {
             String url = urlResolver.apply(event);
             String buttonText = buildButtonLabel(event);
+            String physLoc = extractPhysicalLocation(event);
             JButton btn = makeStyledButton(
                     url != null ? "\u25B6  " + buttonText : buttonText + "  (No Link)",
+                    physLoc,
                     url != null ? btnJoinBg      : BTN_DISABLED,
                     url != null ? btnJoinHov     : BTN_DISABLED,
                     url != null ? btnJoinFg      : btnDisabledFg);
@@ -317,7 +358,27 @@ public class JoinMeetingDialog extends JDialog {
      * so {@code bg} and {@code hoverBg} are always respected.
      */
     private static JButton makeStyledButton(String text, Color bg, Color hoverBg, Color fg) {
-        JButton btn = new JButton(text);
+        return makeStyledButton(text, null, bg, hoverBg, fg);
+    }
+
+    /**
+     * Creates a flat, custom-coloured button with an optional subtitle shown in smaller
+     * text below the main label (e.g. a physical room name).
+     */
+    private static JButton makeStyledButton(String text, String subtitle, Color bg, Color hoverBg, Color fg) {
+        boolean hasSubtitle = subtitle != null && !subtitle.isBlank();
+        String btnText;
+        int height;
+        if (hasSubtitle) {
+            String hexFg = String.format("#%02x%02x%02x", fg.getRed(), fg.getGreen(), fg.getBlue());
+            btnText = "<html><center>" + escapeHtml(text)
+                    + "<br><font size='-1' color='" + hexFg + "'>" + escapeHtml(subtitle) + "</font></center></html>";
+            height = 58;
+        } else {
+            btnText = text;
+            height = 44;
+        }
+        JButton btn = new JButton(btnText);
         btn.setUI(new BasicButtonUI());
         btn.setBackground(bg);
         btn.setForeground(fg);
@@ -327,8 +388,8 @@ public class JoinMeetingDialog extends JDialog {
         btn.setFocusPainted(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         btn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
-        btn.setPreferredSize(new Dimension(380, 44));
+        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+        btn.setPreferredSize(new Dimension(380, height));
         btn.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
         if (!hoverBg.equals(bg)) {
             btn.addMouseListener(new MouseAdapter() {
