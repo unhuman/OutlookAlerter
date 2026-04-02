@@ -191,7 +191,13 @@ public class JoinMeetingDialog extends JDialog {
         com.unhuman.outlookalerter.core.ConfigManager cfgForTimeout =
                 com.unhuman.outlookalerter.core.ConfigManager.getInstance();
         this.autoDismissSeconds = (cfgForTimeout != null) ? cfgForTimeout.getJoinDialogTimeoutSeconds() : AUTO_DISMISS_SECONDS;
-        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                closeAll();
+            }
+        });
         setResizable(false);
 
         // ── Resolve colours from configuration ───────────────────────────────
