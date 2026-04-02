@@ -42,6 +42,7 @@ public class ConfigManager {
     private static final String KEY_IGNORE_ALL_DAY_EVENTS = "ignoreAllDayEvents";
     private static final String KEY_ALERT_SOUND_PATH = "alertSoundPath";
     private static final String KEY_JOIN_DIALOG_TIMEOUT = "joinDialogTimeoutSeconds";
+    private static final String KEY_SNOOZE_MINUTES = "snoozeMinutes";
     private static final String KEY_ACCESS_TOKEN = "accessToken";
     private static final String KEY_REFRESH_TOKEN = "refreshToken";
     private static final String KEY_USER_EMAIL = "userEmail";
@@ -67,6 +68,7 @@ public class ConfigManager {
     private static final String DEFAULT_FALSE = "false";
     public static final String DEFAULT_ALERT_SOUND_PATH = "/System/Library/Sounds/Glass.aiff";
     private static final String DEFAULT_JOIN_DIALOG_TIMEOUT = "15";
+    private static final String DEFAULT_SNOOZE_MINUTES = "1";
 
     private String configFilePath;
     private Properties properties = new Properties();
@@ -92,6 +94,7 @@ public class ConfigManager {
     private boolean ignoreAllDayEvents = false;
     private String alertSoundPath = DEFAULT_ALERT_SOUND_PATH;
     private int joinDialogTimeoutSeconds = 15;
+    private int snoozeMinutes = 1;
     private String signInUrl;
     private String tokenEndpoint;
     private String loginHint;
@@ -226,6 +229,11 @@ public class ConfigManager {
         } catch (NumberFormatException e) {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid joinDialogTimeoutSeconds value, using default: " + e.getMessage());
         }
+        try {
+            snoozeMinutes = Integer.parseInt(properties.getProperty(KEY_SNOOZE_MINUTES, DEFAULT_SNOOZE_MINUTES));
+        } catch (NumberFormatException e) {
+            LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid snoozeMinutes value, using default: " + e.getMessage());
+        }
         accessToken = properties.getProperty(KEY_ACCESS_TOKEN);
         refreshToken = properties.getProperty(KEY_REFRESH_TOKEN);
         userEmail = properties.getProperty(KEY_USER_EMAIL, "");
@@ -258,6 +266,7 @@ public class ConfigManager {
             properties.setProperty(KEY_IGNORE_ALL_DAY_EVENTS, String.valueOf(ignoreAllDayEvents));
             properties.setProperty(KEY_ALERT_SOUND_PATH, alertSoundPath != null ? alertSoundPath : DEFAULT_ALERT_SOUND_PATH);
             properties.setProperty(KEY_JOIN_DIALOG_TIMEOUT, String.valueOf(joinDialogTimeoutSeconds));
+            properties.setProperty(KEY_SNOOZE_MINUTES, String.valueOf(snoozeMinutes));
             if (accessToken != null && !accessToken.isEmpty()) {
                 properties.setProperty(KEY_ACCESS_TOKEN, accessToken);
             }
@@ -321,6 +330,7 @@ public class ConfigManager {
     public boolean getIgnoreAllDayEvents() { return ignoreAllDayEvents; }
     public String getAlertSoundPath() { return alertSoundPath != null ? alertSoundPath : DEFAULT_ALERT_SOUND_PATH; }
     public int getJoinDialogTimeoutSeconds() { return joinDialogTimeoutSeconds; }
+    public int getSnoozeMinutes() { return snoozeMinutes; }
 
     public void updatePreferredTimezone(String timezone) { this.preferredTimezone = timezone; saveConfiguration(); }
     public void updateAlertMinutes(int minutes) { this.alertMinutes = minutes; saveConfiguration(); }
@@ -341,6 +351,7 @@ public class ConfigManager {
     public void updateIgnoreAllDayEvents(boolean ignore) { this.ignoreAllDayEvents = ignore; saveConfiguration(); }
     public void updateAlertSoundPath(String path) { this.alertSoundPath = (path != null && !path.trim().isEmpty()) ? path.trim() : DEFAULT_ALERT_SOUND_PATH; saveConfiguration(); }
     public void updateJoinDialogTimeoutSeconds(int seconds) { this.joinDialogTimeoutSeconds = Math.max(0, seconds); saveConfiguration(); }
+    public void updateSnoozeMinutes(int minutes) { this.snoozeMinutes = Math.max(1, minutes); saveConfiguration(); }
 
     /** Email address stored for Okta SSO federation discovery. May be empty/null. */
     public String getUserEmail() { return userEmail; }

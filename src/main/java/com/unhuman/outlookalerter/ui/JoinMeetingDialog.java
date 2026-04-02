@@ -34,6 +34,8 @@ public class JoinMeetingDialog extends JDialog {
     private static final Color BTN_DISABLED = new Color( 55,  55,  75);
     private static final Color BTN_CANCEL   = new Color( 65,  65,  90);
     private static final Color BTN_CANCEL_HOV = new Color( 90,  90, 120);
+    private static final Color BTN_SNOOZE     = new Color( 45,  70,  85);
+    private static final Color BTN_SNOOZE_HOV = new Color( 65,  95, 115);
     private static final Color PROGRESS_BG  = new Color( 50,  50,  70);
 
     /** Decodes a hex color string, returning {@code fallback} on any failure. */
@@ -142,9 +144,14 @@ public class JoinMeetingDialog extends JDialog {
     private final int autoDismissSeconds;
     /** Shared closer: when set, closeAll() will invoke it after dispose(). */
     private Runnable dismissAll = null;
+    /** Snooze callback: when set, snoozeAll() will invoke it instead of dismissAll. */
+    private Runnable snoozeAction = null;
 
     /** Called by showOnAllScreens() to link sibling dialogs together. */
     void setDismissAll(Runnable r) { this.dismissAll = r; }
+
+    /** Called by showOnAllScreens() to supply the snooze callback. */
+    void setSnoozeAction(Runnable r) { this.snoozeAction = r; }
 
     /**
      * Disposes this dialog and, if a shared closer is installed, closes all sibling
@@ -153,6 +160,19 @@ public class JoinMeetingDialog extends JDialog {
     private void closeAll() {
         dispose();
         Runnable r = dismissAll;
+        dismissAll = null;
+        snoozeAction = null;
+        if (r != null) r.run();
+    }
+
+    /**
+     * Closes all sibling dialogs and invokes the snooze callback so the caller can
+     * reschedule the alert after the configured snooze interval.
+     */
+    private void snoozeAll() {
+        dispose();
+        Runnable r = snoozeAction;
+        snoozeAction = null;
         dismissAll = null;
         if (r != null) r.run();
     }
@@ -301,11 +321,24 @@ public class JoinMeetingDialog extends JDialog {
         footer.add(bar);
         footer.add(Box.createVerticalStrut(8));
 
+        int snoozeMinutes = (cfgForTimeout != null) ? cfgForTimeout.getSnoozeMinutes() : 5;
+        JButton snoozeBtn = makeStyledButton(
+                "Snooze (" + snoozeMinutes + "m)",
+                BTN_SNOOZE, BTN_SNOOZE_HOV, Color.WHITE);
+        snoozeBtn.addActionListener(e -> snoozeAll());
+
         JButton cancelBtn = makeStyledButton(
                 autoDismissSeconds > 0 ? cancelLabel(autoDismissSeconds) : "Dismiss",
                 BTN_CANCEL, BTN_CANCEL_HOV, Color.WHITE);
         cancelBtn.addActionListener(e -> closeAll());
-        footer.add(cancelBtn);
+
+        JPanel btnRow = new JPanel(new GridLayout(1, 2, 8, 0));
+        btnRow.setOpaque(false);
+        btnRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, cancelBtn.getPreferredSize().height));
+        btnRow.add(snoozeBtn);
+        btnRow.add(cancelBtn);
+        footer.add(btnRow);
         root.add(footer, BorderLayout.SOUTH);
 
         // Escape also closes
@@ -472,12 +505,33 @@ public class JoinMeetingDialog extends JDialog {
      * @param parent      owning window; may be null
      * @param events      alerted calendar events
      * @param urlResolver maps each event to its join URL, or null if none
-     * @param onDismiss   called once when the group is closed; may be null
+     * @param onDismiss   called once when the group is dismissed; may be null
      * @return a {@code Runnable} that closes all dialogs in the group when invoked
      *         (safe to call even after the dialogs are already disposed)
      */
     public static Runnable showOnAllScreens(Window parent, List<CalendarEvent> events,
             Function<CalendarEvent, String> urlResolver, Runnable onDismiss) {
+        return showOnAllScreens(parent, events, urlResolver, onDismiss, null);
+    }
+
+    /**
+     * Shows one {@link JoinMeetingDialog} per connected screen simultaneously.
+     * All dialogs are linked: interacting with any one disposes every dialog in the group.
+     * Dismiss (or auto-dismiss) invokes {@code onDismiss}; the Snooze button invokes
+     * {@code onSnooze} instead.
+     *
+     * <p>Must be called on the EDT.  Does nothing if {@code events} is null or empty.
+     *
+     * @param parent      owning window; may be null
+     * @param events      alerted calendar events
+     * @param urlResolver maps each event to its join URL, or null if none
+     * @param onDismiss   called once when the group is dismissed; may be null
+     * @param onSnooze    called once when the Snooze button is clicked; may be null
+     * @return a {@code Runnable} that closes all dialogs in the group when invoked
+     *         (safe to call even after the dialogs are already disposed)
+     */
+    public static Runnable showOnAllScreens(Window parent, List<CalendarEvent> events,
+            Function<CalendarEvent, String> urlResolver, Runnable onDismiss, Runnable onSnooze) {
         if (events == null || events.isEmpty()) return () -> {};
 
         GraphicsDevice[] screens = java.awt.GraphicsEnvironment
@@ -514,7 +568,28 @@ public class JoinMeetingDialog extends JDialog {
             }
         };
 
-        all.forEach(d -> d.setDismissAll(dismissAll));
+        java.util.concurrent.atomic.AtomicBoolean snoozing =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        Runnable doSnooze = () -> {
+            if (snoozing.compareAndSet(false, true)) {
+                closing.set(true); // prevent dismiss path from also firing
+                MacScreenFlasher.clearTopDialogWindows();
+                all.forEach(JDialog::dispose);
+                if (onSnooze != null) onSnooze.run();
+            }
+        };
+        Runnable snoozeAll = () -> {
+            if (SwingUtilities.isEventDispatchThread()) {
+                doSnooze.run();
+            } else {
+                SwingUtilities.invokeLater(doSnooze);
+            }
+        };
+
+        all.forEach(d -> {
+            d.setDismissAll(dismissAll);
+            d.setSnoozeAction(snoozeAll);
+        });
 
         // Show all dialogs and schedule toFront
         all.forEach(d -> {

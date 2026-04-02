@@ -1837,17 +1837,27 @@ public class OutlookAlerterUI extends JFrame {
         Runnable existing = activeDismissAll.getAndSet(null);
         if (existing != null) existing.run();
 
+        final List<CalendarEvent> snoozedEvents = events;
+        Runnable onDismiss = () -> {
+            // User interacted with the dialog — stop any in-progress beeps and
+            // mark the flasher so post-flash audio is also suppressed.
+            Thread bt = activeBeepThread;
+            if (bt != null) bt.interrupt();
+            screenFlasher.markUserDismissed();
+            screenFlasher.forceCleanup();
+            activeDismissAll.set(null);
+        };
+        Runnable onSnooze = () -> {
+            onDismiss.run();
+            int snoozeMin = configManager.getSnoozeMinutes();
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "JoinMeetingDialog: snoozed — will re-show in " + snoozeMin + " minute(s)");
+            alertScheduler.schedule(
+                () -> SwingUtilities.invokeLater(() -> showJoinMeetingDialogOnAllScreens(snoozedEvents)),
+                snoozeMin, java.util.concurrent.TimeUnit.MINUTES);
+        };
         Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
-            this, events, this::getEffectiveJoinUrl,
-            () -> {
-                // User interacted with the dialog — stop any in-progress beeps and
-                // mark the flasher so post-flash audio is also suppressed.
-                Thread bt = activeBeepThread;
-                if (bt != null) bt.interrupt();
-                screenFlasher.markUserDismissed();
-                screenFlasher.forceCleanup();
-                activeDismissAll.set(null);
-            });
+            this, events, this::getEffectiveJoinUrl, onDismiss, onSnooze);
         activeDismissAll.set(dismissAll);
     }
 

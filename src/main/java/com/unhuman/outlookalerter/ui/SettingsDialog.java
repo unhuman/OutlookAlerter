@@ -35,6 +35,7 @@ public class SettingsDialog extends JDialog {
     private JSpinner alertBeepCountSpinner;
     private JCheckBox alertBeepAfterFlashCheckbox;
     private JSpinner joinDialogTimeoutSpinner;
+    private JSpinner snoozeMinutesSpinner;
     private JCheckBox ignoreAllDayEventsCheckbox;
     private JTextField alertSoundPathField;
     private JTextField signInUrlField;
@@ -325,9 +326,25 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 11;
         formPanel.add(joinDialogTimeoutSpinner, gbc);
 
-        // Alert sound path setting (macOS only)
+        // Snooze time setting
         gbc.gridx = 0;
         gbc.gridy = 12;
+        formPanel.add(new JLabel("Snooze Time (minutes):"), gbc);
+
+        SpinnerNumberModel snoozeMinutesModel = new SpinnerNumberModel(
+            configManager.getSnoozeMinutes(),  // initial value
+            1,                                  // min
+            60,                                 // max
+            1                                   // step
+        );
+        snoozeMinutesSpinner = new JSpinner(snoozeMinutesModel);
+        gbc.gridx = 1;
+        gbc.gridy = 12;
+        formPanel.add(snoozeMinutesSpinner, gbc);
+
+        // Alert sound path setting (macOS only)
+        gbc.gridx = 0;
+        gbc.gridy = 13;
         formPanel.add(new JLabel("Alert Sound File (macOS):"), gbc);
 
         JPanel soundPanel = new JPanel(new BorderLayout(4, 0));
@@ -452,74 +469,74 @@ public class SettingsDialog extends JDialog {
         soundPanel.add(alertSoundPathField, BorderLayout.CENTER);
         soundPanel.add(soundButtonPanel, BorderLayout.EAST);
         gbc.gridx = 1;
-        gbc.gridy = 12;
+        gbc.gridy = 13;
         formPanel.add(soundPanel, gbc);
 
         // Separator after alert settings
         gbc.gridx = 0;
-        gbc.gridy = 13;
+        gbc.gridy = 14;
         gbc.gridwidth = 2;
         formPanel.add(new JSeparator(SwingConstants.HORIZONTAL), gbc);
         gbc.gridwidth = 1;
 
         // Sign-in URL setting
         gbc.gridx = 0;
-        gbc.gridy = 14;
+        gbc.gridy = 15;
         formPanel.add(new JLabel("Sign-in URL:"), gbc);
 
         signInUrlField = new JTextField(configManager.getSignInUrl() != null ? configManager.getSignInUrl() : "", 20);
         gbc.gridx = 1;
-        gbc.gridy = 14;
+        gbc.gridy = 15;
         formPanel.add(signInUrlField, gbc);
 
         // OAuth Client ID setting
         gbc.gridx = 0;
-        gbc.gridy = 15;
+        gbc.gridy = 16;
         formPanel.add(new JLabel("Client ID (Azure AD App):"), gbc);
 
         clientIdField = new JTextField(configManager.getClientId() != null ? configManager.getClientId() : "", 20);
         clientIdField.setToolTipText("Register an app at portal.azure.com to enable automatic browser sign-in");
         gbc.gridx = 1;
-        gbc.gridy = 15;
+        gbc.gridy = 16;
         formPanel.add(clientIdField, gbc);
 
         // OAuth Tenant ID setting
         gbc.gridx = 0;
-        gbc.gridy = 16;
+        gbc.gridy = 17;
         formPanel.add(new JLabel("Tenant ID (default: common):"), gbc);
 
         tenantIdField = new JTextField(configManager.getTenantId() != null ? configManager.getTenantId() : "common", 20);
         tenantIdField.setToolTipText("Your Azure AD tenant ID or 'common' for multi-tenant");
         gbc.gridx = 1;
-        gbc.gridy = 16;
+        gbc.gridy = 17;
         formPanel.add(tenantIdField, gbc);
 
         // Test Sign In button
         gbc.gridx = 0;
-        gbc.gridy = 17;
+        gbc.gridy = 18;
         formPanel.add(new JLabel("Test OAuth Sign-in:"), gbc);
 
         JButton testSignInButton = new JButton("Test Sign In");
         testSignInButton.setToolTipText("Test MSAL browser sign-in with the configured Client ID");
         testSignInButton.addActionListener(e -> testMsalSignIn(testSignInButton));
         gbc.gridx = 1;
-        gbc.gridy = 17;
+        gbc.gridy = 18;
         formPanel.add(testSignInButton, gbc);
 
         // Default Ignore SSL certificate validation setting
         gbc.gridx = 0;
-        gbc.gridy = 18;
+        gbc.gridy = 19;
         formPanel.add(new JLabel("Default Ignore SSL certificate validation:"), gbc);
 
         defaultIgnoreCertValidationCheckbox = new JCheckBox("(note security implications)", configManager.getDefaultIgnoreCertValidation());
         // No longer update immediately when checkbox changes
         gbc.gridx = 1;
-        gbc.gridy = 18;
+        gbc.gridy = 19;
         formPanel.add(defaultIgnoreCertValidationCheckbox, gbc);
 
         // Okta SSO email setting
         gbc.gridx = 0;
-        gbc.gridy = 19;
+        gbc.gridy = 20;
         formPanel.add(new JLabel("Okta SSO Email:"), gbc);
 
         userEmailField = new JTextField(
@@ -528,7 +545,7 @@ public class SettingsDialog extends JDialog {
                 "Your work email used for Okta SSO federation discovery. "
                 + "Set automatically when you click \"Sign In with Okta SSO\"");
         gbc.gridx = 1;
-        gbc.gridy = 19;
+        gbc.gridy = 20;
         formPanel.add(userEmailField, gbc);
 
         // Button panel
@@ -641,6 +658,10 @@ public class SettingsDialog extends JDialog {
             // Save join dialog timeout
             int joinDialogTimeout = (Integer) joinDialogTimeoutSpinner.getValue();
             configManager.updateJoinDialogTimeoutSeconds(joinDialogTimeout);
+
+            // Save snooze time
+            int snoozeMinutes = (Integer) snoozeMinutesSpinner.getValue();
+            configManager.updateSnoozeMinutes(snoozeMinutes);
 
             // Save ignore all day events
             configManager.updateIgnoreAllDayEvents(ignoreAllDayEventsCheckbox.isSelected());
