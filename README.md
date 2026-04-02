@@ -73,6 +73,18 @@ Outlook Alerter uses OAuth2 for authentication. To avoid repeated sign-ins, it r
 - **Windows**: Alerts use always-on-top windows and system tray notifications. Color and opacity settings are fully respected.
 - **Linux/Cross-Platform**: Alerts use always-on-top windows with color/opacity support (subject to window manager limitations).
 
+## Installation
+
+### macOS App Bundle
+
+If you install the `.app` bundle (e.g., by copying it to `/Applications`), macOS Gatekeeper may block it with a message that the app is damaged or corrupted. This happens because the bundle was not notarized by Apple. To fix it, remove the quarantine attribute:
+
+```zsh
+xattr -rd com.apple.quarantine /Applications/OutlookAlerter.app
+```
+
+Then try opening the app again.
+
 ## Running the Application
 
 You can run Outlook Alerter in two modes, either using the JAR directly or using the provided shell scripts:
