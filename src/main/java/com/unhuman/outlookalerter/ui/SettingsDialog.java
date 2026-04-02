@@ -23,7 +23,7 @@ public class SettingsDialog extends JDialog {
     private OutlookAlerterUI parent;
 
     // UI Components
-    private JTextField timezoneField;
+    private JComboBox<String> timezoneCombo;
     private JSpinner alertMinutesSpinner;
     private JSpinner resyncIntervalSpinner;
     private JSpinner flashDurationSpinner;
@@ -78,12 +78,19 @@ public class SettingsDialog extends JDialog {
         // Timezone setting
         gbc.gridx = 0;
         gbc.gridy = 0;
-        formPanel.add(new JLabel("Preferred Timezone (e.g., America/New_York):"), gbc);
+        formPanel.add(new JLabel("Preferred Timezone:"), gbc);
 
-        timezoneField = new JTextField(configManager.getPreferredTimezone() != null ? configManager.getPreferredTimezone() : "", 20);
+        java.util.List<String> zoneIds = new java.util.ArrayList<>(java.time.ZoneId.getAvailableZoneIds());
+        java.util.Collections.sort(zoneIds);
+        timezoneCombo = new JComboBox<>(zoneIds.toArray(new String[0]));
+        String currentTz = configManager.getPreferredTimezone();
+        if (currentTz == null || currentTz.isEmpty()) {
+            currentTz = java.time.ZoneId.systemDefault().getId();
+        }
+        timezoneCombo.setSelectedItem(currentTz);
         gbc.gridx = 1;
         gbc.gridy = 0;
-        formPanel.add(timezoneField, gbc);
+        formPanel.add(timezoneCombo, gbc);
 
         // Resync interval setting
         gbc.gridx = 0;
@@ -566,9 +573,8 @@ public class SettingsDialog extends JDialog {
     private void saveSettings() {
         try {
             // Save timezone
-            String timezone = timezoneField.getText().trim();
-            if (!timezone.isEmpty()) {
-                java.time.ZoneId.of(timezone); // Validate timezone
+            String timezone = (String) timezoneCombo.getSelectedItem();
+            if (timezone != null && !timezone.isEmpty()) {
                 configManager.updatePreferredTimezone(timezone);
             }
 
