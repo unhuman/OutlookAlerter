@@ -1852,9 +1852,11 @@ public class OutlookAlerterUI extends JFrame {
             int snoozeMin = configManager.getSnoozeMinutes();
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                 "JoinMeetingDialog: snoozed — will re-show in " + snoozeMin + " minute(s)");
-            alertScheduler.schedule(
-                () -> SwingUtilities.invokeLater(() -> showJoinMeetingDialogOnAllScreens(snoozedEvents)),
-                snoozeMin, java.util.concurrent.TimeUnit.MINUTES);
+            alertScheduler.schedule(() -> {
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                    "JoinMeetingDialog: snooze timer fired — re-showing dialog");
+                SwingUtilities.invokeLater(() -> showJoinMeetingDialogOnAllScreens(snoozedEvents));
+            }, snoozeMin, java.util.concurrent.TimeUnit.MINUTES);
         };
         Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
             this, events, this::getEffectiveJoinUrl, onDismiss, onSnooze);

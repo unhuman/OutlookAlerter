@@ -325,6 +325,10 @@ public class JoinMeetingDialog extends JDialog {
         JButton snoozeBtn = makeStyledButton(
                 "Snooze (" + snoozeMinutes + "m)",
                 BTN_SNOOZE, BTN_SNOOZE_HOV, Color.WHITE);
+        // Let the snooze button size to its text rather than inheriting the full 380px
+        // preferred width from makeStyledButton — it sits in BorderLayout WEST so its
+        // preferred width drives the row total.
+        snoozeBtn.setPreferredSize(null);
         snoozeBtn.addActionListener(e -> snoozeAll());
 
         JButton cancelBtn = makeStyledButton(
@@ -332,12 +336,12 @@ public class JoinMeetingDialog extends JDialog {
                 BTN_CANCEL, BTN_CANCEL_HOV, Color.WHITE);
         cancelBtn.addActionListener(e -> closeAll());
 
-        JPanel btnRow = new JPanel(new GridLayout(1, 2, 8, 0));
+        JPanel btnRow = new JPanel(new BorderLayout(8, 0));
         btnRow.setOpaque(false);
         btnRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, cancelBtn.getPreferredSize().height));
-        btnRow.add(snoozeBtn);
-        btnRow.add(cancelBtn);
+        btnRow.add(snoozeBtn, BorderLayout.WEST);
+        btnRow.add(cancelBtn, BorderLayout.CENTER);
         footer.add(btnRow);
         root.add(footer, BorderLayout.SOUTH);
 
