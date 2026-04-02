@@ -43,10 +43,13 @@ public class SimpleTokenDialog {
     // because a background silent re-authentication succeeded.
     public static final String BACKGROUND_AUTH_SUCCESS_KEY = "backgroundAuthSuccess";
 
+    private static final String SSL_HINT = " If this persists, try checking 'Ignore SSL certificate validation'.";
+
     // Instance variables
     private JDialog frame;
     private JFrame parentFrame;
     private JTextField tokenField;
+    private JTextField emailField;
     private CountDownLatch latch = new CountDownLatch(1);
     private Map<String, String> tokens;
     private final String signInUrl;
@@ -216,7 +219,7 @@ public class SimpleTokenDialog {
                 panel.add(instructionsLabel, BorderLayout.NORTH);
 
                 // Form in center with more spacing
-                JPanel formPanel = new JPanel(new GridLayout(2, 1, 10, 15));
+                JPanel formPanel = new JPanel(new GridLayout(0, 1, 10, 8));
 
                 // Add some padding around the form
                 formPanel.setBorder(BorderFactory.createCompoundBorder(
@@ -226,6 +229,24 @@ public class SimpleTokenDialog {
                         BorderFactory.createEmptyBorder(10, 10, 10, 10)
                     )
                 ));
+
+                // Email field for Okta SSO — avoids a blocking JOptionPane popup
+                if (msalEnabled) {
+                    JLabel emailLabel = new JLabel("Work Email (for Okta SSO):");
+                    emailLabel.setFont(emailLabel.getFont().deriveFont(Font.BOLD));
+                    formPanel.add(emailLabel);
+
+                    emailField = new JTextField(30);
+                    emailField.setToolTipText("Your work email address — used to route Okta SSO sign-in");
+                    String savedEmail = ConfigManager.getInstance().getUserEmail();
+                    if (savedEmail == null || savedEmail.isBlank()) {
+                        savedEmail = ConfigManager.getInstance().getLoginHint();
+                    }
+                    if (savedEmail != null && !savedEmail.isBlank()) {
+                        emailField.setText(savedEmail);
+                    }
+                    formPanel.add(emailField);
+                }
 
                 JLabel tokenLabel = new JLabel("Access Token:");
                 tokenLabel.setFont(tokenLabel.getFont().deriveFont(Font.BOLD));
@@ -440,6 +461,7 @@ public class SimpleTokenDialog {
                 // Clear references to UI components
                 frame = null;
                 tokenField = null;
+                emailField = null;
                 parentFrame = null;
             });
         }
@@ -773,7 +795,7 @@ public class SimpleTokenDialog {
                             "SimpleTokenDialog: MSAL interactive auth returned no token");
                     final String msg = cancelled[0]
                             ? "Sign-in cancelled."
-                            : "Sign-in timed out or failed. Your organization may require admin consent. Try Graph Explorer instead.";
+                            : "Sign-in timed out or failed. Your organization may require admin consent. Try Graph Explorer instead." + SSL_HINT;
                     SwingUtilities.invokeLater(() -> {
                         restoreSignInButton(triggerButton);
                         if (statusLabel != null) {
@@ -826,24 +848,16 @@ public class SimpleTokenDialog {
             ConfigManager.getInstance().updateDefaultIgnoreCertValidation(certIgnore);
         }
 
-        // Prompt for email — pre-populate from config
-        String savedEmail = ConfigManager.getInstance().getUserEmail();
-        if (savedEmail == null || savedEmail.isBlank()) {
-            savedEmail = ConfigManager.getInstance().getLoginHint();
-        }
-        String email = (String) JOptionPane.showInputDialog(
-                frame,
-                "Enter your work email address for Microsoft/Okta SSO sign-in:",
-                "SSO Login",
-                JOptionPane.QUESTION_MESSAGE,
-                null,
-                null,
-                savedEmail != null ? savedEmail : "");
-
-        if (email == null || email.isBlank()) {
+        // Read email from the embedded field (avoids a blocking JOptionPane on the EDT)
+        String email = emailField != null ? emailField.getText().trim() : "";
+        if (email.isBlank()) {
+            if (statusLabel != null) {
+                statusLabel.setText("Please enter your work email address above.");
+                statusLabel.setForeground(Color.RED);
+            }
             return;
         }
-        final String emailFinal = email.trim();
+        final String emailFinal = email;
 
         ConfigManager.getInstance().updateUserEmail(emailFinal);
         ConfigManager.getInstance().updateAuthMode("okta");
@@ -1041,7 +1055,7 @@ public class SimpleTokenDialog {
                         SwingUtilities.invokeLater(() -> {
                             restoreOktaButton(triggerButton);
                             if (statusLabel != null) {
-                                statusLabel.setText("Sign-in returned no token. Try again.");
+                                statusLabel.setText("Sign-in returned no token. Try again." + SSL_HINT);
                                 statusLabel.setForeground(Color.RED);
                             }
                         });
@@ -1069,11 +1083,11 @@ public class SimpleTokenDialog {
                     String rootMsg = c.getMessage() != null ? c.getMessage() : c.getClass().getSimpleName();
                     LogManager.getInstance().error(LogCategory.DATA_FETCH,
                             "SimpleTokenDialog: SSO auth error: " + rootMsg, ex);
-                    final String errDisplay = rootMsg.length() > 120 ? rootMsg.substring(0, 120) + "..." : rootMsg;
+                    final String errDisplay = rootMsg.length() > 100 ? rootMsg.substring(0, 100) + "..." : rootMsg;
                     SwingUtilities.invokeLater(() -> {
                         restoreOktaButton(triggerButton);
                         if (statusLabel != null) {
-                            statusLabel.setText("Error: " + errDisplay);
+                            statusLabel.setText("Error: " + errDisplay + SSL_HINT);
                             statusLabel.setForeground(Color.RED);
                         }
                         // No JOptionPane — status label is sufficient and doesn't block EDT
@@ -1130,23 +1144,6 @@ public class SimpleTokenDialog {
         try {
             LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: User canceled token entry (or clicked the X button)");
             isExplicitCancel = true;  // Mark this as an explicit cancellation
-
-            // Show cancellation message ONLY when user explicitly cancels (via button or X)
-            // and when it wasn't a successful submission
-            if (!isTokenSubmitted && isExplicitCancel) {
-                try {
-                    if (frame != null && frame.isVisible()) {
-                        JOptionPane.showMessageDialog(
-                            frame,
-                            "Authentication was cancelled. The application may have limited functionality.",
-                            "Authentication Cancelled",
-                            JOptionPane.WARNING_MESSAGE
-                        );
-                    }
-                } catch (Exception e) {
-                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error showing cancellation message: " + e.getMessage());
-                }
-            }
 
             // Mark tokens as null to indicate cancellation
             tokens = null;
