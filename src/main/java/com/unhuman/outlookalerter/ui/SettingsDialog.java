@@ -38,6 +38,7 @@ public class SettingsDialog extends JDialog {
     private JSpinner snoozeMinutesSpinner;
     private JCheckBox ignoreAllDayEventsCheckbox;
     private JTextField alertSoundPathField;
+    private JCheckBox alertSoundEnabledCheckbox;
     private JTextField signInUrlField;
     private JTextField clientIdField;
     private JTextField tenantIdField;
@@ -348,7 +349,11 @@ public class SettingsDialog extends JDialog {
         formPanel.add(new JLabel("Alert Sound File (macOS):"), gbc);
 
         JPanel soundPanel = new JPanel(new BorderLayout(4, 0));
+        boolean soundEnabled = configManager.getAlertSoundEnabled();
+        alertSoundEnabledCheckbox = new JCheckBox("", soundEnabled);
+        alertSoundEnabledCheckbox.setToolTipText("Enable or disable alert sound playback");
         alertSoundPathField = new JTextField(configManager.getAlertSoundPath(), 20);
+        alertSoundPathField.setEnabled(soundEnabled);
         JButton soundBrowseButton = new JButton("Browse...");
         soundBrowseButton.addActionListener(e -> {
             final Process[] previewProc = {null};
@@ -446,6 +451,8 @@ public class SettingsDialog extends JDialog {
         });
         JButton soundPreviewButton = new JButton("Preview");
         soundPreviewButton.setToolTipText("Play the selected sound file");
+        soundPreviewButton.setEnabled(soundEnabled);
+        soundBrowseButton.setEnabled(soundEnabled);
         soundPreviewButton.addActionListener(e -> {
             String path = alertSoundPathField.getText().trim();
             if (path.isEmpty()) {
@@ -466,7 +473,19 @@ public class SettingsDialog extends JDialog {
         JPanel soundButtonPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
         soundButtonPanel.add(soundPreviewButton);
         soundButtonPanel.add(soundBrowseButton);
-        soundPanel.add(alertSoundPathField, BorderLayout.CENTER);
+
+        // Wire the enabled checkbox to toggle the path field and buttons
+        alertSoundEnabledCheckbox.addActionListener(e -> {
+            boolean en = alertSoundEnabledCheckbox.isSelected();
+            alertSoundPathField.setEnabled(en);
+            soundPreviewButton.setEnabled(en);
+            soundBrowseButton.setEnabled(en);
+        });
+
+        JPanel soundInnerPanel = new JPanel(new BorderLayout(4, 0));
+        soundInnerPanel.add(alertSoundEnabledCheckbox, BorderLayout.WEST);
+        soundInnerPanel.add(alertSoundPathField, BorderLayout.CENTER);
+        soundPanel.add(soundInnerPanel, BorderLayout.CENTER);
         soundPanel.add(soundButtonPanel, BorderLayout.EAST);
         gbc.gridx = 1;
         gbc.gridy = 13;
@@ -669,6 +688,9 @@ public class SettingsDialog extends JDialog {
             // Save alert sound path
             String soundPath = alertSoundPathField.getText().trim();
             configManager.updateAlertSoundPath(soundPath.isEmpty() ? null : soundPath);
+
+            // Save alert sound enabled
+            configManager.updateAlertSoundEnabled(alertSoundEnabledCheckbox.isSelected());
 
             // Save the SSL certificate validation setting
             boolean defaultIgnoreCertVal = defaultIgnoreCertValidationCheckbox.isSelected();

@@ -174,7 +174,7 @@ Exit
 | Alert Banner Color | `JButton` (swatch) | Color chooser | `alertBannerColor` |
 | Alert Beep Count | `JSpinner` | 0–20 | `alertBeepCount` |
 | Alert Beep After Flash | `JCheckBox` | boolean | `alertBeepAfterFlash` |
-| Alert Sound File (macOS) | `JTextField` + Preview + Browse button | File path string | `alertSoundPath` |
+| Alert Sound File (macOS) | `JCheckBox` + `JTextField` + Preview + Browse button | Checkbox enables/disables sound; file path string | `alertSoundEnabled`, `alertSoundPath` |
 | *(separator)* | — | — | — |
 | Sign-in URL | `JTextField` | URL | `signInUrl` |
 | Client ID (Azure AD App) | `JTextField` | UUID string | `clientId` |

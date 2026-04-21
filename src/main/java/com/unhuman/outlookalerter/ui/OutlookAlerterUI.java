@@ -2308,6 +2308,11 @@ public class OutlookAlerterUI extends JFrame {
         if (!System.getProperty("os.name", "").toLowerCase().contains("mac")) {
             return;
         }
+        // Respect the "alert sound enabled" setting
+        if (configManager != null && !configManager.getAlertSoundEnabled()) {
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, logMessage + ": alert sound disabled by user setting");
+            return;
+        }
         try {
             // Use the configured path first; fall back to the built-in chain if the file is missing.
             String configured = (configManager != null) ? configManager.getAlertSoundPath() : null;

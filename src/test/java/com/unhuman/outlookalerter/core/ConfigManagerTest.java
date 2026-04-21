@@ -106,6 +106,7 @@ class ConfigManagerTest {
             assertFalse(configManager.getIgnoreAllDayEvents());
             assertEquals("common", configManager.getTenantId());
             assertEquals(ConfigManager.DEFAULT_ALERT_SOUND_PATH, configManager.getAlertSoundPath());
+            assertTrue(configManager.getAlertSoundEnabled());
         }
 
         @Test

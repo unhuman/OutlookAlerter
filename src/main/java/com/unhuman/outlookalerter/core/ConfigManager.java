@@ -41,6 +41,7 @@ public class ConfigManager {
     private static final String KEY_ALERT_BEEP_AFTER_FLASH = "alertBeepAfterFlash";
     private static final String KEY_IGNORE_ALL_DAY_EVENTS = "ignoreAllDayEvents";
     private static final String KEY_ALERT_SOUND_PATH = "alertSoundPath";
+    private static final String KEY_ALERT_SOUND_ENABLED = "alertSoundEnabled";
     private static final String KEY_JOIN_DIALOG_TIMEOUT = "joinDialogTimeoutSeconds";
     private static final String KEY_SNOOZE_MINUTES = "snoozeMinutes";
     private static final String KEY_ACCESS_TOKEN = "accessToken";
@@ -66,6 +67,7 @@ public class ConfigManager {
     private static final String DEFAULT_RESYNC_INTERVAL = "240";
     private static final String DEFAULT_ALERT_BEEP_COUNT = "5";
     private static final String DEFAULT_FALSE = "false";
+    private static final String DEFAULT_TRUE = "true";
     public static final String DEFAULT_ALERT_SOUND_PATH = "/System/Library/Sounds/Glass.aiff";
     private static final String DEFAULT_JOIN_DIALOG_TIMEOUT = "15";
     private static final String DEFAULT_SNOOZE_MINUTES = "1";
@@ -93,6 +95,7 @@ public class ConfigManager {
     private boolean alertBeepAfterFlash = false;
     private boolean ignoreAllDayEvents = false;
     private String alertSoundPath = DEFAULT_ALERT_SOUND_PATH;
+    private boolean alertSoundEnabled = true;
     private int joinDialogTimeoutSeconds = 15;
     private int snoozeMinutes = 1;
     private String signInUrl;
@@ -154,6 +157,7 @@ public class ConfigManager {
         properties.setProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE);
         properties.setProperty(KEY_IGNORE_ALL_DAY_EVENTS, DEFAULT_FALSE);
         properties.setProperty(KEY_ALERT_SOUND_PATH, DEFAULT_ALERT_SOUND_PATH);
+        properties.setProperty(KEY_ALERT_SOUND_ENABLED, DEFAULT_TRUE);
         properties.setProperty(KEY_USER_EMAIL, "");
         properties.setProperty(KEY_AUTH_MODE, "");
         try (FileOutputStream fos = new FileOutputStream(configFile)) {
@@ -224,6 +228,7 @@ public class ConfigManager {
         alertBeepAfterFlash = Boolean.parseBoolean(properties.getProperty(KEY_ALERT_BEEP_AFTER_FLASH, DEFAULT_FALSE));
         ignoreAllDayEvents = Boolean.parseBoolean(properties.getProperty(KEY_IGNORE_ALL_DAY_EVENTS, DEFAULT_FALSE));
         alertSoundPath = properties.getProperty(KEY_ALERT_SOUND_PATH, DEFAULT_ALERT_SOUND_PATH);
+        alertSoundEnabled = Boolean.parseBoolean(properties.getProperty(KEY_ALERT_SOUND_ENABLED, DEFAULT_TRUE));
         try {
             joinDialogTimeoutSeconds = Integer.parseInt(properties.getProperty(KEY_JOIN_DIALOG_TIMEOUT, DEFAULT_JOIN_DIALOG_TIMEOUT));
         } catch (NumberFormatException e) {
@@ -265,6 +270,7 @@ public class ConfigManager {
             properties.setProperty(KEY_ALERT_BEEP_AFTER_FLASH, String.valueOf(alertBeepAfterFlash));
             properties.setProperty(KEY_IGNORE_ALL_DAY_EVENTS, String.valueOf(ignoreAllDayEvents));
             properties.setProperty(KEY_ALERT_SOUND_PATH, alertSoundPath != null ? alertSoundPath : DEFAULT_ALERT_SOUND_PATH);
+            properties.setProperty(KEY_ALERT_SOUND_ENABLED, String.valueOf(alertSoundEnabled));
             properties.setProperty(KEY_JOIN_DIALOG_TIMEOUT, String.valueOf(joinDialogTimeoutSeconds));
             properties.setProperty(KEY_SNOOZE_MINUTES, String.valueOf(snoozeMinutes));
             if (accessToken != null && !accessToken.isEmpty()) {
@@ -329,6 +335,7 @@ public class ConfigManager {
     public boolean getAlertBeepAfterFlash() { return alertBeepAfterFlash; }
     public boolean getIgnoreAllDayEvents() { return ignoreAllDayEvents; }
     public String getAlertSoundPath() { return alertSoundPath != null ? alertSoundPath : DEFAULT_ALERT_SOUND_PATH; }
+    public boolean getAlertSoundEnabled() { return alertSoundEnabled; }
     public int getJoinDialogTimeoutSeconds() { return joinDialogTimeoutSeconds; }
     public int getSnoozeMinutes() { return snoozeMinutes; }
 
@@ -350,6 +357,7 @@ public class ConfigManager {
     public void updateAlertBeepAfterFlash(boolean enabled) { this.alertBeepAfterFlash = enabled; saveConfiguration(); }
     public void updateIgnoreAllDayEvents(boolean ignore) { this.ignoreAllDayEvents = ignore; saveConfiguration(); }
     public void updateAlertSoundPath(String path) { this.alertSoundPath = (path != null && !path.trim().isEmpty()) ? path.trim() : DEFAULT_ALERT_SOUND_PATH; saveConfiguration(); }
+    public void updateAlertSoundEnabled(boolean enabled) { this.alertSoundEnabled = enabled; saveConfiguration(); }
     public void updateJoinDialogTimeoutSeconds(int seconds) { this.joinDialogTimeoutSeconds = Math.max(0, seconds); saveConfiguration(); }
     public void updateSnoozeMinutes(int minutes) { this.snoozeMinutes = Math.max(1, minutes); saveConfiguration(); }
 
