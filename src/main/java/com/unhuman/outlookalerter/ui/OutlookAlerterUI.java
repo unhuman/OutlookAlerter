@@ -185,6 +185,12 @@ public class OutlookAlerterUI extends JFrame {
     // Track which events we've already alerted for
     private final Set<String> alertedEventIds = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true);
 
+    // Track events the user has explicitly opened (joined) or dismissed — but NOT snoozed.
+    // Events in this set will not trigger a new alert until the meeting has ended.
+    // On system wake, alertedEventIds is cleared so meetings can re-alert, but
+    // interactedEventIds is preserved so user-dismissed meetings stay quiet.
+    private final Set<String> interactedEventIds = new java.util.concurrent.ConcurrentHashMap<String, Boolean>().keySet(true);
+
     // Store last fetched events to avoid frequent API calls (volatile for cross-thread visibility)
     private volatile List<CalendarEvent> lastFetchedEvents = new ArrayList<>();
 
@@ -1076,6 +1082,7 @@ public class OutlookAlerterUI extends JFrame {
             if (event.hasEnded()) {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Skipping: Event has ended");
                 alertedEventIds.remove(event.getId()); // Remove from list if already ended
+                interactedEventIds.remove(event.getId()); // Clean up interacted set when meeting ends
                 continue;
             }
             // Effectively-all-day events (Graph API all-day flag, or duration >= 24 h)
@@ -1096,6 +1103,12 @@ public class OutlookAlerterUI extends JFrame {
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.getId())) {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Skipping: Already alerted for this event");
+                continue;
+            }
+            // Skip events the user has explicitly opened (joined) or dismissed (but not snoozed).
+            // If there are 2 meetings and one is opened, the other is implicitly dismissed here.
+            if (interactedEventIds.contains(event.getId())) {
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Skipping: Already opened or dismissed by user");
                 continue;
             }
             // Alert for events about to start
@@ -1838,17 +1851,31 @@ public class OutlookAlerterUI extends JFrame {
         if (existing != null) existing.run();
 
         final List<CalendarEvent> snoozedEvents = events;
-        Runnable onDismiss = () -> {
-            // User interacted with the dialog — stop any in-progress beeps and
-            // mark the flasher so post-flash audio is also suppressed.
+        // Shared cleanup: stop beeps, mark flash dismissed, clear dismiss reference.
+        // Called on both dismiss and snooze paths.
+        Runnable cleanup = () -> {
             Thread bt = activeBeepThread;
             if (bt != null) bt.interrupt();
             screenFlasher.markUserDismissed();
             screenFlasher.forceCleanup();
             activeDismissAll.set(null);
         };
+        Runnable onDismiss = () -> {
+            cleanup.run();
+            // Mark all displayed events as interacted (opened or explicitly dismissed, NOT snoozed).
+            // If multiple meetings were in the same alert and one was opened, the others are
+            // implicitly dismissed here — they will not alert again until their meeting ends.
+            for (CalendarEvent event : snoozedEvents) {
+                if (event.getId() != null) {
+                    interactedEventIds.add(event.getId());
+                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                        "Marking event as interacted (dismissed/opened): " + event.getSubject());
+                }
+            }
+        };
         Runnable onSnooze = () -> {
-            onDismiss.run();
+            // Only cleanup — do NOT mark events as interacted so they can be re-alerted after snooze.
+            cleanup.run();
             int snoozeMin = configManager.getSnoozeMinutes();
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                 "JoinMeetingDialog: snoozed — will re-show in " + snoozeMin + " minute(s)");
@@ -1859,7 +1886,7 @@ public class OutlookAlerterUI extends JFrame {
             }, snoozeMin, java.util.concurrent.TimeUnit.MINUTES);
         };
         Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
-            this, events, this::getEffectiveJoinUrl, onDismiss, onSnooze);
+            this, events, this::getEffectiveJoinUrl, onDismiss, onSnooze, cleanup);
         activeDismissAll.set(dismissAll);
     }
 

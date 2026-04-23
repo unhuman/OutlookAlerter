@@ -147,6 +147,10 @@ class OutlookAlerterUIAlertTest {
         Set<String> alertedIds = ConcurrentHashMap.newKeySet();
         setField(ui, "alertedEventIds", alertedIds);
 
+        // checkForEventAlerts also needs interactedEventIds
+        Set<String> interactedIds = ConcurrentHashMap.newKeySet();
+        setField(ui, "interactedEventIds", interactedIds);
+
         // checkForEventAlerts updates statusLabel on EDT — provide a stub
         setField(ui, "statusLabel", new JLabel("Test"));
 
@@ -830,6 +834,195 @@ class OutlookAlerterUIAlertTest {
         }
     }
 
+    // ───────── Interacted event tracking ─────────
+
+    @Nested
+    @DisplayName("interactedEventIds suppression")
+    class InteractedEventTrackingTests {
+
+        @Test
+        @DisplayName("event in interactedEventIds is not alerted")
+        void interactedEventIsNotAlerted() throws Exception {
+            configManager.updateAlertMinutes(5);
+
+            CalendarEvent event = makeTestEvent("Board Meeting", 2);
+            event.setId("interacted-1");
+
+            // Pre-mark as interacted (simulates user having opened or dismissed it)
+            getInteractedEventIds().add("interacted-1");
+
+            invokeCheckForEventAlerts(List.of(event));
+            Thread.sleep(300);
+
+            assertEquals(0, flasher.flashMultipleCount,
+                "Event already interacted with (opened/dismissed) should not alert again");
+            assertFalse(getAlertedEventIds().contains("interacted-1"),
+                "Event should not be added to alertedEventIds if interacted");
+        }
+
+        @Test
+        @DisplayName("event alert fires when not in interactedEventIds")
+        void nonInteractedEventIsAlerted() throws Exception {
+            configManager.updateAlertMinutes(5);
+
+            CalendarEvent event = makeTestEvent("New Meeting", 2);
+            event.setId("not-interacted-1");
+
+            // Do NOT add to interactedEventIds — this event should fire
+            invokeCheckForEventAlerts(List.of(event));
+            Thread.sleep(300);
+
+            assertEquals(1, flasher.flashMultipleCount,
+                "Event not in interactedEventIds should trigger alert normally");
+        }
+
+        @Test
+        @DisplayName("native window close (red dot) does NOT add event to interactedEventIds")
+        @org.junit.jupiter.api.condition.DisabledIfSystemProperty(named = "java.awt.headless", matches = "true")
+        void nativeWindowCloseDoesNotTrackInteraction() throws Exception {
+            // Simulate what JoinMeetingDialog.showOnAllScreens does: onWindowClose fires
+            // only the cleanup runnable, NOT onDismiss.  We verify that interactedEventIds
+            // remains empty after a window-close callback.
+            CalendarEvent event = makeTestEvent("Red Dot Meeting", 2);
+            event.setId("red-dot-1");
+
+            // The windowCloseAction fires cleanup (stops beeps / marks flash dismissed) but must
+            // NOT add the event to interactedEventIds.  We exercise this by directly calling the
+            // JoinMeetingDialog APIs used by showOnAllScreens.
+            java.util.concurrent.atomic.AtomicBoolean windowCloseFired = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+            Runnable onWindowClose = () -> windowCloseFired.set(true); // cleanup only — no tracking
+
+            // Create dialog, wire window-close action, then simulate window close
+            JoinMeetingDialog dialog = new JoinMeetingDialog(null, List.of(event), e -> null);
+            dialog.setWindowCloseAction(onWindowClose);
+
+            // Simulate windowClosing (red dot) — must call setWindowCloseAction path, not onDismiss
+            SwingUtilities.invokeAndWait(() -> {
+                dialog.dispatchEvent(
+                    new java.awt.event.WindowEvent(dialog, java.awt.event.WindowEvent.WINDOW_CLOSING));
+            });
+
+            Thread.sleep(200);
+
+            assertTrue(windowCloseFired.get(), "onWindowClose callback should fire on native close");
+            assertFalse(getInteractedEventIds().contains("red-dot-1"),
+                "Closing via red dot must NOT add event to interactedEventIds — no explicit action taken");
+        }
+
+        @Test
+        @DisplayName("ended event is removed from interactedEventIds (memory cleanup)")
+        void endedEventIsRemovedFromInteracted() throws Exception {
+            configManager.updateAlertMinutes(5);
+
+            // Pre-populate interactedEventIds with an ended event
+            getInteractedEventIds().add("interacted-ended");
+
+            CalendarEvent endedEvent = new CalendarEvent();
+            endedEvent.setId("interacted-ended");
+            endedEvent.setSubject("Finished Meeting");
+            endedEvent.setStartTime(ZonedDateTime.now().minusHours(2));
+            endedEvent.setEndTime(ZonedDateTime.now().minusHours(1));
+
+            invokeCheckForEventAlerts(List.of(endedEvent));
+            Thread.sleep(200);
+
+            assertFalse(getInteractedEventIds().contains("interacted-ended"),
+                "Ended event should be removed from interactedEventIds to free memory");
+        }
+
+        @Test
+        @DisplayName("interactedEventIds preserved across checkAlertsOnWake (not reset on wake)")
+        void interactedIdsPreservedOnWake() throws Exception {
+            CalendarEvent event = makeTestEvent("Wake Meeting", 2);
+            event.setId("wake-interacted");
+
+            // Mark as interacted before wake
+            getInteractedEventIds().add("wake-interacted");
+
+            // Set as cached event
+            Field lastFetchedField = findField(ui.getClass(), "lastFetchedEvents");
+            lastFetchedField.setAccessible(true);
+            lastFetchedField.set(ui, java.util.Collections.unmodifiableList(List.of(event)));
+
+            Method wakeMethod = OutlookAlerterUI.class.getDeclaredMethod("checkAlertsOnWake");
+            wakeMethod.setAccessible(true);
+            wakeMethod.invoke(ui);
+            Thread.sleep(400);
+
+            // interactedEventIds should still contain the event (wake does not clear it)
+            assertTrue(getInteractedEventIds().contains("wake-interacted"),
+                "interactedEventIds should be preserved after wake — user-dismissed meetings should stay quiet");
+            // Alert should NOT fire for the interacted event even after wake
+            assertEquals(0, flasher.flashMultipleCount,
+                "Event previously opened/dismissed should not re-alert after wake");
+        }
+
+        @Test
+        @DisplayName("checkAlertsOnWake clears alertedEventIds but not interactedEventIds")
+        void wakeResetsAlertedButNotInteracted() throws Exception {
+            CalendarEvent alertedNotInteracted = makeTestEvent("Just Alerted", 2);
+            alertedNotInteracted.setId("alerted-only");
+
+            CalendarEvent interactedEvent = makeTestEvent("Dismissed Meeting", 2);
+            interactedEvent.setId("interacted-only");
+
+            // alerted-only: was alerted but user did not interact (simulates normal pre-sleep alert)
+            getAlertedEventIds().add("alerted-only");
+            // interacted-only: user explicitly dismissed/opened
+            getInteractedEventIds().add("interacted-only");
+
+            Field lastFetchedField = findField(ui.getClass(), "lastFetchedEvents");
+            lastFetchedField.setAccessible(true);
+            lastFetchedField.set(ui, java.util.Collections.unmodifiableList(
+                List.of(alertedNotInteracted, interactedEvent)));
+
+            Method wakeMethod = OutlookAlerterUI.class.getDeclaredMethod("checkAlertsOnWake");
+            wakeMethod.setAccessible(true);
+            wakeMethod.invoke(ui);
+            Thread.sleep(400);
+
+            assertFalse(getAlertedEventIds().contains("alerted-only"),
+                "alertedEventIds should be cleared on wake so the event can re-alert");
+            assertTrue(getInteractedEventIds().contains("interacted-only"),
+                "interactedEventIds must survive wake — user already dismissed/opened this meeting");
+        }
+
+        @Test
+        @DisplayName("both alerted-only and interacted events mixed: only non-interacted re-alerts on wake")
+        void onWakeOnlyNonInteractedReAlerts() throws Exception {
+            configManager.updateAlertMinutes(5);
+
+            // Two upcoming meetings (in alert window)
+            CalendarEvent alertedOnly = makeTestEvent("Alerted Only", 2);
+            alertedOnly.setId("alerted-only-2");
+
+            CalendarEvent interacted = makeTestEvent("Already Dismissed", 2);
+            interacted.setId("interacted-2");
+
+            // Simulate: both were alerted before sleep; user dismissed second one
+            getAlertedEventIds().add("alerted-only-2");
+            getAlertedEventIds().add("interacted-2");
+            getInteractedEventIds().add("interacted-2");
+
+            Field lastFetchedField = findField(ui.getClass(), "lastFetchedEvents");
+            lastFetchedField.setAccessible(true);
+            lastFetchedField.set(ui, java.util.Collections.unmodifiableList(
+                List.of(alertedOnly, interacted)));
+
+            Method wakeMethod = OutlookAlerterUI.class.getDeclaredMethod("checkAlertsOnWake");
+            wakeMethod.setAccessible(true);
+            wakeMethod.invoke(ui);
+            Thread.sleep(400);
+
+            // Only alertedOnly should generate a new alert (interacted is suppressed)
+            assertEquals(1, flasher.flashMultipleCount,
+                "Only non-interacted event should re-alert on wake");
+            assertEquals("Alerted Only", flasher.flashedEvents.get(0).getSubject(),
+                "The re-alerted event should be the one that was not explicitly dismissed");
+        }
+    }
+
     // ───────── Helpers ─────────
 
     private CalendarEvent makeTestEvent(String subject, int minutesFromNow) {
@@ -851,6 +1044,13 @@ class OutlookAlerterUIAlertTest {
     @SuppressWarnings("unchecked")
     private Set<String> getAlertedEventIds() throws Exception {
         Field field = OutlookAlerterUI.class.getDeclaredField("alertedEventIds");
+        field.setAccessible(true);
+        return (Set<String>) field.get(ui);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Set<String> getInteractedEventIds() throws Exception {
+        Field field = OutlookAlerterUI.class.getDeclaredField("interactedEventIds");
         field.setAccessible(true);
         return (Set<String>) field.get(ui);
     }

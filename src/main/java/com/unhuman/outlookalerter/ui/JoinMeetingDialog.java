@@ -146,12 +146,21 @@ public class JoinMeetingDialog extends JDialog {
     private Runnable dismissAll = null;
     /** Snooze callback: when set, snoozeAll() will invoke it instead of dismissAll. */
     private Runnable snoozeAction = null;
+    /**
+     * Window-close callback: called when the user closes via the native OS window
+     * decoration (e.g. the macOS red dot) rather than an explicit button.  Only
+     * cleanup is performed — no interaction is recorded so the meeting can re-alert.
+     */
+    private Runnable windowCloseAction = null;
 
     /** Called by showOnAllScreens() to link sibling dialogs together. */
     void setDismissAll(Runnable r) { this.dismissAll = r; }
 
     /** Called by showOnAllScreens() to supply the snooze callback. */
     void setSnoozeAction(Runnable r) { this.snoozeAction = r; }
+
+    /** Called by showOnAllScreens() to supply the window-close (no-track) callback. */
+    void setWindowCloseAction(Runnable r) { this.windowCloseAction = r; }
 
     /**
      * Disposes this dialog and, if a shared closer is installed, closes all sibling
@@ -162,6 +171,7 @@ public class JoinMeetingDialog extends JDialog {
         Runnable r = dismissAll;
         dismissAll = null;
         snoozeAction = null;
+        windowCloseAction = null;
         if (r != null) r.run();
     }
 
@@ -174,6 +184,21 @@ public class JoinMeetingDialog extends JDialog {
         Runnable r = snoozeAction;
         snoozeAction = null;
         dismissAll = null;
+        windowCloseAction = null;
+        if (r != null) r.run();
+    }
+
+    /**
+     * Closes this dialog (and all siblings) when the user clicks the native OS window
+     * close button (e.g. the macOS red dot).  Only the cleanup runnable is fired —
+     * no interaction is recorded so the meeting will be allowed to re-alert.
+     */
+    private void closeWindow() {
+        dispose();
+        Runnable r = windowCloseAction;
+        windowCloseAction = null;
+        dismissAll = null;
+        snoozeAction = null;
         if (r != null) r.run();
     }
 
@@ -195,7 +220,9 @@ public class JoinMeetingDialog extends JDialog {
         addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosing(java.awt.event.WindowEvent e) {
-                closeAll();
+                // Native window close (e.g. macOS red dot): only cleanup, do NOT record
+                // as an interaction so the meeting can re-alert.
+                closeWindow();
             }
         });
         setResizable(false);
@@ -534,6 +561,16 @@ public class JoinMeetingDialog extends JDialog {
      *
      * @param parent      owning window; may be null
      * @param events      alerted calendar events
+    /**
+     * Shows one {@link JoinMeetingDialog} per connected screen simultaneously.
+     * All dialogs are linked: interacting with any one disposes every dialog in the group.
+     * Dismiss (or auto-dismiss) invokes {@code onDismiss}; the Snooze button invokes
+     * {@code onSnooze} instead.
+     *
+     * <p>Must be called on the EDT.  Does nothing if {@code events} is null or empty.
+     *
+     * @param parent      owning window; may be null
+     * @param events      alerted calendar events
      * @param urlResolver maps each event to its join URL, or null if none
      * @param onDismiss   called once when the group is dismissed; may be null
      * @param onSnooze    called once when the Snooze button is clicked; may be null
@@ -542,6 +579,30 @@ public class JoinMeetingDialog extends JDialog {
      */
     public static Runnable showOnAllScreens(Window parent, List<CalendarEvent> events,
             Function<CalendarEvent, String> urlResolver, Runnable onDismiss, Runnable onSnooze) {
+        return showOnAllScreens(parent, events, urlResolver, onDismiss, onSnooze, null);
+    }
+
+    /**
+     * Shows one {@link JoinMeetingDialog} per connected screen simultaneously.
+     * All dialogs are linked: interacting with any one disposes every dialog in the group.
+     * Dismiss (or auto-dismiss) invokes {@code onDismiss}; the Snooze button invokes
+     * {@code onSnooze} instead; closing via the native OS window decoration (e.g. macOS
+     * red dot) invokes {@code onWindowClose} (cleanup only — no interaction recorded).
+     *
+     * <p>Must be called on the EDT.  Does nothing if {@code events} is null or empty.
+     *
+     * @param parent        owning window; may be null
+     * @param events        alerted calendar events
+     * @param urlResolver   maps each event to its join URL, or null if none
+     * @param onDismiss     called once when the group is dismissed; may be null
+     * @param onSnooze      called once when the Snooze button is clicked; may be null
+     * @param onWindowClose called once when closed via OS window decoration; may be null
+     * @return a {@code Runnable} that closes all dialogs in the group when invoked
+     *         (safe to call even after the dialogs are already disposed)
+     */
+    public static Runnable showOnAllScreens(Window parent, List<CalendarEvent> events,
+            Function<CalendarEvent, String> urlResolver, Runnable onDismiss, Runnable onSnooze,
+            Runnable onWindowClose) {
         if (events == null || events.isEmpty()) return () -> {};
 
         GraphicsDevice[] screens = java.awt.GraphicsEnvironment
@@ -596,9 +657,30 @@ public class JoinMeetingDialog extends JDialog {
             }
         };
 
+        // Window-close path: OS decoration close (e.g. red dot) — cleanup only, no tracking.
+        java.util.concurrent.atomic.AtomicBoolean windowClosing =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        Runnable doWindowClose = () -> {
+            if (windowClosing.compareAndSet(false, true)) {
+                closing.set(true);  // prevent dismiss from also firing
+                snoozing.set(true); // prevent snooze from also firing
+                MacScreenFlasher.clearTopDialogWindows();
+                all.forEach(JDialog::dispose);
+                if (onWindowClose != null) onWindowClose.run();
+            }
+        };
+        Runnable windowCloseAll = () -> {
+            if (SwingUtilities.isEventDispatchThread()) {
+                doWindowClose.run();
+            } else {
+                SwingUtilities.invokeLater(doWindowClose);
+            }
+        };
+
         all.forEach(d -> {
             d.setDismissAll(dismissAll);
             d.setSnoozeAction(snoozeAll);
+            d.setWindowCloseAction(windowCloseAll);
         });
 
         // Show all dialogs and schedule toFront
