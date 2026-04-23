@@ -1235,6 +1235,7 @@ public class OutlookAlerterUI extends JFrame {
             List<CalendarEvent> inProgressEvents = events.stream()
                 .filter(CalendarEvent::isInProgress)
                 .filter(e -> !(ignoreAllDay && e.isEffectivelyAllDay()))
+                .filter(e -> !interactedEventIds.contains(e.getId())) // skip meetings user already dismissed/opened
                 .collect(Collectors.toList());
 
             if (!inProgressEvents.isEmpty()) {

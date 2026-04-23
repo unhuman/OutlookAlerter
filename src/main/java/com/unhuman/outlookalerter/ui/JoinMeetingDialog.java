@@ -561,16 +561,6 @@ public class JoinMeetingDialog extends JDialog {
      *
      * @param parent      owning window; may be null
      * @param events      alerted calendar events
-    /**
-     * Shows one {@link JoinMeetingDialog} per connected screen simultaneously.
-     * All dialogs are linked: interacting with any one disposes every dialog in the group.
-     * Dismiss (or auto-dismiss) invokes {@code onDismiss}; the Snooze button invokes
-     * {@code onSnooze} instead.
-     *
-     * <p>Must be called on the EDT.  Does nothing if {@code events} is null or empty.
-     *
-     * @param parent      owning window; may be null
-     * @param events      alerted calendar events
      * @param urlResolver maps each event to its join URL, or null if none
      * @param onDismiss   called once when the group is dismissed; may be null
      * @param onSnooze    called once when the Snooze button is clicked; may be null
