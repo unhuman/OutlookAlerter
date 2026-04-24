@@ -819,13 +819,18 @@ public class OutlookAlerterUI extends JFrame {
                     });
 
                 } else {
-                    // Optional.empty() means a network/API error occurred — preserve the cache
+                    // Optional.empty() means a network/API error occurred — preserve the cache.
+                    // Reset lastCalendarRefresh to null so checkAlertsFromCache() (running every
+                    // 60 s) will retry refreshCalendarEvents() on the next tick, giving us an
+                    // effective 1-minute retry cadence until service is restored.
+                    lastCalendarRefresh = null;
                     final int cachedCount = lastFetchedEvents != null ? lastFetchedEvents.size() : 0;
                     final String cacheMsg = cachedCount > 0
-                            ? "Network error - using " + cachedCount + " cached event(s)"
-                            : "Network error - no cached events";
+                            ? "Network error - retrying in ~1m (" + cachedCount + " cached event(s))"
+                            : "Network error - retrying in ~1m (no cached events)";
                     LogManager.getInstance().warn(LogCategory.DATA_FETCH,
-                            "Calendar fetch returned no result (network/API error). Preserving " + cachedCount + " cached event(s).");
+                            "Calendar fetch failed (network/API error). Preserving " + cachedCount
+                            + " cached event(s). Will retry in ~1 minute.");
                     SwingUtilities.invokeLater(() -> {
                         statusLabel.setText("Status: " + cacheMsg);
                         refreshButton.setEnabled(true);
