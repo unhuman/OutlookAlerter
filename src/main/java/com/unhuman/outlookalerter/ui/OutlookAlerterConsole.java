@@ -182,12 +182,17 @@ public class OutlookAlerterConsole {
     private void checkForUpcomingMeetings() {
         try {
             // Try all available methods for retrieving events
-            List<CalendarEvent> calendarViewEvents = outlookClient.getUpcomingEventsUsingCalendarView();
-            
+            java.util.Optional<List<CalendarEvent>> calendarViewOpt = outlookClient.getUpcomingEventsUsingCalendarView();
+            if (calendarViewOpt.isEmpty()) {
+                System.out.println("Failed to retrieve calendar events (network or API error).");
+                return;
+            }
+            List<CalendarEvent> calendarViewEvents = calendarViewOpt.get();
+
             // Combine events, avoiding duplicates
             Map<String, CalendarEvent> combinedEventsMap = new HashMap<>();
             
-            // Add calendar view events (will overwrite duplicates)
+            // Add calendar view events (will overwritemv duplicates)
             for (CalendarEvent event : calendarViewEvents) {
                 combinedEventsMap.put(event.getId(), event);
             }

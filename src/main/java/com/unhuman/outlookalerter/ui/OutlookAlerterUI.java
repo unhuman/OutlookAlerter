@@ -756,7 +756,7 @@ public class OutlookAlerterUI extends JFrame {
             try {
                 // Fetch events and store them
                 LogManager.getInstance().info(LogCategory.DATA_FETCH, "Fetching events from Outlook API...");
-                List<CalendarEvent> events = outlookClient.getUpcomingEventsUsingCalendarView();
+                java.util.Optional<List<CalendarEvent>> eventsOpt = outlookClient.getUpcomingEventsUsingCalendarView();
 
                 // Update token status based on refresh result
                 boolean tokenInvalid = false;
@@ -774,8 +774,9 @@ public class OutlookAlerterUI extends JFrame {
                 // Update icons based on token validity
                 updateIcons(tokenInvalid);
 
-                // Check if we got any events
-                if (events != null) {
+                // Check if we got any events (Optional.empty() means network/API error)
+                if (eventsOpt.isPresent()) {
+                    List<CalendarEvent> events = eventsOpt.get();
                     LogManager.getInstance().info(LogCategory.DATA_FETCH, "Retrieved " + events.size() + " events from Outlook");
                     // Update the UI with the results
                     final List<CalendarEvent> finalEvents = events;
@@ -818,8 +819,15 @@ public class OutlookAlerterUI extends JFrame {
                     });
 
                 } else {
+                    // Optional.empty() means a network/API error occurred — preserve the cache
+                    final int cachedCount = lastFetchedEvents != null ? lastFetchedEvents.size() : 0;
+                    final String cacheMsg = cachedCount > 0
+                            ? "Network error - using " + cachedCount + " cached event(s)"
+                            : "Network error - no cached events";
+                    LogManager.getInstance().warn(LogCategory.DATA_FETCH,
+                            "Calendar fetch returned no result (network/API error). Preserving " + cachedCount + " cached event(s).");
                     SwingUtilities.invokeLater(() -> {
-                        statusLabel.setText("Status: No events found or error");
+                        statusLabel.setText("Status: " + cacheMsg);
                         refreshButton.setEnabled(true);
                         setTitle(baseTitle() + " - Meeting Alerts");
                     });

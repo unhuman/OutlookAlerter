@@ -644,8 +644,14 @@ public class OutlookClient {
 
     /**
      * Retrieve upcoming calendar events using the calendarView endpoint.
+     *
+     * @return {@code Optional.of(events)} on a successful API response (the list may be empty
+     *         if the server reports no events); {@code Optional.empty()} when a network error,
+     *         HTTP error, or unexpected exception prevents a successful response.  Callers
+     *         should preserve any previously-cached event list when {@code Optional.empty()}
+     *         is returned.
      */
-    public List<CalendarEvent> getUpcomingEventsUsingCalendarView() {
+    public java.util.Optional<List<CalendarEvent>> getUpcomingEventsUsingCalendarView() {
         try {
             lastTokenValidationResult = TOKEN_VALID_NO_ACTION;
             String accessToken = configManager.getAccessToken();
@@ -741,18 +747,20 @@ public class OutlookClient {
 
             if (response.statusCode() == 200) {
                 List<CalendarEvent> events = parseEventResponse(response.body());
-                return events;
+                return java.util.Optional.of(events);
             } else {
                 LogManager.getInstance().error(LogCategory.DATA_FETCH,
                         "Failed to retrieve events using calendar view (HTTP " + response.statusCode() + ")");
-                return new ArrayList<>();
+                // Return empty to signal a fetch error — callers preserve cached events on empty.
+                return java.util.Optional.empty();
             }
         } catch (AuthenticationCancelledException ace) {
             throw ace;
         } catch (Exception e) {
             LogManager.getInstance().error(LogCategory.DATA_FETCH,
                     "Error retrieving calendar events using calendar view: " + e.getMessage(), e);
-            return new ArrayList<>();
+            // Return empty to signal a network/unexpected error — callers preserve cached events on empty.
+            return java.util.Optional.empty();
         }
     }
 
