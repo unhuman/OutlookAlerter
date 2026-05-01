@@ -2374,14 +2374,32 @@ public class OutlookAlerterUI extends JFrame {
             }
             for (String soundPath : soundPaths) {
                 if (new java.io.File(soundPath).exists()) {
-                    Runtime.getRuntime().exec(new String[]{"afplay", soundPath});
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, logMessage + ": " + soundPath);
+                    try {
+                        // Use ProcessBuilder for better cross-JDK compatibility on macOS
+                        // (avoids "posix_spawn failed" errors on some JDK installations)
+                        ProcessBuilder pb = new ProcessBuilder("afplay", soundPath);
+                        pb.inheritIO();
+                        pb.start();
+                        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, logMessage + ": " + soundPath);
+                    } catch (java.io.IOException pbEx) {
+                        // ProcessBuilder also failed — try the deprecated Runtime.exec() as fallback
+                        try {
+                            Runtime.getRuntime().exec(new String[]{"afplay", soundPath});
+                            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, logMessage + " (fallback): " + soundPath);
+                        } catch (Exception runtimeEx) {
+                            // Both methods failed — log at warning level since alert audio is non-critical
+                            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING,
+                                "AlertBeep: Could not start afplay via ProcessBuilder or Runtime.exec(): " +
+                                pbEx.getMessage() + " / " + runtimeEx.getMessage());
+                            continue;  // Try next sound file
+                        }
+                    }
                     break;
                 }
             }
         } catch (Exception afEx) {
-            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                "AlertBeep: Could not start afplay: " + afEx.getMessage());
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING,
+                "AlertBeep: Unexpected error in playMacAudio: " + afEx.getMessage());
         }
     }
 

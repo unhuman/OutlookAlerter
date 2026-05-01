@@ -463,12 +463,49 @@ public class SettingsDialog extends JDialog {
                         "File not found: " + path, "Preview", javax.swing.JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            try {
-                Runtime.getRuntime().exec(new String[]{"afplay", path});
-            } catch (java.io.IOException ex) {
-                javax.swing.JOptionPane.showMessageDialog(SettingsDialog.this,
-                        "Could not play sound: " + ex.getMessage(), "Preview", javax.swing.JOptionPane.ERROR_MESSAGE);
-            }
+            new Thread(() -> {
+                try {
+                    // Use ProcessBuilder for better cross-JDK compatibility
+                    ProcessBuilder pb = new ProcessBuilder("afplay", path);
+                    pb.inheritIO();
+                    Process process = pb.start();
+                    // Wait for the process to complete (afplay will exit after the sound finishes)
+                    process.waitFor();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (java.io.IOException ex) {
+                    // On some macOS JDK installations, spawning afplay can fail with:
+                    // "Cannot run program "afplay": posix_spawn failed, error: 0 (none)"
+                    // This is a known issue. Provide helpful diagnostic info.
+                    String errorMsg = ex.getMessage() != null ? ex.getMessage() : "(unknown error)";
+                    String diagnosticMsg;
+                    if (errorMsg.contains("posix_spawn")) {
+                        diagnosticMsg = "Sound preview failed (posix_spawn error - JDK issue on this Mac).\n\n" +
+                                "Possible causes:\n" +
+                                "• JDK version mismatch after system update\n" +
+                                "• Java process spawn helper issue\n\n" +
+                                "Workarounds:\n" +
+                                "1. Restart the JVM\n" +
+                                "2. Reinstall or update Java\n" +
+                                "3. Set environment variable: java.lang.Process.launchMechanism=FORK\n\n" +
+                                "Alert sounds will still work during actual alerts (they use the same mechanism)." +
+                                (com.unhuman.outlookalerter.util.LogManager.getInstance() != null ?
+                                    "\n\nFull error logged." : "");
+                    } else {
+                        diagnosticMsg = "Could not play sound: " + errorMsg;
+                    }
+                    javax.swing.SwingUtilities.invokeLater(() ->
+                        javax.swing.JOptionPane.showMessageDialog(SettingsDialog.this,
+                            diagnosticMsg, "Sound Preview Failed",
+                            javax.swing.JOptionPane.WARNING_MESSAGE)
+                    );
+                    if (com.unhuman.outlookalerter.util.LogManager.getInstance() != null) {
+                        com.unhuman.outlookalerter.util.LogManager.getInstance().error(
+                            com.unhuman.outlookalerter.util.LogCategory.GENERAL,
+                            "Sound preview failed: " + ex.getMessage(), ex);
+                    }
+                }
+            }, "SoundPreviewThread").start();
         });
         JPanel soundButtonPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
         soundButtonPanel.add(soundPreviewButton);
