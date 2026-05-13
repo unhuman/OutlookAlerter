@@ -1314,6 +1314,18 @@ public class OutlookAlerterUI extends JFrame {
                 }
             }
 
+            // If the login dialog is showing, try a silent refresh to auto-dismiss it if the
+            // connection has recovered. This must live here (not inside refreshCalendarEvents)
+            // because the dialog may be blocking a fetch thread (fetchInProgress == true).
+            if (isTokenDialogActive) {
+                if (outlookClient.attemptSilentTokenRefresh()) {
+                    LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                            "Silent token refresh succeeded while login dialog was active — dismissing dialog");
+                    dismissTokenDialogIfActive();
+                }
+                return;
+            }
+
             // Check if refresh needed (more than resyncInterval since last refresh)
             // this is to capture if device has been asleep for some time (ie weekend)
             long resyncMinutes = (long) configManager.getResyncIntervalMinutes();
