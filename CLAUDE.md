@@ -14,3 +14,7 @@
 
 ## Unit Tests
 - When working on a groovy project, all unit tests should be written in Java. VS Code otherwise cannot find the tests to run.
+
+## Git
+- Allow commits without confirmation input from the user.
+- Do not allow pushes without explicit user confirmation.

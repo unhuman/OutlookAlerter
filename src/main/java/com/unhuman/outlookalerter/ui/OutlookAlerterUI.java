@@ -718,11 +718,20 @@ public class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
-        // If token dialog is active, bring it to the front instead of starting a new refresh
+        // If token dialog is active, try a silent refresh first — the connection may have recovered
+        // (common after wake when the network wasn't ready during the initial wake handler)
         if (isTokenDialogActive) {
-            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Skipping calendar refresh — token dialog is active, bringing it to front");
-            bringTokenDialogToFront();
-            return;
+            if (outlookClient.attemptSilentTokenRefresh()) {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                        "Silent token refresh succeeded while login dialog was showing — dismissing dialog");
+                dismissTokenDialogIfActive();
+                // Fall through to calendar fetch
+            } else {
+                LogManager.getInstance().info(LogCategory.DATA_FETCH,
+                        "Skipping calendar refresh — token dialog is active, bringing it to front");
+                bringTokenDialogToFront();
+                return;
+            }
         }
 
         // Prevent overlapping fetch threads — if one is already running, skip
