@@ -331,6 +331,9 @@ public class OutlookAlerterUI extends JFrame {
         if (currentIconInvalidState == null || invalidToken != currentIconInvalidState) {
             IconManager.clearIconCaches(); // Force regeneration of icons
             currentIconInvalidState = invalidToken;
+            if (!invalidToken) {
+                dismissTokenDialogIfActive();
+            }
             final boolean finalInvalidToken = invalidToken;
             SwingUtilities.invokeLater(() -> {
                 setIconImage(IconManager.getLargeIconImage(finalInvalidToken));
@@ -718,20 +721,11 @@ public class OutlookAlerterUI extends JFrame {
      * Refresh calendar events from Outlook
      */
     private void refreshCalendarEvents() {
-        // If token dialog is active, try a silent refresh first — the connection may have recovered
-        // (common after wake when the network wasn't ready during the initial wake handler)
+        // If token dialog is active, bring it to the front instead of starting a new refresh
         if (isTokenDialogActive) {
-            if (outlookClient.attemptSilentTokenRefresh()) {
-                LogManager.getInstance().info(LogCategory.DATA_FETCH,
-                        "Silent token refresh succeeded while login dialog was showing — dismissing dialog");
-                dismissTokenDialogIfActive();
-                // Fall through to calendar fetch
-            } else {
-                LogManager.getInstance().info(LogCategory.DATA_FETCH,
-                        "Skipping calendar refresh — token dialog is active, bringing it to front");
-                bringTokenDialogToFront();
-                return;
-            }
+            LogManager.getInstance().info(LogCategory.DATA_FETCH, "Skipping calendar refresh — token dialog is active, bringing it to front");
+            bringTokenDialogToFront();
+            return;
         }
 
         // Prevent overlapping fetch threads — if one is already running, skip
@@ -1312,18 +1306,6 @@ public class OutlookAlerterUI extends JFrame {
                         refreshButton.setEnabled(true);
                     });
                 }
-            }
-
-            // If the login dialog is showing, try a silent refresh to auto-dismiss it if the
-            // connection has recovered. This must live here (not inside refreshCalendarEvents)
-            // because the dialog may be blocking a fetch thread (fetchInProgress == true).
-            if (isTokenDialogActive) {
-                if (outlookClient.attemptSilentTokenRefresh()) {
-                    LogManager.getInstance().info(LogCategory.DATA_FETCH,
-                            "Silent token refresh succeeded while login dialog was active — dismissing dialog");
-                    dismissTokenDialogIfActive();
-                }
-                return;
             }
 
             // Check if refresh needed (more than resyncInterval since last refresh)
