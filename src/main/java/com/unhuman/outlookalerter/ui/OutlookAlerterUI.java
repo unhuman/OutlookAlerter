@@ -34,6 +34,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
+import java.util.Objects;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.awt.Desktop;
@@ -800,6 +801,12 @@ public class OutlookAlerterUI extends JFrame {
                                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                                     "[Startup] First calendar fetch complete — checking for in-progress meetings");
                                 checkAlertsOnWake();
+                            } else {
+                                // On subsequent refreshes, immediately check for events that entered
+                                // the alert window since the last scheduler tick. Without this, a meeting
+                                // that first appears in the cache after the alert snapshot was taken would
+                                // be missed until the next 60-second tick — causing tray/alert divergence.
+                                checkForEventAlerts(finalEvents);
                             }
 
                             // Update status to successful
@@ -1254,30 +1261,55 @@ public class OutlookAlerterUI extends JFrame {
                 .filter(e -> !interactedEventIds.contains(e.getId())) // skip meetings user already dismissed/opened
                 .collect(Collectors.toList());
 
-            if (!inProgressEvents.isEmpty()) {
-                String subjects = inProgressEvents.stream()
+            // Also collect events that are about to start (same filter as checkForEventAlerts).
+            // We gather them here so we can combine them with in-progress events into a single
+            // performFullAlert call. Two separate performFullAlert calls would each register a
+            // MacScreenFlasher.setOnFlashReady callback, and the second would overwrite the first
+            // (it's an AtomicReference), silently dropping the in-progress alert dialog on Mac.
+            List<CalendarEvent> upcomingEvents = events.stream()
+                .filter(e -> !e.hasEnded())
+                .filter(e -> !e.isEffectivelyAllDay())
+                .filter(e -> !alertedEventIds.contains(e.getId()))
+                .filter(e -> !interactedEventIds.contains(e.getId()))
+                .filter(e -> {
+                    int minutesToStart = e.getMinutesToStart() + 1;
+                    return minutesToStart <= configManager.getAlertMinutes() && minutesToStart >= -1;
+                })
+                .filter(e -> inProgressEvents.stream().noneMatch(ip -> Objects.equals(ip.getId(), e.getId())))
+                .collect(Collectors.toList());
+
+            List<CalendarEvent> allEventsToAlert = new ArrayList<>(inProgressEvents);
+            allEventsToAlert.addAll(upcomingEvents);
+
+            if (!allEventsToAlert.isEmpty()) {
+                String subjects = allEventsToAlert.stream()
                     .map(CalendarEvent::getSubject)
                     .collect(Collectors.joining(", "));
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                    "[Wake] Alerting for " + inProgressEvents.size() + " in-progress event(s): " + subjects);
+                    "[Wake] Alerting for " + allEventsToAlert.size() + " event(s): " + subjects);
 
-                String bannerText = (inProgressEvents.size() == 1)
-                    ? "Meeting in progress: " + inProgressEvents.get(0).getSubject()
-                    : inProgressEvents.size() + " meetings in progress";
-                String notifTitle = (inProgressEvents.size() == 1)
-                    ? "Meeting in progress" : "Meetings in progress";
-                String notifMsg = (inProgressEvents.size() == 1)
-                    ? inProgressEvents.get(0).getSubject() + " is in progress"
-                    : inProgressEvents.size() + " meetings are in progress";
+                boolean allInProgress = upcomingEvents.isEmpty();
+                String bannerText = (allEventsToAlert.size() == 1)
+                    ? (allInProgress ? "Meeting in progress: " : "Upcoming meeting: ") + allEventsToAlert.get(0).getSubject()
+                    : allEventsToAlert.size() + (allInProgress ? " meetings in progress" : " meetings starting or in progress");
+                String notifTitle = (allEventsToAlert.size() == 1)
+                    ? (allInProgress ? "Meeting in progress" : "Upcoming meeting")
+                    : (allInProgress ? "Meetings in progress" : "Meetings starting");
+                String notifMsg = (allEventsToAlert.size() == 1)
+                    ? allEventsToAlert.get(0).getSubject() + (allInProgress ? " is in progress" : " is starting")
+                    : allEventsToAlert.size() + (allInProgress ? " meetings are in progress" : " meetings are starting or in progress");
 
-                // Mark as alerted before calling performFullAlert so the normal
-                // checkForEventAlerts below doesn't double-alert for the same events.
-                inProgressEvents.forEach(e -> alertedEventIds.add(e.getId()));
+                // Mark ALL as alerted before the single performFullAlert call so that
+                // checkForEventAlerts below (run for side effects) finds nothing left to alert.
+                allEventsToAlert.forEach(e -> alertedEventIds.add(e.getId()));
 
-                performFullAlert(bannerText, notifTitle, notifMsg, inProgressEvents);
+                performFullAlert(bannerText, notifTitle, notifMsg, allEventsToAlert);
             }
 
-            // Run the normal upcoming-event check for meetings about to start
+            // Run checkForEventAlerts for its side effects: removing ended events from the
+            // suppression sets, token validity check, and alertedEventIds cleanup. All events
+            // that would qualify for an alert are already in alertedEventIds above, so no
+            // second performFullAlert call will fire from here.
             checkForEventAlerts(events);
 
         } catch (Exception e) {

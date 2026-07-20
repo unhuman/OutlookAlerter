@@ -613,7 +613,7 @@ class OutlookAlerterUIAlertTest {
         }
 
         @Test
-        @DisplayName("alerts in-progress and upcoming in separate batches on wake")
+        @DisplayName("alerts in-progress and upcoming in a single combined batch on wake")
         void alertsBothInProgressAndUpcoming() throws Exception {
             configManager.updateAlertMinutes(5);
             CalendarEvent inProgress = makeInProgressEvent("Ongoing Review");
@@ -624,9 +624,10 @@ class OutlookAlerterUIAlertTest {
             invokeCheckAlertsOnWake();
             Thread.sleep(500);
 
-            // In-progress fires first via performFullAlert, upcoming via checkForEventAlerts
-            assertEquals(2, flasher.flashMultipleCount,
-                "Should produce two alert batches: one in-progress, one upcoming");
+            // In-progress and upcoming are combined into one performFullAlert call to avoid
+            // the second setOnFlashReady registration overwriting the first on Mac.
+            assertEquals(1, flasher.flashMultipleCount,
+                "Should produce a single combined alert batch for in-progress and upcoming events");
         }
     }
 

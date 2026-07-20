@@ -683,6 +683,11 @@ public class JoinMeetingDialog extends JDialog {
         // above the banner overlay windows (z-order: flash → banner → dialog).
         MacScreenFlasher.registerTopDialogWindows(all);
 
-        return dismissAll;
+        // Return the silent-close runnable (window-close path) rather than the full dismiss.
+        // The caller (OutlookAlerterUI.activeDismissAll) invokes this when a new alert
+        // programmatically replaces an existing dialog. Using dismissAll here would call
+        // onDismiss and add the old events to interactedEventIds without user intent.
+        // windowCloseAll disposes the dialogs and runs cleanup only — no interaction recorded.
+        return windowCloseAll;
     }
 }
