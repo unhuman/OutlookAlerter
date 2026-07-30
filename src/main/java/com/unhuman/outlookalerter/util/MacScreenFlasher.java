@@ -40,6 +40,9 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
+import com.sun.jna.Function;
+import com.sun.jna.NativeLibrary;
+import com.sun.jna.Pointer;
 import com.unhuman.outlookalerter.core.ConfigManager;
 import com.unhuman.outlookalerter.model.CalendarEvent;
 
@@ -357,6 +360,33 @@ public class MacScreenFlasher implements ScreenFlasher {
     }
 
     /**
+     * Activates the app so its windows appear above the current foreground app.
+     * Required for UIElement (tray-only) apps: macOS treats them as background accessories
+     * and will not surface their windows without an explicit activateIgnoringOtherApps: call.
+     */
+    private void activateApp() {
+        try {
+            NativeLibrary objc = NativeLibrary.getInstance("objc");
+            Function objcGetClass = objc.getFunction("objc_getClass");
+            Function selRegisterName = objc.getFunction("sel_registerName");
+            Function objcMsgSend = objc.getFunction("objc_msgSend");
+
+            Pointer nsAppClass = objcGetClass.invokePointer(new Object[]{"NSApplication"});
+            Pointer selSharedApp = selRegisterName.invokePointer(new Object[]{"sharedApplication"});
+            Pointer selActivate = selRegisterName.invokePointer(new Object[]{"activateIgnoringOtherApps:"});
+
+            Pointer nsApp = objcMsgSend.invokePointer(new Object[]{nsAppClass, selSharedApp});
+            objcMsgSend.invokeVoid(new Object[]{nsApp, selActivate, (byte) 1});
+
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: App activated for foreground display");
+        } catch (Exception e) {
+            LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING,
+                "MacScreenFlasher: Could not activate app: " + e.getMessage());
+        }
+    }
+
+    /**
      * Registers a one-shot global AWTEventListener that catches the first mouse-press or
      * key-press anywhere on screen while the flash is active.  This is the primary dismiss
      * mechanism because the full-screen banner overlay intercepts clicks before they reach
@@ -484,6 +514,13 @@ public class MacScreenFlasher implements ScreenFlasher {
         // fire the completion signal for this (not-yet-started) flash.
         forceCleanup();
 
+        // Bring the app to the foreground so flash windows are actually visible.
+        // UIElement (tray-only) apps run as background accessories and macOS will not
+        // surface their windows above the frontmost app without an explicit activation.
+        // Java reports visible=true but the windows stay behind everything until we
+        // call [NSApp activateIgnoringOtherApps:YES] via the Objective-C runtime.
+        activateApp();
+
         // Create and show flash windows ON THE EDT for Swing thread safety
         // Swing components must be created and manipulated on the Event Dispatch Thread
         // to avoid intermittent rendering failures (invisible/unpainted windows)
@@ -550,19 +587,6 @@ public class MacScreenFlasher implements ScreenFlasher {
         // Register global dismiss listener AFTER windows are visible so the banner
         // callback above doesn't accidentally trigger it during setup.
         armGlobalFlashDismissListener();
-
-        // Request user attention on macOS to help bring windows above full-screen apps
-        try {
-            if (java.awt.Taskbar.isTaskbarSupported()) {
-                java.awt.Taskbar taskbar = java.awt.Taskbar.getTaskbar();
-                if (taskbar.isSupported(java.awt.Taskbar.Feature.USER_ATTENTION)) {
-                    taskbar.requestUserAttention(true, true);  // enabled=true, critical=true
-                    LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Requested critical user attention via Taskbar");
-                }
-            }
-        } catch (Exception e) {
-            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Could not request user attention: " + e.getMessage());
-        }
 
         // Arm the completion latch AFTER windows are in activeFlashFrames but BEFORE
         // starting timers so forceCleanup() (whether called by a timer, a wake handler,
