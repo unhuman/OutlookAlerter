@@ -238,6 +238,23 @@
                             <goal>exec</goal>
                         </goals>
                     </execution>
+                    <execution>
+                        <id>sign-macos-app</id>
+                        <phase>package</phase>
+                        <configuration>
+                            <executable>codesign</executable>
+                            <arguments>
+                                <argument>-s</argument>
+                                <argument>-</argument>
+                                <argument>-f</argument>
+                                <argument>${project.build.directory}/OutlookAlerter.app</argument>
+                            </arguments>
+                            <skip>${skip.jpackage}</skip>
+                        </configuration>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                    </execution>
                 </executions>
             </plugin>
 
