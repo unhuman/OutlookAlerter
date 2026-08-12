@@ -1844,15 +1844,28 @@ public class OutlookAlerterUI extends JFrame {
         if (onlineUrl != null && !onlineUrl.isBlank()) {
             return onlineUrl;
         }
-        // 2 — location field starts with a URL.
-        // The field may contain trailing room names separated by ";" or whitespace
-        // (e.g. "https://zoom.us/...;addon; ~ Room A~ Room B").
-        // Extract only the leading URL token to avoid passing an invalid URI later.
+        // 2 — scan all semicolon-delimited location tokens for a URL
+        // (the URL may appear between room names, not just at the start)
         String loc = event.getLocation();
-        if (loc != null && (loc.startsWith("https://") || loc.startsWith("http://"))) {
-            // Split at the first semicolon or whitespace — URL itself never contains these
-            String urlPart = loc.split("[;\\s]")[0].trim();
-            if (!urlPart.isEmpty()) return urlPart;
+        if (loc != null) {
+            String firstLocUrl = null;
+            for (String token : loc.split(";")) {
+                String t = token.trim();
+                if (t.startsWith("https://") || t.startsWith("http://")) {
+                    String urlToken = t.split("\\s")[0];
+                    if (isMeetingUrl(urlToken)) return urlToken;
+                    if (firstLocUrl == null) firstLocUrl = urlToken;
+                }
+            }
+            if (firstLocUrl != null) return firstLocUrl;
+        }
+        // 2b — resource attendee display names that are URLs
+        // (Zoom added as a conference room may surface here instead of / in addition to location)
+        for (String name : event.getResourceAttendees().keySet()) {
+            if (name != null && (name.startsWith("https://") || name.startsWith("http://"))) {
+                String urlToken = name.split("[;\\s]")[0];
+                if (isMeetingUrl(urlToken)) return urlToken;
+            }
         }
         // 3 — first meeting-URL href in full body HTML
         String html = event.getBodyHtml();
