@@ -134,7 +134,7 @@ public class SettingsDialog extends JDialog {
 
         SpinnerNumberModel alertMinutesModel = new SpinnerNumberModel(
             configManager.getAlertMinutes(),  // initial value
-            1,                               // min
+            0,                               // min
             60,                              // max
             1                                // step
         );
