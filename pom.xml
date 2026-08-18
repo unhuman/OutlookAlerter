@@ -244,9 +244,10 @@
                         <configuration>
                             <executable>codesign</executable>
                             <arguments>
+                                <argument>--deep</argument>
+                                <argument>-f</argument>
                                 <argument>-s</argument>
                                 <argument>-</argument>
-                                <argument>-f</argument>
                                 <argument>${project.build.directory}/OutlookAlerter.app</argument>
                             </arguments>
                             <skip>${skip.jpackage}</skip>
