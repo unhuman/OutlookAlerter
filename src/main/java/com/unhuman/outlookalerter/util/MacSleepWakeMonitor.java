@@ -1,5 +1,8 @@
 package com.unhuman.outlookalerter.util;
 
+import com.sun.jna.NativeLibrary;
+import com.sun.jna.Pointer;
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -20,6 +23,10 @@ public class MacSleepWakeMonitor {
     private final List<Runnable> wakeListeners = new CopyOnWriteArrayList<>();
     private ScheduledExecutorService monitorExecutor;
     private volatile boolean monitoring = false;
+
+    private CFNotificationCallback darwinWakeCallback;
+    private Thread darwinNotifThread;
+    private volatile Pointer darwinRunLoop;
 
     private static final long SLEEP_DETECTION_THRESHOLD_MS = 65000;
 
@@ -53,6 +60,47 @@ public class MacSleepWakeMonitor {
             TimeUnit.SECONDS
         );
 
+        darwinNotifThread = new Thread(() -> {
+            try {
+                NativeLibrary cf = NativeLibrary.getInstance("CoreFoundation");
+                Pointer center = cf.getFunction("CFNotificationCenterGetDarwinNotifyCenter")
+                    .invokePointer(new Object[0]);
+
+                darwinRunLoop = cf.getFunction("CFRunLoopGetCurrent")
+                    .invokePointer(new Object[0]);
+
+                darwinWakeCallback = (c, obs, name, obj, info) -> {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                        "[SleepWakeMonitor] Darwin wake notification received");
+                    lastWakeTime.set(System.currentTimeMillis());
+                    Thread notifyThread = new Thread(MacSleepWakeMonitor.this::notifyWakeListeners,
+                        "SleepWakeNotify");
+                    notifyThread.setDaemon(true);
+                    notifyThread.start();
+                };
+
+                cf.getFunction("CFNotificationCenterAddObserver").invoke(new Object[]{
+                    center,
+                    Pointer.NULL,
+                    darwinWakeCallback,
+                    "com.apple.system.power.wake",
+                    Pointer.NULL,
+                    0
+                });
+
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                    "[SleepWakeMonitor] Darwin wake notification registered");
+
+                cf.getFunction("CFRunLoopRun").invoke(new Object[0]);
+            } catch (Throwable t) {
+                LogManager.getInstance().info(LogCategory.GENERAL,
+                    "[SleepWakeMonitor] Darwin notification unavailable (" + t.getMessage()
+                    + "), relying on polling fallback");
+            }
+        }, "SleepWakeNotifThread");
+        darwinNotifThread.setDaemon(true);
+        darwinNotifThread.start();
+
         monitoring = true;
     }
 
@@ -75,6 +123,19 @@ public class MacSleepWakeMonitor {
             }
             monitorExecutor = null;
         }
+
+        if (darwinRunLoop != null) {
+            try {
+                NativeLibrary cf = NativeLibrary.getInstance("CoreFoundation");
+                cf.getFunction("CFRunLoopStop").invoke(new Object[]{ darwinRunLoop });
+            } catch (Throwable ignored) {}
+            darwinRunLoop = null;
+        }
+        if (darwinNotifThread != null) {
+            darwinNotifThread.interrupt();
+            darwinNotifThread = null;
+        }
+        darwinWakeCallback = null;
 
         monitoring = false;
     }
@@ -116,5 +177,9 @@ public class MacSleepWakeMonitor {
 
     public long getTimeSinceWake() {
         return System.currentTimeMillis() - lastWakeTime.get();
+    }
+
+    interface CFNotificationCallback extends com.sun.jna.Callback {
+        void invoke(Pointer center, Pointer observer, String name, Pointer object, Pointer userInfo);
     }
 }

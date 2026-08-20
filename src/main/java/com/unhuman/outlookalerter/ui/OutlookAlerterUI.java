@@ -18,6 +18,7 @@ import com.unhuman.outlookalerter.util.ScreenFlasherFactory;
 import com.unhuman.outlookalerter.util.MacScreenFlasher;
 import com.unhuman.outlookalerter.util.MacSleepWakeMonitor;
 import com.unhuman.outlookalerter.util.MacLockUnlockMonitor;
+import com.unhuman.outlookalerter.util.MacJava2DWakeGuard;
 import java.time.ZonedDateTime;
 import java.time.ZoneId;
 import java.time.LocalDate;
@@ -577,6 +578,10 @@ public class OutlookAlerterUI extends JFrame {
         if (System.getProperty("os.name").toLowerCase().contains("mac")) {
             MacSleepWakeMonitor sleepMonitor = MacSleepWakeMonitor.getInstance();
             sleepMonitor.startMonitoring();
+
+            MacJava2DWakeGuard wakeGuard = new MacJava2DWakeGuard();
+            wakeGuard.registerWindow(OutlookAlerterUI.this);
+            sleepMonitor.addWakeListener(wakeGuard::activateGuard);
 
             sleepMonitor.addWakeListener(() -> {
                 LogManager.getInstance().info(LogCategory.GENERAL, "[OutlookAlerterUI] Wake event detected - restarting schedulers");

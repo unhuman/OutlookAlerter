@@ -74,6 +74,15 @@ class MacSleepWakeMonitorTest {
             monitor.stopMonitoring();
             assertDoesNotThrow(() -> monitor.startMonitoring());
         }
+
+        @Test
+        @DisplayName("startMonitoring initializes Darwin notification thread without throwing")
+        void darwinNotifThreadStarts() throws InterruptedException {
+            assertDoesNotThrow(() -> {
+                monitor.startMonitoring();
+                Thread.sleep(100);
+            });
+        }
     }
 
     // ───────── Wake Listeners ─────────

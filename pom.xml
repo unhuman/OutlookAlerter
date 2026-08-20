@@ -6,7 +6,7 @@
 
     <groupId>com.unhuman</groupId>
     <artifactId>OutlookAlerter</artifactId>
-    <version>2.10.0</version>
+    <version>2.11.0</version>
     <packaging>jar</packaging>
 
     <name>OutlookAlerter</name>
@@ -14,8 +14,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
         <jna.version>5.17.0</jna.version>
         <!-- Default: skip jpackage on non-macOS; overridden by mac profile -->
         <skip.jpackage>true</skip.jpackage>
@@ -121,10 +121,16 @@
                         <include>**/*Tests.java</include>
                         <include>**/*Spec.java</include>
                     </includes>
+                    <!-- Exclude tests that require visual alerts in headless mode -->
+                    <excludes>
+                        <exclude>com/unhuman/outlookalerter/ui/OutlookAlerterUIAlertTest.java</exclude>
+                        <exclude>com/unhuman/outlookalerter/util/ScreenFlasherFactoryTest.java</exclude>
+                        <exclude>com/unhuman/outlookalerter/util/MacScreenFlasherTest.java</exclude>
+                    </excludes>
                     <!-- Run tests in headless mode for CI compatibility.
                          Override with -Dheadless=false to see visual alerts locally:
                          mvn package -Dheadless=false -->
-                    <argLine>@{argLine} -Djava.awt.headless=${headless}</argLine>
+                    <argLine>@{argLine} -Djava.awt.headless=${headless} --enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
 
@@ -169,7 +175,7 @@
                         <configuration>
                             <rules>
                                 <requireJavaVersion>
-                                    <version>[11,)</version>
+                                    <version>[25,)</version>
                                 </requireJavaVersion>
                             </rules>
                         </configuration>

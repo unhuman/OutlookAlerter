@@ -32,6 +32,7 @@ A Java application that monitors your Microsoft Outlook/Office 365 calendar and 
   - All scheduled tasks wrapped in exception-safe runners to prevent silent scheduler death
   - Non-blocking tray notifications replace modal dialogs that could freeze the UI
   - Sleep/wake detection restarts schedulers after laptop resume
+  - Java2D/Metal CVDisplayLink wake guard suppresses rendering during the post-wake vulnerability window (JDK-8357418)
 
 ## Authentication and Token Refresh
 
@@ -165,7 +166,7 @@ All diagnostic and troubleshooting scripts are in the `scripts/` directory. See 
 
 ## Requirements
 
-- Java 11 or later
+- Java 25 or later
 - Maven 3.6 or later for building
 
 ## Build System
