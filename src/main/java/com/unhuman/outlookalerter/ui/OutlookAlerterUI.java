@@ -1126,7 +1126,7 @@ public class OutlookAlerterUI extends JFrame {
                     event.getSubject() + reason);
                 continue;
             }
-            int minutesToStart = event.getMinutesToStart() + 1; // +1 to account for current time
+            int minutesToStart = event.getMinutesToStart() + 1; // +1 compensates for truncated integer division
             LogManager.getInstance().info(LogCategory.MEETING_INFO, event.getSubject() + " Minutes to start: " + minutesToStart);
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.getId())) {
@@ -1139,8 +1139,10 @@ public class OutlookAlerterUI extends JFrame {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Skipping: Already opened or dismissed by user");
                 continue;
             }
-            // Alert for events about to start
-            if (minutesToStart <= configManager.getAlertMinutes() && minutesToStart >= -1) {
+            // Alert for events about to start.
+            // Math.max(..., 1) ensures alertMinutes=0 uses the same effective window as 1,
+            // since getMinutesToStart() returns 0 for meetings starting within the next 60 seconds.
+            if (minutesToStart <= Math.max(configManager.getAlertMinutes(), 1) && minutesToStart >= -1) {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Alerting");
                 eventsToAlert.add(event);
             }
@@ -1278,7 +1280,7 @@ public class OutlookAlerterUI extends JFrame {
                 .filter(e -> !interactedEventIds.contains(e.getId()))
                 .filter(e -> {
                     int minutesToStart = e.getMinutesToStart() + 1;
-                    return minutesToStart <= configManager.getAlertMinutes() && minutesToStart >= -1;
+                    return minutesToStart <= Math.max(configManager.getAlertMinutes(), 1) && minutesToStart >= -1;
                 })
                 .filter(e -> inProgressEvents.stream().noneMatch(ip -> Objects.equals(ip.getId(), e.getId())))
                 .collect(Collectors.toList());

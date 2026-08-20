@@ -395,6 +395,40 @@ class OutlookAlerterUIAlertTest {
         }
 
         @Test
+        @DisplayName("alerts at meeting start when alertMinutes is 0")
+        void alertsAtStartWhenAlertMinutesIsZero() throws Exception {
+            configManager.updateAlertMinutes(0);
+
+            // Meeting starting now (0 minutes from now)
+            CalendarEvent event = makeTestEvent("Instant Meeting", 0);
+            event.setId("event-zero-minutes");
+
+            invokeCheckForEventAlerts(List.of(event));
+
+            Thread.sleep(500);
+
+            assertEquals(1, flasher.flashMultipleCount, "Should alert when alertMinutes=0 and meeting is starting now");
+            assertTrue(getAlertedEventIds().contains("event-zero-minutes"), "Event should be marked as alerted");
+        }
+
+        @Test
+        @DisplayName("does not alert 1+ minutes early when alertMinutes is 0")
+        void doesNotAlertEarlyWhenAlertMinutesIsZero() throws Exception {
+            configManager.updateAlertMinutes(0);
+
+            // Meeting starting in 2 minutes — should not fire yet
+            CalendarEvent event = makeTestEvent("Future Meeting", 2);
+            event.setId("event-zero-too-early");
+
+            invokeCheckForEventAlerts(List.of(event));
+
+            Thread.sleep(500);
+
+            assertEquals(0, flasher.flashMultipleCount, "Should not alert when alertMinutes=0 and meeting is 2 minutes away");
+            assertFalse(getAlertedEventIds().contains("event-zero-too-early"));
+        }
+
+        @Test
         @DisplayName("does not alert for event outside threshold")
         void doesNotAlertOutsideThreshold() throws Exception {
             configManager.updateAlertMinutes(1);

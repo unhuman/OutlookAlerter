@@ -10,7 +10,8 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}Building OutlookAlerter with Maven${NC}"
 
 # Use Maven for compilation and packaging
-mvn clean compile package
+# -s .mvn/settings.xml bypasses the Cvent Nexus mirror for this personal project
+mvn -s .mvn/settings.xml clean compile package
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}Build successful!${NC}"

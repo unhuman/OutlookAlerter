@@ -1,0 +1,29 @@
+<settings>
+    <!-- Project-local settings: bypass Cvent Nexus and use Maven Central directly.
+         Use via: mvn -s .mvn/settings.xml <goal>
+         This keeps the global ~/.m2/settings.xml (Cvent Nexus mirror) intact for corporate work. -->
+    <profiles>
+        <profile>
+            <id>central</id>
+            <repositories>
+                <repository>
+                    <id>central</id>
+                    <url>https://repo.maven.apache.org/maven2</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>false</enabled></snapshots>
+                </repository>
+            </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>central</id>
+                    <url>https://repo.maven.apache.org/maven2</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>false</enabled></snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+    </profiles>
+    <activeProfiles>
+        <activeProfile>central</activeProfile>
+    </activeProfiles>
+</settings>
