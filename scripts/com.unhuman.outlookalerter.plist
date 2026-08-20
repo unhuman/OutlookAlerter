@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.unhuman.outlookalerter</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/OutlookAlerter.app/Contents/MacOS/OutlookAlerter</string>
+    </array>
+
+    <!-- Only restart if the app exits with a non-zero code (crash).
+         System.exit(0) from the tray menu / Exit button suppresses restart. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Start automatically when this agent is loaded (login). -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Wait 10 s before restarting after a crash to avoid rapid-restart loops. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/outlookalerter-launchd.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/outlookalerter-launchd.err</string>
+</dict>
+</plist>
