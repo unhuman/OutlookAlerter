@@ -10,13 +10,12 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}Running OutlookAlerter Tests${NC}"
 
 # Run Maven tests
-# -s .mvn/settings.xml bypasses the Cvent Nexus mirror for this personal project
 if [[ "$*" == *"--clean"* ]]; then
     echo -e "${YELLOW}Running clean test${NC}"
-    mvn -s .mvn/settings.xml clean test
+    mvn clean test
 else
     echo -e "${YELLOW}Running tests${NC}"
-    mvn -s .mvn/settings.xml test
+    mvn test
 fi
 
 # Check exit code
