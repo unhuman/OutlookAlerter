@@ -4,6 +4,7 @@ import com.unhuman.outlookalerter.core.ConfigManager;
 import com.unhuman.outlookalerter.core.OutlookClient;
 import com.unhuman.outlookalerter.util.LogManager;
 import com.unhuman.outlookalerter.util.LogCategory;
+import com.unhuman.outlookalerter.util.LaunchdManager;
 
 import javax.swing.*;
 import javax.swing.colorchooser.AbstractColorChooserPanel;
@@ -44,6 +45,7 @@ public class SettingsDialog extends JDialog {
     private JTextField tenantIdField;
     private JTextField userEmailField;
     private JCheckBox defaultIgnoreCertValidationCheckbox;
+    private JCheckBox launchdCrashProtectionCheckbox;
 
     /**
      * Create a new settings dialog
@@ -604,6 +606,26 @@ public class SettingsDialog extends JDialog {
         gbc.gridy = 20;
         formPanel.add(userEmailField, gbc);
 
+        // Separator line
+        gbc.gridx = 0;
+        gbc.gridy = 21;
+        gbc.gridwidth = 2;
+        JSeparator separator = new JSeparator(JSeparator.HORIZONTAL);
+        formPanel.add(separator, gbc);
+        gbc.gridwidth = 1;
+
+        // LaunchD crash protection setting
+        gbc.gridx = 0;
+        gbc.gridy = 22;
+        formPanel.add(new JLabel("LaunchD Crash Protection:"), gbc);
+
+        launchdCrashProtectionCheckbox = new JCheckBox("Auto-restart on crash", LaunchdManager.isEnabled());
+        launchdCrashProtectionCheckbox.setToolTipText(
+                "Enable automatic restart if the app crashes. Disabled on intentional exit.");
+        gbc.gridx = 1;
+        gbc.gridy = 22;
+        formPanel.add(launchdCrashProtectionCheckbox, gbc);
+
         // Button panel
         JPanel buttonPanel = new JPanel();
         JButton saveButton = new JButton("Save");
@@ -736,6 +758,28 @@ public class SettingsDialog extends JDialog {
             // Save Okta SSO email
             String userEmail = userEmailField.getText().trim();
             configManager.updateUserEmail(userEmail);
+
+            // Handle launchd crash protection enable/disable
+            boolean wantLaunchd = launchdCrashProtectionCheckbox.isSelected();
+            boolean isLaunchdEnabled = LaunchdManager.isEnabled();
+
+            if (wantLaunchd && !isLaunchdEnabled) {
+                // Enable launchd
+                if (LaunchdManager.enable()) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                        "LaunchD crash protection enabled via settings");
+                } else {
+                    throw new Exception("Failed to enable LaunchD crash protection. Check permissions.");
+                }
+            } else if (!wantLaunchd && isLaunchdEnabled) {
+                // Disable launchd
+                if (LaunchdManager.disable()) {
+                    LogManager.getInstance().info(LogCategory.GENERAL,
+                        "LaunchD crash protection disabled via settings");
+                } else {
+                    throw new Exception("Failed to disable LaunchD crash protection. Check permissions.");
+                }
+            }
 
             // Update the HTTP client to respect the new certificate validation setting
             outlookClient.updateCertificateValidation(defaultIgnoreCertVal);
