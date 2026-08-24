@@ -1126,7 +1126,9 @@ public class OutlookAlerterUI extends JFrame {
                     event.getSubject() + reason);
                 continue;
             }
-            int minutesToStart = event.getMinutesToStart() + 1; // +1 compensates for truncated integer division
+            // getMinutesToStart() truncates toward zero, so a meeting starting in <60s returns 0.
+            // +1 widens the window to treat such meetings as 1 minute away, matching the check cadence.
+            int minutesToStart = event.getMinutesToStart() + 1;
             LogManager.getInstance().info(LogCategory.MEETING_INFO, event.getSubject() + " Minutes to start: " + minutesToStart);
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.getId())) {

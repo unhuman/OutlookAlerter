@@ -647,6 +647,36 @@ class OutlookAlerterUIAlertTest {
         }
 
         @Test
+        @DisplayName("alerts for upcoming meeting starting now when alertMinutes is 0 on wake")
+        void alertsForStartingNowWhenAlertMinutesZeroOnWake() throws Exception {
+            configManager.updateAlertMinutes(0);
+            CalendarEvent starting = makeTestEvent("Zero Minute Meeting", 0);
+            starting.setId("zero-wake-id");
+            setLastFetchedEvents(List.of(starting));
+
+            invokeCheckAlertsOnWake();
+            Thread.sleep(500);
+
+            assertEquals(1, flasher.flashMultipleCount,
+                "Meeting starting now should alert on wake when alertMinutes=0");
+        }
+
+        @Test
+        @DisplayName("does not alert 2 minutes early when alertMinutes is 0 on wake")
+        void doesNotAlertEarlyWhenAlertMinutesZeroOnWake() throws Exception {
+            configManager.updateAlertMinutes(0);
+            CalendarEvent future = makeTestEvent("Future Meeting", 2);
+            future.setId("future-wake-id");
+            setLastFetchedEvents(List.of(future));
+
+            invokeCheckAlertsOnWake();
+            Thread.sleep(500);
+
+            assertEquals(0, flasher.flashMultipleCount,
+                "Meeting 2 minutes away should not alert on wake when alertMinutes=0");
+        }
+
+        @Test
         @DisplayName("alerts in-progress and upcoming in a single combined batch on wake")
         void alertsBothInProgressAndUpcoming() throws Exception {
             configManager.updateAlertMinutes(5);
