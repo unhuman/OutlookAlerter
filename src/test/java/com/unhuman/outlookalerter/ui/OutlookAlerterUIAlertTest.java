@@ -1026,10 +1026,10 @@ class OutlookAlerterUIAlertTest {
         @Test
         @DisplayName("checkAlertsOnWake clears alertedEventIds but not interactedEventIds")
         void wakeResetsAlertedButNotInteracted() throws Exception {
-            CalendarEvent alertedNotInteracted = makeTestEvent("Just Alerted", 2);
+            CalendarEvent alertedNotInteracted = makeTestEvent("Just Alerted", 3);
             alertedNotInteracted.setId("alerted-only");
 
-            CalendarEvent interactedEvent = makeTestEvent("Dismissed Meeting", 2);
+            CalendarEvent interactedEvent = makeTestEvent("Dismissed Meeting", 3);
             interactedEvent.setId("interacted-only");
 
             // alerted-only: was alerted but user did not interact (simulates normal pre-sleep alert)

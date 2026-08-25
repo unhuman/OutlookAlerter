@@ -16,7 +16,7 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}Build successful!${NC}"
 
     # Discover the built jar dynamically so the version is never hardcoded
-    JAR_PATH=$(ls target/OutlookAlerter-*-jar-with-dependencies.jar 2>/dev/null | head -n 1)
+    JAR_PATH=$(ls -t target/OutlookAlerter-*-jar-with-dependencies.jar 2>/dev/null | head -n 1)
     echo -e "${BLUE}The application jar is available at: ${JAR_PATH}${NC}"
     
     # Create link to jar in dist directory for backwards compatibility

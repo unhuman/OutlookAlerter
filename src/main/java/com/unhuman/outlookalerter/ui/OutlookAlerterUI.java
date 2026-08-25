@@ -1126,9 +1126,9 @@ public class OutlookAlerterUI extends JFrame {
                     event.getSubject() + reason);
                 continue;
             }
-            // getMinutesToStart() truncates toward zero, so a meeting starting in <60s returns 0.
-            // +1 widens the window to treat such meetings as 1 minute away, matching the check cadence.
-            int minutesToStart = event.getMinutesToStart() + 1;
+            // With polling aligned to the minute boundary, minutesToStart==0 means the meeting
+            // starts within this minute — exactly the right time to fire for alertMinutes=0.
+            int minutesToStart = event.getMinutesToStart();
             LogManager.getInstance().info(LogCategory.MEETING_INFO, event.getSubject() + " Minutes to start: " + minutesToStart);
             // Skip events we've already alerted for
             if (alertedEventIds.contains(event.getId())) {
@@ -1141,10 +1141,7 @@ public class OutlookAlerterUI extends JFrame {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Skipping: Already opened or dismissed by user");
                 continue;
             }
-            // Alert for events about to start.
-            // Math.max(..., 1) ensures alertMinutes=0 uses the same effective window as 1,
-            // since getMinutesToStart() returns 0 for meetings starting within the next 60 seconds.
-            if (minutesToStart <= Math.max(configManager.getAlertMinutes(), 1) && minutesToStart >= -1) {
+            if (minutesToStart <= configManager.getAlertMinutes() && minutesToStart >= -1) {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Alerting");
                 eventsToAlert.add(event);
             }
@@ -1281,8 +1278,8 @@ public class OutlookAlerterUI extends JFrame {
                 .filter(e -> !alertedEventIds.contains(e.getId()))
                 .filter(e -> !interactedEventIds.contains(e.getId()))
                 .filter(e -> {
-                    int minutesToStart = e.getMinutesToStart() + 1;
-                    return minutesToStart <= Math.max(configManager.getAlertMinutes(), 1) && minutesToStart >= -1;
+                    int minutesToStart = e.getMinutesToStart();
+                    return minutesToStart <= configManager.getAlertMinutes() && minutesToStart >= -1;
                 })
                 .filter(e -> inProgressEvents.stream().noneMatch(ip -> Objects.equals(ip.getId(), e.getId())))
                 .collect(Collectors.toList());
@@ -1517,10 +1514,14 @@ public class OutlookAlerterUI extends JFrame {
             TimeUnit.SECONDS
         );
 
-        // Schedule alert checks (every minute)
+        // Align alert checks to the minute boundary so polls fire at :00 seconds.
+        // This means alertMinutes=0 fires exactly at meeting start rather than up to 59s early.
+        long secondsUntilNextMinute = (60 - ZonedDateTime.now().getSecond()) % 60;
+        long alignedInitialDelay = secondsUntilNextMinute == 0 ? POLLING_INTERVAL_SECONDS : secondsUntilNextMinute;
+
         alertScheduler.scheduleAtFixedRate(
             () -> safeRunScheduledTask("AlertCheck", () -> checkAlertsFromCache()),
-            POLLING_INTERVAL_SECONDS,
+            alignedInitialDelay,
             POLLING_INTERVAL_SECONDS,
             TimeUnit.SECONDS
         );
