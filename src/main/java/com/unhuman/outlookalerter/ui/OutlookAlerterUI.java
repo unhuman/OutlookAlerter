@@ -1126,8 +1126,8 @@ public class OutlookAlerterUI extends JFrame {
                     event.getSubject() + reason);
                 continue;
             }
-            // With polling aligned to the minute boundary, minutesToStart==0 means the meeting
-            // starts within this minute — exactly the right time to fire for alertMinutes=0.
+            // Log integer minutes for readability; the alert condition uses milliseconds
+            // to avoid truncation (e.g. 59s rounds to 0 min, which would fire 1 minute early).
             int minutesToStart = event.getMinutesToStart();
             LogManager.getInstance().info(LogCategory.MEETING_INFO, event.getSubject() + " Minutes to start: " + minutesToStart);
             // Skip events we've already alerted for
@@ -1141,7 +1141,13 @@ public class OutlookAlerterUI extends JFrame {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Skipping: Already opened or dismissed by user");
                 continue;
             }
-            if (minutesToStart <= configManager.getAlertMinutes() && minutesToStart >= -1) {
+            // Millisecond comparison: alertWindowMs=0 for alertMinutes=0 means only fire
+            // when the meeting has actually reached its start time (msToStart <= 0).
+            long msToStart = event.getStartTime() != null
+                ? event.getStartTime().toInstant().toEpochMilli() - System.currentTimeMillis()
+                : Long.MIN_VALUE;
+            long alertWindowMs = (long) configManager.getAlertMinutes() * 60_000L;
+            if (msToStart <= alertWindowMs && msToStart >= -60_000L) {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, event.getSubject() + " Alerting");
                 eventsToAlert.add(event);
             }
@@ -1278,8 +1284,10 @@ public class OutlookAlerterUI extends JFrame {
                 .filter(e -> !alertedEventIds.contains(e.getId()))
                 .filter(e -> !interactedEventIds.contains(e.getId()))
                 .filter(e -> {
-                    int minutesToStart = e.getMinutesToStart();
-                    return minutesToStart <= configManager.getAlertMinutes() && minutesToStart >= -1;
+                    if (e.getStartTime() == null) return false;
+                    long msToStart = e.getStartTime().toInstant().toEpochMilli() - System.currentTimeMillis();
+                    long alertWindowMs = (long) configManager.getAlertMinutes() * 60_000L;
+                    return msToStart <= alertWindowMs && msToStart >= -60_000L;
                 })
                 .filter(e -> inProgressEvents.stream().noneMatch(ip -> Objects.equals(ip.getId(), e.getId())))
                 .collect(Collectors.toList());
