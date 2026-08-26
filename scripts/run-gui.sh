@@ -13,7 +13,7 @@ echo -e "${BLUE}Starting OutlookAlerter in GUI mode${NC}"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
 # Use Maven's target directory for the executable jar
-JAR_PATH=$(ls $SCRIPT_DIR/../target/OutlookAlerter-*-jar-with-dependencies.jar 2>/dev/null | head -n 1)
+JAR_PATH=$(ls -t $SCRIPT_DIR/../target/OutlookAlerter-*-jar-with-dependencies.jar 2>/dev/null | head -n 1)
 
 # Check if Java is installed
 if ! command -v java &> /dev/null; then
