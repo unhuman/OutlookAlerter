@@ -109,6 +109,16 @@ public class MacSleepWakeMonitor {
         }
     }
 
+    public void removeWakeListener(Runnable listener) {
+        if (listener != null) {
+            wakeListeners.remove(listener);
+        }
+    }
+
+    int getWakeListenerCount() {
+        return wakeListeners.size();
+    }
+
     private void notifyWakeListeners() {
         for (Runnable listener : wakeListeners) {
             try {

@@ -1491,6 +1491,11 @@ public class OutlookAlerterUI extends JFrame {
             } catch (Exception e) {
                 LogManager.getInstance().error(LogCategory.GENERAL, "[OutlookAlerterUI] Error cleaning up old screen flasher: " + e.getMessage());
             }
+            try {
+                screenFlasher.dispose();
+            } catch (Exception e) {
+                LogManager.getInstance().error(LogCategory.GENERAL, "[OutlookAlerterUI] Error disposing old screen flasher: " + e.getMessage());
+            }
         }
 
         // Recreate the screen flasher to pick up new configuration

@@ -27,7 +27,7 @@ import com.microsoft.aad.msal4j.DeviceCode;
  */
 public class SimpleTokenDialog {
     // Singleton instance
-    private static SimpleTokenDialog instance;
+    private static volatile SimpleTokenDialog instance;
     private static volatile boolean isShowing = false;
     private boolean isTokenSubmitted = false;  // Track if token was successfully submitted
     private boolean isExplicitCancel = false;  // Track if user explicitly cancelled
@@ -110,39 +110,41 @@ public class SimpleTokenDialog {
             isTokenSubmitted = false;
             isExplicitCancel = false;
             LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Dialog state set to showing");
+        }
 
-            try {
-                LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Preparing to show token entry dialog");
+        // LOCK must not be held across invokeAndWait: if the EDT is waiting on LOCK
+        // (e.g. via getInstance or dismissWithBackgroundSuccess) both threads would deadlock.
+        try {
+            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Preparing to show token entry dialog");
 
-                // Create UI on EDT and show immediately
-                SwingUtilities.invokeAndWait(() -> {
-                    try {
-                        createUI();
-                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: UI created successfully");
+            // Create UI on EDT and show immediately
+            SwingUtilities.invokeAndWait(() -> {
+                try {
+                    createUI();
+                    LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: UI created successfully");
 
-                        // Show dialog immediately after creation
-                        if (frame != null) {
-                            frame.pack();
-                            frame.setLocationRelativeTo(parentFrame);
-                            frame.setVisible(true);
-                            frame.toFront();
-                            frame.requestFocus();
+                    // Show dialog immediately after creation
+                    if (frame != null) {
+                        frame.pack();
+                        frame.setLocationRelativeTo(parentFrame);
+                        frame.setVisible(true);
+                        frame.toFront();
+                        frame.requestFocus();
 
-                            // Reset UI components
-                            resetDialogUI();
+                        // Reset UI components
+                        resetDialogUI();
 
-                            LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Frame state - visible: " + frame.isVisible() +
-                                             ", showing: " + frame.isShowing());
-                        }
-                    } catch (Exception e) {
-                        LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error creating UI: " + e.getMessage(), e);
-                        cleanup();
+                        LogManager.getInstance().info(LogCategory.GENERAL, "SimpleTokenDialog: Frame state - visible: " + frame.isVisible() +
+                                         ", showing: " + frame.isShowing());
                     }
-                });
-            } catch (Exception e) {
-                LogManager.getInstance().error(LogCategory.GENERAL, "Error showing token dialog: " + e.getMessage(), e);
-                cleanup(); // Ensure cleanup even on error
-            }
+                } catch (Exception e) {
+                    LogManager.getInstance().error(LogCategory.GENERAL, "SimpleTokenDialog: Error creating UI: " + e.getMessage(), e);
+                    cleanup();
+                }
+            });
+        } catch (Exception e) {
+            LogManager.getInstance().error(LogCategory.GENERAL, "Error showing token dialog: " + e.getMessage(), e);
+            cleanup(); // Ensure cleanup even on error
         }
     }
 
@@ -509,9 +511,8 @@ public class SimpleTokenDialog {
      * @return The current instance, or null if none exists.
      */
     public static SimpleTokenDialog getCurrentInstance() {
-        synchronized (LOCK) {
-            return instance;
-        }
+        // Lock-free (instance is volatile) so EDT callers never block behind show()
+        return instance;
     }
 
     /**

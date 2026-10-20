@@ -28,6 +28,14 @@ public interface ScreenFlasher {
     }
 
     /**
+     * Release background resources (watchdog threads, listeners) held by this flasher.
+     * Called when the flasher is being replaced so that resources do not accumulate.
+     */
+    default void dispose() {
+        // Default no-op; implementations may override
+    }
+
+    /**
      * Returns true if the most recent flash was dismissed early by the user
      * (mouse click or key press), false if it expired normally via timer.
      */

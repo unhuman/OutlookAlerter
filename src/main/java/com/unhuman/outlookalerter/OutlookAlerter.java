@@ -11,12 +11,15 @@ import com.unhuman.outlookalerter.util.LogCategory;
 import com.unhuman.outlookalerter.ui.OutlookAlerterConsole;
 
 import java.util.Arrays;
+import java.util.Map;
 
 /**
  * Main application class for Outlook Alerter
  * Monitors Outlook calendar events and flashes screen when meetings are about to start
  */
 public class OutlookAlerter {
+    static final String LAUNCHD_LABEL = "com.unhuman.outlookalerter";
+
     /**
      * Main entry point
      */
@@ -25,10 +28,14 @@ public class OutlookAlerter {
         SingleInstanceManager instanceManager = new SingleInstanceManager();
         if (!instanceManager.tryAcquireLock()) {
             String message = "Another instance of Outlook Alerter is already running.";
-            LogManager.getInstance().info(LogCategory.GENERAL, message);
+            boolean launchedByLaunchd = isLaunchedByLaunchd(System.getenv());
+            LogManager.getInstance().info(LogCategory.GENERAL, message
+                    + (launchedByLaunchd ? " (launched by launchd - exiting quietly)" : ""));
             
-            // Show error dialog if not in console mode
-            if (!Arrays.asList(args).contains("--console")) {
+            // Show error dialog if not in console mode. Skip it under launchd: at login the
+            // launchd agent and the login item can both start the app, and the dialog there
+            // is just noise.
+            if (!launchedByLaunchd && !Arrays.asList(args).contains("--console")) {
                 JOptionPane.showMessageDialog(
                     null,
                     message,
@@ -37,7 +44,9 @@ public class OutlookAlerter {
                 );
             }
             
-            System.exit(1);
+            // Exit 0: a duplicate instance is not a crash. A non-zero exit makes the launchd
+            // agent (KeepAlive SuccessfulExit=false) relaunch it forever.
+            System.exit(0);
             return;
         }
         
@@ -98,6 +107,14 @@ public class OutlookAlerter {
         }
     }
     
+    /**
+     * Returns true if this process was started by the Outlook Alerter launchd agent.
+     * launchd sets XPC_SERVICE_NAME to the job label for processes it launches.
+     */
+    static boolean isLaunchedByLaunchd(Map<String, String> env) {
+        return env != null && LAUNCHD_LABEL.equals(env.get("XPC_SERVICE_NAME"));
+    }
+
     /**
      * Print usage information
      */

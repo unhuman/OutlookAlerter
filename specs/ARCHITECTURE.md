@@ -65,7 +65,7 @@ com.unhuman.outlookalerter
 ```
 main(args)
   ├── Parse CLI: --config, --console, --debug, --timezone, --help
-  ├── SingleInstanceManager.tryAcquireLock()  → exit if locked
+  ├── SingleInstanceManager.tryAcquireLock()  → exit(0) if locked (dialog suppressed under launchd)
   ├── ConfigManager.getInstance()  → loads ~/.outlookalerter/config.properties
   ├── OutlookClient(configManager, ui?)
   └── Launch mode:
@@ -106,12 +106,17 @@ All `ScheduledExecutorService` tasks are wrapped with `safeRunScheduledTask(name
 - `hasValidToken()` checks during tray icon setup run asynchronously off the EDT.
 - Authentication prompts during direct auth use tray notifications instead of blocking dialogs.
 
+### Single Instance & launchd
+`SingleInstanceManager` holds a file lock on `~/.outlookalerter/instance.lock`. A second launch that cannot acquire the lock exits with code **0**. The optional launchd agent (`com.unhuman.outlookalerter.plist`, `KeepAlive { SuccessfulExit=false }`) only restarts on non-zero exit, so a duplicate launch at login (launchd + login item) no longer triggers an endless relaunch loop. When `XPC_SERVICE_NAME` equals the agent label (`OutlookAlerter.isLaunchedByLaunchd`), the "already running" dialog is suppressed and only logged.
+
 ### Sleep/Wake Recovery
 `MacSleepWakeMonitor` detects sleep via time-jump polling (threshold: 65s). On wake, registered listeners:
 1. Attempt a silent token refresh (MSAL → Okta DCF cache → legacy) before restarting schedulers.
 2. Restart both schedulers.
 3. Trigger an immediate calendar refresh.
 4. Schedule `checkAlertsOnWake()` after a 3-second stabilisation delay.
+
+`restartSchedulers()` replaces the screen flasher on each wake and calls `ScreenFlasher.dispose()` on the old one, which stops its EDT watchdog thread and removes its wake listener (`MacSleepWakeMonitor.removeWakeListener`). Without this, every wake leaked a watchdog thread and a listener.
 
 Additionally, `performDirectAuthentication()` contains a **pre-dialog guard** that re-validates the current token and attempts a silent refresh immediately before showing the token-entry dialog.  This prevents spurious token dialogs that appear valid after the network stabilises post-wake.
 
@@ -168,6 +173,8 @@ still-unavailable network is non-fatal and falls through to the dialog.
 
 **Critical rule:** All Swing component creation/manipulation MUST happen on the EDT. `MacScreenFlasher.flashMultiple()` uses `SwingUtilities.invokeAndWait()` for window creation.
 
+**Lock rule:** Never hold a lock while waiting on the EDT (`invokeAndWait`, latch waits for EDT work) if the EDT can take the same lock. `SimpleTokenDialog.show()` releases `LOCK` before `invokeAndWait`, and `getCurrentInstance()` is lock-free (volatile read) because the EDT calls it from `refreshCalendarEvents()` → `bringTokenDialogToFront()`. Holding `LOCK` across `invokeAndWait` previously caused a permanent freeze after wake when the token had expired.
+
 **Non-blocking rule:** No modal `JOptionPane` dialogs are used on the EDT from background threads. Token validation errors and authentication prompts use non-blocking tray notifications to prevent UI freezes.
 
 ## Configuration Properties
@@ -201,6 +208,7 @@ still-unavailable network is non-fatal and falls through to the dialog.
 
 ```
 src/test/java/com/unhuman/outlookalerter/
+├── OutlookAlerterTest                  #  3 tests — launchd launch detection
 ├── model/
 │   └── CalendarEventTest               # 34 tests — time math, state, properties, edge cases
 ├── core/
@@ -219,12 +227,12 @@ src/test/java/com/unhuman/outlookalerter/
     ├── HtmlUtilTest                    # 11 tests — HTML escaping, null, XSS, unicode
     ├── LogManagerTest                  # 29 tests — singleton, levels, buffer, filtering
     ├── MacLockUnlockMonitorTest        #  6 tests — lock/unlock detection, listener registration
-    ├── MacScreenFlasherTest            # 14 tests — flash semaphore, concurrency, completion latch, user-dismissal flag
-    ├── MacSleepWakeMonitorTest         # 10 tests — singleton, lifecycle, listeners
+    ├── MacScreenFlasherTest            # 17 tests — flash semaphore, concurrency, completion latch, user-dismissal flag, dispose
+    ├── MacSleepWakeMonitorTest         # 12 tests — singleton, lifecycle, listeners, listener removal
     └── ScreenFlasherFactoryTest        #  5 tests — platform factory, interface contract
 ```
 
-Total: **306 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
+Total: **321 tests** — all pure Java JUnit 5 unit tests, no mocking frameworks required.
 (`JoinMeetingDialogTest` tests are disabled in headless CI via `@DisabledIfSystemProperty`.)
 
 Tests call Java source classes directly. Private fields (e.g., `OutlookClient.GRAPH_ENDPOINT`) are accessed via reflection where necessary.

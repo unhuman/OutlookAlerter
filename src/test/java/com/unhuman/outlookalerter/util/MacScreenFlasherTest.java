@@ -309,4 +309,43 @@ class MacScreenFlasherTest {
         f.setAccessible(true);
         f.set(flasher, latch);
     }
+
+    // ───────── dispose ─────────
+
+    @Nested
+    @DisplayName("dispose")
+    class DisposeTests {
+
+        @Test
+        @DisplayName("each new flasher registers exactly one wake listener and dispose removes it")
+        void disposeRemovesWakeListener() {
+            MacSleepWakeMonitor monitor = MacSleepWakeMonitor.getInstance();
+            int before = monitor.getWakeListenerCount();
+            MacScreenFlasher second = new MacScreenFlasher();
+            assertEquals(before + 1, monitor.getWakeListenerCount());
+            second.dispose();
+            assertEquals(before, monitor.getWakeListenerCount());
+        }
+
+        @Test
+        @DisplayName("dispose stops the EDT watchdog loop")
+        void disposeStopsWatchdog() {
+            assertTrue(flasher.edtWatchdogRunning);
+            flasher.dispose();
+            assertFalse(flasher.edtWatchdogRunning);
+        }
+
+        @Test
+        @DisplayName("repeated replace cycles do not accumulate wake listeners")
+        void noAccumulationAcrossReplacements() {
+            MacSleepWakeMonitor monitor = MacSleepWakeMonitor.getInstance();
+            int before = monitor.getWakeListenerCount();
+            for (int i = 0; i < 5; i++) {
+                MacScreenFlasher replacement = new MacScreenFlasher();
+                replacement.forceCleanup();
+                replacement.dispose();
+            }
+            assertEquals(before, monitor.getWakeListenerCount());
+        }
+    }
 }

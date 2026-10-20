@@ -187,4 +187,50 @@ class SimpleTokenDialogTest {
         f.setAccessible(true);
         f.set(null, value);
     }
+
+    // ───────── Lock-free getCurrentInstance (deadlock regression) ─────────
+
+    @Nested
+    @DisplayName("getCurrentInstance locking")
+    class GetCurrentInstanceLockingTests {
+
+        @Test
+        @DisplayName("returns while another thread holds LOCK")
+        void doesNotBlockOnLock() throws Exception {
+            SimpleTokenDialog created = SimpleTokenDialog.getInstance(null);
+            Field lockField = SimpleTokenDialog.class.getDeclaredField("LOCK");
+            lockField.setAccessible(true);
+            Object lock = lockField.get(null);
+
+            CountDownLatch lockHeld = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            ExecutorService executor = Executors.newFixedThreadPool(2);
+            try {
+                executor.submit(() -> {
+                    synchronized (lock) {
+                        lockHeld.countDown();
+                        try {
+                            release.await(10, TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                });
+                assertTrue(lockHeld.await(5, TimeUnit.SECONDS));
+
+                AtomicReference<SimpleTokenDialog> result = new AtomicReference<>();
+                CountDownLatch done = new CountDownLatch(1);
+                executor.submit(() -> {
+                    result.set(SimpleTokenDialog.getCurrentInstance());
+                    done.countDown();
+                });
+                assertTrue(done.await(2, TimeUnit.SECONDS),
+                        "getCurrentInstance() must not wait on LOCK (EDT deadlock with show())");
+                assertSame(created, result.get());
+            } finally {
+                release.countDown();
+                executor.shutdownNow();
+            }
+        }
+    }
 }

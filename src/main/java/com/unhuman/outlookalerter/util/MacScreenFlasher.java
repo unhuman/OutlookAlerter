@@ -142,7 +142,10 @@ public class MacScreenFlasher implements ScreenFlasher {
 
     // --- EDT Watchdog ---
     final AtomicBoolean edtWatchdogStarted = new AtomicBoolean(false);
-    private volatile boolean edtWatchdogRunning = true;
+    volatile boolean edtWatchdogRunning = true;
+
+    // Wake listener registered with the shared sleep/wake monitor; removed in dispose()
+    final Runnable wakeListener;
     final AtomicLong lastEdtResponseTime = new AtomicLong(System.currentTimeMillis());
 
     void startEDTWatchdog() {
@@ -228,7 +231,7 @@ public class MacScreenFlasher implements ScreenFlasher {
         sleepWakeMonitor.startMonitoring();
 
         // Register wake listener to update our wake time and cleanup stuck windows
-        sleepWakeMonitor.addWakeListener(() -> {
+        wakeListener = () -> {
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "[MacScreenFlasher] Wake event detected, updating wake time");
             updateLastWakeTime();
 
@@ -244,7 +247,19 @@ public class MacScreenFlasher implements ScreenFlasher {
                     forceCleanup();
                 }
             });
-        });
+        };
+        sleepWakeMonitor.addWakeListener(wakeListener);
+    }
+
+    /**
+     * Stop this flasher's EDT watchdog and unregister its wake listener.
+     * Without this, every replaced flasher (one per wake) leaks a thread and a listener.
+     */
+    @Override
+    public void dispose() {
+        edtWatchdogRunning = false;
+        sleepWakeMonitor.removeWakeListener(wakeListener);
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "MacScreenFlasher: Disposed (watchdog stopped, wake listener removed)");
     }
 
     /**

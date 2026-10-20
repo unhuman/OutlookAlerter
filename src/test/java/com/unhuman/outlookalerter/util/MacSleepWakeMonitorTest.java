@@ -117,4 +117,31 @@ class MacSleepWakeMonitorTest {
                     "getTimeSinceWake() should be > 10s at startup to avoid false wake guard");
         }
     }
+
+    // ───────── Wake listener removal ─────────
+
+    @Nested
+    @DisplayName("removeWakeListener")
+    class RemoveWakeListener {
+
+        @Test
+        @DisplayName("removes a previously added listener")
+        void removesListener() {
+            Runnable listener = () -> {};
+            int before = monitor.getWakeListenerCount();
+            monitor.addWakeListener(listener);
+            assertEquals(before + 1, monitor.getWakeListenerCount());
+            monitor.removeWakeListener(listener);
+            assertEquals(before, monitor.getWakeListenerCount());
+        }
+
+        @Test
+        @DisplayName("ignores null and unknown listeners")
+        void ignoresNullAndUnknown() {
+            int before = monitor.getWakeListenerCount();
+            assertDoesNotThrow(() -> monitor.removeWakeListener(null));
+            assertDoesNotThrow(() -> monitor.removeWakeListener(() -> {}));
+            assertEquals(before, monitor.getWakeListenerCount());
+        }
+    }
 }

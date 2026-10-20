@@ -159,6 +159,12 @@ Look for these log messages to verify proper operation:
 3. `src/main/groovy/com/unhuman/outlookalerter/ui/OutlookAlerterUI.groovy`
 4. `src/main/groovy/com/unhuman/outlookalerter/util/MacWindowHelper.groovy` (typo fix)
 
+## Follow-up Fixes (v2.11.5)
+
+- **Token dialog deadlock after long sleep:** `SimpleTokenDialog.show()` held `LOCK` across `SwingUtilities.invokeAndWait`, while the EDT (`refreshCalendarEvents()` → `bringTokenDialogToFront()` → `getCurrentInstance()`) waited on the same lock. With an expired token after a long sleep, the app froze permanently. `show()` now releases the lock before `invokeAndWait`, and `getCurrentInstance()` is a lock-free volatile read.
+- **Leaked watchdogs/listeners:** each wake recreated `MacScreenFlasher` without stopping the old EDT watchdog or removing its wake listener, so the count grew with every wake. `ScreenFlasher.dispose()` now cleans these up and `restartSchedulers()` calls it.
+- **"Already running" loop after reboot:** a duplicate instance exited with code 1, which the launchd agent (`KeepAlive SuccessfulExit=false`) treated as a crash and relaunched every ~10s. It now exits 0, and the dialog is suppressed when launched by launchd.
+
 ## Future Enhancements (Optional)
 
 1. Add JMX monitoring for scheduler health

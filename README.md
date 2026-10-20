@@ -33,6 +33,9 @@ A Java application that monitors your Microsoft Outlook/Office 365 calendar and 
   - Non-blocking tray notifications replace modal dialogs that could freeze the UI
   - Sleep/wake detection restarts schedulers after laptop resume
   - Java2D/Metal CVDisplayLink wake guard suppresses rendering during the post-wake vulnerability window (JDK-8357418)
+  - Replaced screen flashers are disposed on wake (no leaked watchdog threads or wake listeners)
+  - Token dialog never holds its lock while waiting on the UI thread (prevents a post-wake deadlock when the token has expired)
+  - A duplicate launch exits cleanly (exit code 0) so the launchd auto-restart agent does not relaunch it in a loop; the "already running" dialog is suppressed for launchd launches
 
 ## Authentication and Token Refresh
 
