@@ -220,5 +220,3 @@ mvn package -Dheadless=false
 ---
 
 For more details, see the `docs/` and `documentation/` directories, and the comments in the `scripts/` folder.
-
-
