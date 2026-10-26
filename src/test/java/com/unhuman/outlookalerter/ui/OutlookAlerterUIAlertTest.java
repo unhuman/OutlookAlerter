@@ -7,11 +7,22 @@ import com.unhuman.outlookalerter.util.ScreenFlasher;
 import com.unhuman.outlookalerter.util.ScreenFlasherFactory;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
+import org.opentest4j.TestAbortedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 
+import java.awt.AWTEvent;
+import java.awt.GraphicsEnvironment;
+import java.awt.Toolkit;
+import java.awt.Window;
+import java.awt.event.AWTEventListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -29,6 +40,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 import javax.swing.JDialog;
@@ -43,7 +55,45 @@ import static org.junit.jupiter.api.Assertions.*;
  * Uses reflection to construct a minimal UI instance that can run headless
  * without needing an OutlookClient or real OAuth tokens.
  */
+@ExtendWith(OutlookAlerterUIAlertTest.UserInputTolerance.class)
 class OutlookAlerterUIAlertTest {
+
+    /**
+     * Headed runs show real flashes, banners and join dialogs, and the person at the desk may
+     * close them early. A real key press or click legitimately changes outcomes (e.g. marks
+     * events as interacted), so a failure in a test that saw real input is inconclusive:
+     * it is reported as aborted (skipped) instead of failed. Tests never synthesise
+     * mouse/key events, so any seen here came from the user.
+     */
+    static final AtomicBoolean realUserInput = new AtomicBoolean(false);
+
+    private AWTEventListener userInputListener;
+
+    static class UserInputTolerance implements TestExecutionExceptionHandler {
+        @Override
+        public void handleTestExecutionException(ExtensionContext context, Throwable t) throws Throwable {
+            if (realUserInput.get()) {
+                throw new TestAbortedException(
+                    "Inconclusive: real key/mouse input during a headed run (" + t + ")", t);
+            }
+            throw t;
+        }
+    }
+
+    /**
+     * Unsafe-allocated UI whose JFrame constructor never ran, so it cannot own windows.
+     * Join dialogs are created unowned instead, so they still appear in headed runs.
+     */
+    static class DialogCapableUI extends OutlookAlerterUI {
+        DialogCapableUI() {
+            super((String) null); // never runs: instances come from Unsafe.allocateInstance
+        }
+
+        @Override
+        Window joinDialogOwner() {
+            return null;
+        }
+    }
 
     private Path tempDir;
     private ConfigManager configManager;
@@ -115,6 +165,19 @@ class OutlookAlerterUIAlertTest {
     void setup() throws Exception {
         LogManager.getInstance();
 
+        realUserInput.set(false);
+        if (!GraphicsEnvironment.isHeadless()) {
+            // Presses only: enter/exit/move events fire when windows appear under the cursor
+            userInputListener = event -> {
+                int id = event.getID();
+                if (id == MouseEvent.MOUSE_PRESSED || id == KeyEvent.KEY_PRESSED) {
+                    realUserInput.set(true);
+                }
+            };
+            Toolkit.getDefaultToolkit().addAWTEventListener(userInputListener,
+                AWTEvent.MOUSE_EVENT_MASK | AWTEvent.KEY_EVENT_MASK);
+        }
+
         tempDir = Files.createTempDirectory("alert-test");
         String configPath = new File(tempDir.toFile(), "test-config.properties").getAbsolutePath();
         configManager = new ConfigManager(configPath);
@@ -136,7 +199,7 @@ class OutlookAlerterUIAlertTest {
         // Build a minimal OutlookAlerterUI via sun.misc.Unsafe to skip heavy constructor
         // (constructor requires OutlookClient with HTTP, OAuth, etc.)
         sun.misc.Unsafe unsafe = getUnsafe();
-        ui = (OutlookAlerterUI) unsafe.allocateInstance(OutlookAlerterUI.class);
+        ui = (OutlookAlerterUI) unsafe.allocateInstance(DialogCapableUI.class);
 
         // Set essential fields via reflection
         setField(ui, "configManager", configManager);
@@ -166,7 +229,21 @@ class OutlookAlerterUIAlertTest {
     }
 
     @AfterEach
-    void cleanup() throws IOException {
+    void cleanup() throws Exception {
+        // Close any join dialogs a test left open (they may have no auto-dismiss timeout)
+        if (!GraphicsEnvironment.isHeadless()) {
+            SwingUtilities.invokeAndWait(() -> {
+                for (Window w : Window.getWindows()) {
+                    if (w instanceof JoinMeetingDialog && w.isDisplayable()) {
+                        w.dispose();
+                    }
+                }
+            });
+        }
+        if (userInputListener != null) {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(userInputListener);
+            userInputListener = null;
+        }
         // Dispose any lingering flash windows from the real flasher
         if (flasher != null) {
             flasher.forceCleanup();

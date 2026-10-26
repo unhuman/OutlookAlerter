@@ -289,19 +289,19 @@ dialogs appear the instant flash windows become visible — no user action requi
 │  ─────────────────────────────────  │
 │  [Team Standup (in 1m)]             │  ← enabled; click opens URL + closes all
 │  [Design Review (now)]              │  ← enabled
-│  [Budget Review (in 3m) (No Link)]  │  ← disabled; no join URL found
+│  [Budget Review (in 3m) (No Link)]  │  ← inert; no join URL found
 │  ─────────────────────────────────  │
 │  [Dismiss (Ns)]                     │  (plain "Dismiss" when timeout=0)
 └─────────────────────────────────────┘
 ```
 
 - Events **with** a join URL: enabled `JButton`; clicking opens `Desktop.browse(url)` and calls `closeAll()` (all group dialogs + flash stop)
-- Events **without** a join URL: disabled `JButton` with `" (No Link)"` suffix
+- Events **without** a join URL: inert `JButton` (italic, no action; never `setEnabled(false)` so it stays legible) with `" (No Link)"` suffix
 - URL resolution uses the same four-tier priority as the tray menu (`getEffectiveJoinUrl()`)
 - Escape key, Dismiss button, and the countdown timer all call `closeAll()` (all group dialogs close + flash stops)
 - `urlResolver` is injected as a `Function<CalendarEvent, String>` for headless testability
 - Auto-dismiss timeout reads from `ConfigManager.getJoinDialogTimeoutSeconds()` (default 15 s; 0 = indefinite)
-- **All-day events are excluded from the dialog when "Ignore All Day Events" is enabled** — they have no actionable join URL and would only appear as disabled `(No Link)` buttons. If filtering removes all events, the dialog is suppressed entirely.
+- **All-day events are excluded from the dialog when "Ignore All Day Events" is enabled** — they have no actionable join URL and would only appear as inert `(No Link)` buttons. If filtering removes all events, the dialog is suppressed entirely.
 
 ---
 
@@ -570,7 +570,9 @@ session close log format.
 
 **File:** `OutlookAlerterUIAlertTest.java`
 
-Uses `sun.misc.Unsafe.allocateInstance()` to create a minimal `OutlookAlerterUI` without the heavy constructor (no `OutlookClient`, OAuth, or Swing frame). A `RecordingScreenFlasher` captures all flash calls instead of creating windows.
+Uses `sun.misc.Unsafe.allocateInstance()` to create a minimal `OutlookAlerterUI` without the heavy constructor (no `OutlookClient`, OAuth, or Swing frame). It allocates the `DialogCapableUI` subclass, which overrides `joinDialogOwner()` to return `null`: the unconstructed frame cannot own windows, so join dialogs are created unowned and actually appear in headed runs (they are disposed after each test). A `RecordingScreenFlasher` wraps the real platform flasher, recording every call while still showing the flash when headed.
+
+Headed runs tolerate the user closing popups early: a `MOUSE_PRESSED`/`KEY_PRESSED` listener notes real input (tests never synthesise any), and the `UserInputTolerance` extension reports a test that failed after real input as aborted (inconclusive) instead of failed.
 
 ### performFullAlert() tests
 | Test | Verifies |

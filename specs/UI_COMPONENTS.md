@@ -233,7 +233,7 @@ a meeting alert fires — one dialog per connected screen. No user action on the
 │                                        │
 │  [Team Standup (in 1m)]                │  ← enabled (has join URL)
 │  [Design Review (now)]                 │  ← enabled
-│  [Budget Review (in 3m) (No Link)]     │  ← disabled (no URL found)
+│  [Budget Review (in 3m) (No Link)]     │  ← inert (no URL found)
 │                                        │
 │  [Dismiss (Ns)]  (or [Dismiss] if timeout=0) │
 └────────────────────────────────────────┘
@@ -241,7 +241,7 @@ a meeting alert fires — one dialog per connected screen. No user action on the
 
 - **Events with a join URL:** enabled `JButton`; clicking opens the URL in the default browser via
   `Desktop.getDesktop().browse(URI)` then calls `closeAll()` to close all group dialogs + stop flash
-- **Events without a join URL:** disabled `JButton` with `" (No Link)"` suffix
+- **Events without a join URL:** inert `JButton` (italic, no action; never `setEnabled(false)` so it stays legible) with `" (No Link)"` suffix
 - Events are sorted by start time (earliest first)
 - Button label format: `"Subject (in Nm)"` or `"Subject (now)"` for current/past meetings
 - Escape key and Dismiss button call `closeAll()` (all group dialogs close + flash stops)

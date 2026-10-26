@@ -22,8 +22,8 @@ import java.util.stream.Collectors;
 /**
  * Modal dialog shown after the user dismisses a flash window (click or key press).
  * Lists all alerted meetings with join buttons.  Meetings that have a join URL are
- * shown as clickable buttons; meetings without a URL are shown as disabled buttons
- * with a "(No Link)" suffix.  Clicking an enabled button opens the URL in the
+ * shown as clickable buttons; meetings without a URL are shown as inert (italic, no
+ * action, never setEnabled(false) so they stay legible) buttons with a "(No Link)" suffix.  Clicking an enabled button opens the URL in the
  * default browser and closes the dialog.
  */
 public class JoinMeetingDialog extends JDialog {

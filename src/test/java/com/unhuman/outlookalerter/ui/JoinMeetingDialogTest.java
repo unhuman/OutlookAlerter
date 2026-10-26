@@ -46,10 +46,11 @@ class JoinMeetingDialogTest {
             JoinMeetingDialog dialog = createDialog(null, List.of(event), resolver);
             try {
                 List<JButton> buttons = collectButtons(dialog);
-                // One meeting button + one Cancel button
-                assertEquals(2, buttons.size(), "Expected meeting button + Cancel");
+                // One meeting button + Snooze + Dismiss
+                assertEquals(3, buttons.size(), "Expected meeting button + Snooze + Dismiss");
                 JButton meetingBtn = buttons.get(0);
                 assertTrue(meetingBtn.isEnabled(), "Button for event with URL must be enabled");
+                assertTrue(isJoinable(meetingBtn), "Button for event with URL must open the link");
                 assertTrue(meetingBtn.getText().contains("Team Standup"),
                         "Button text should contain the event subject");
             } finally {
@@ -58,7 +59,7 @@ class JoinMeetingDialogTest {
         }
 
         @Test
-        @DisplayName("event without URL produces a disabled button with '(No Link)' suffix")
+        @DisplayName("event without URL produces an inert, legible button with '(No Link)' suffix")
         void eventWithoutUrlIsDisabled() throws Exception {
             CalendarEvent event = makeEvent("No-Link Meeting", 3);
             Function<CalendarEvent, String> resolver = e -> null;
@@ -67,16 +68,20 @@ class JoinMeetingDialogTest {
             try {
                 List<JButton> buttons = collectButtons(dialog);
                 JButton meetingBtn = buttons.get(0);
-                assertFalse(meetingBtn.isEnabled(), "Button for event without URL must be disabled");
+                // Never setEnabled(false): disabled buttons ignore the foreground colour and
+                // become unreadable, so a no-link button stays enabled but has no action.
+                assertTrue(meetingBtn.isEnabled(), "No-link button must stay enabled for legibility");
+                assertFalse(isJoinable(meetingBtn), "Button for event without URL must have no action");
+                assertTrue(meetingBtn.getFont().isItalic(), "No-link button is shown in italics");
                 assertTrue(meetingBtn.getText().contains("(No Link)"),
-                        "Disabled button text must contain '(No Link)'");
+                        "No-link button text must contain '(No Link)'");
             } finally {
                 disposeOnEdt(dialog);
             }
         }
 
         @Test
-        @DisplayName("multiple events produce one button each (plus Cancel)")
+        @DisplayName("multiple events produce one button each (plus Snooze and Dismiss)")
         void multipleEventsProduceMultipleButtons() throws Exception {
             List<CalendarEvent> events = List.of(
                     makeEvent("Standup", 1),
@@ -87,16 +92,16 @@ class JoinMeetingDialogTest {
             JoinMeetingDialog dialog = createDialog(null, events, resolver);
             try {
                 List<JButton> buttons = collectButtons(dialog);
-                // 3 meeting buttons + 1 cancel
-                assertEquals(4, buttons.size(),
-                        "Expected one button per event plus a Cancel button");
+                // 3 meeting buttons + Snooze + Dismiss
+                assertEquals(5, buttons.size(),
+                        "Expected one button per event plus Snooze and Dismiss buttons");
             } finally {
                 disposeOnEdt(dialog);
             }
         }
 
         @Test
-        @DisplayName("mixed events: some with URL (enabled), some without (disabled)")
+        @DisplayName("mixed events: some with URL (joinable), some without (inert)")
         void mixedEnabledDisabled() throws Exception {
             CalendarEvent withUrl = makeEvent("With Zoom", 1);
             CalendarEvent noUrl = makeEvent("No Zoom", 2);
@@ -106,10 +111,10 @@ class JoinMeetingDialogTest {
             JoinMeetingDialog dialog = createDialog(null, List.of(withUrl, noUrl), resolver);
             try {
                 List<JButton> meetingBtns = collectButtons(dialog).subList(0, 2);
-                long enabledCount = meetingBtns.stream().filter(JButton::isEnabled).count();
-                long disabledCount = meetingBtns.stream().filter(b -> !b.isEnabled()).count();
-                assertEquals(1, enabledCount, "Exactly one button should be enabled");
-                assertEquals(1, disabledCount, "Exactly one button should be disabled");
+                long joinableCount = meetingBtns.stream().filter(JoinMeetingDialogTest::isJoinable).count();
+                long inertCount = meetingBtns.stream().filter(b -> !isJoinable(b)).count();
+                assertEquals(1, joinableCount, "Exactly one button should open a link");
+                assertEquals(1, inertCount, "Exactly one button should be inert");
             } finally {
                 disposeOnEdt(dialog);
             }
@@ -373,6 +378,11 @@ class JoinMeetingDialogTest {
                 collectButtons((JComponent) c, out);
             }
         }
+    }
+
+    /** True if clicking the button does something (only meetings with a join URL get a listener). */
+    private static boolean isJoinable(JButton button) {
+        return button.getActionListeners().length > 0;
     }
 
     private static void disposeOnEdt(JDialog dialog) throws Exception {

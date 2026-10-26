@@ -1929,9 +1929,14 @@ public class OutlookAlerterUI extends JFrame {
 
     /**
      * Shows the join meeting dialog after a flash is dismissed by user interaction.
-     * Presents each alerted event with a join button (enabled if a URL was found,
-     * disabled with "(No Link)" suffix otherwise).
+     * Presents each alerted event with a join button (clickable if a URL was found,
+     * inert with a "(No Link)" suffix otherwise).
      */
+    /** Owner window for join dialogs; a seam so tests can show dialogs without a constructed frame. */
+    Window joinDialogOwner() {
+        return this;
+    }
+
     private void showJoinMeetingDialogOnAllScreens(List<CalendarEvent> events) {
         if (events == null || events.isEmpty()) return;
         if (configManager.getIgnoreAllDayEvents()) {
@@ -1980,7 +1985,7 @@ public class OutlookAlerterUI extends JFrame {
             }, snoozeMin, java.util.concurrent.TimeUnit.MINUTES);
         };
         Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
-            this, events, this::getEffectiveJoinUrl, onDismiss, onSnooze, cleanup);
+            joinDialogOwner(), events, this::getEffectiveJoinUrl, onDismiss, onSnooze, cleanup);
         activeDismissAll.set(dismissAll);
     }
 
