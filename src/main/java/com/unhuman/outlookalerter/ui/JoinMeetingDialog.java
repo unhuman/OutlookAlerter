@@ -2,6 +2,7 @@ package com.unhuman.outlookalerter.ui;
 
 import com.unhuman.outlookalerter.model.CalendarEvent;
 import com.unhuman.outlookalerter.util.MacScreenFlasher;
+import com.unhuman.outlookalerter.util.MacWindowElevator;
 
 import javax.swing.*;
 import javax.swing.plaf.basic.BasicButtonUI;
@@ -13,6 +14,8 @@ import java.net.URI;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -28,6 +31,15 @@ public class JoinMeetingDialog extends JDialog {
     // Non-static: read from ConfigManager at construction time so tests can override it.
     // The legacy constant is kept for test compatibility (tests may still read it).
     static final int AUTO_DISMISS_SECONDS = 15;
+
+    /** How often (ms) the native elevation is re-asserted while dialogs are open (macOS). */
+    static final int REASSERT_INTERVAL_MS = 2000;
+
+    /** Delay (ms) before the second visibility check, after the flash/banner have ended. */
+    static final int LATE_VISIBILITY_CHECK_MS = 10000;
+
+    /** Sequence for dialog session ids (J1, J2, ...) used to correlate log lines. */
+    private static final AtomicInteger SESSION_IDS = new AtomicInteger();
 
     // ── Fixed structural colours (independent of user settings) ──────────────
     private static final Color BG_DIALOG    = new Color( 28,  28,  42);
@@ -163,6 +175,48 @@ public class JoinMeetingDialog extends JDialog {
     void setWindowCloseAction(Runnable r) { this.windowCloseAction = r; }
 
     /**
+     * Records why the dialog group closed (first reason wins). Shared by all sibling dialogs
+     * of a session so the single close log line names the actual trigger.
+     */
+    private Consumer<String> closeReasonRecorder = null;
+
+    /** Called by showOnAllScreens() to supply the shared close-reason recorder. */
+    void setCloseReasonRecorder(Consumer<String> r) { this.closeReasonRecorder = r; }
+
+    private void recordCloseReason(String reason) {
+        Consumer<String> r = closeReasonRecorder;
+        if (r != null) r.accept(reason);
+    }
+
+    /**
+     * Describes the input that triggered the current action, so logs distinguish a deliberate
+     * click from a stray keystroke (e.g. Enter activating the default Dismiss button while the
+     * user was typing elsewhere).
+     */
+    static String describeInput(AWTEvent current) {
+        if (current instanceof KeyEvent) {
+            return " via keyboard (" + KeyEvent.getKeyText(((KeyEvent) current).getKeyCode()) + ")";
+        }
+        if (current instanceof MouseEvent) {
+            return " via mouse";
+        }
+        return "";
+    }
+
+    private static String currentInput() {
+        return describeInput(EventQueue.getCurrentEvent());
+    }
+
+    /** Builds the single log line written when a dialog session closes. */
+    static String formatCloseLog(String sessionId, String outcome, String reason,
+                                 long elapsedMs, String eventsDescription) {
+        return "JoinMeetingDialog[" + sessionId + "]: " + outcome
+                + " by " + (reason != null ? reason : "unknown trigger")
+                + " after " + String.format("%.1fs", elapsedMs / 1000.0)
+                + " — events: " + eventsDescription;
+    }
+
+    /**
      * Disposes this dialog and, if a shared closer is installed, closes all sibling
      * dialogs in the same session (idempotent via null-clear to prevent re-entrancy).
      */
@@ -211,7 +265,8 @@ public class JoinMeetingDialog extends JDialog {
      */
     public JoinMeetingDialog(Window parent, List<CalendarEvent> events,
             Function<CalendarEvent, String> urlResolver) {
-        super(parent, "Meeting Alert", ModalityType.MODELESS);
+        // Title also identifies the NSWindow for MacWindowElevator
+        super(parent, MacWindowElevator.DIALOG_WINDOW_TITLE, ModalityType.MODELESS);
         this.displayedEvents = new java.util.ArrayList<>(events);
         com.unhuman.outlookalerter.core.ConfigManager cfgForTimeout =
                 com.unhuman.outlookalerter.core.ConfigManager.getInstance();
@@ -222,6 +277,7 @@ public class JoinMeetingDialog extends JDialog {
             public void windowClosing(java.awt.event.WindowEvent e) {
                 // Native window close (e.g. macOS red dot): only cleanup, do NOT record
                 // as an interaction so the meeting can re-alert.
+                recordCloseReason("window close button (red dot)");
                 closeWindow();
             }
         });
@@ -309,7 +365,9 @@ public class JoinMeetingDialog extends JDialog {
             }
             if (url != null) {
                 final String finalUrl = url;
+                final String joinedSubject = event.getSubject();
                 btn.addActionListener(e -> {
+                    recordCloseReason("Join clicked for '" + joinedSubject + "'" + currentInput());
                     try {
                         Desktop.getDesktop().browse(new URI(finalUrl));
                     } catch (Exception ex) {
@@ -362,12 +420,19 @@ public class JoinMeetingDialog extends JDialog {
         // preferred width from makeStyledButton — it sits in BorderLayout WEST so its
         // preferred width drives the row total.
         snoozeBtn.setPreferredSize(null);
-        snoozeBtn.addActionListener(e -> snoozeAll());
+        snoozeBtn.addActionListener(e -> {
+            recordCloseReason("Snooze button" + currentInput());
+            snoozeAll();
+        });
 
         JButton cancelBtn = makeStyledButton(
                 autoDismissSeconds > 0 ? cancelLabel(autoDismissSeconds) : "Dismiss",
                 BTN_CANCEL, BTN_CANCEL_HOV, Color.WHITE);
-        cancelBtn.addActionListener(e -> closeAll());
+        // Enter also triggers this (default button); currentInput() records which it was
+        cancelBtn.addActionListener(e -> {
+            recordCloseReason("Dismiss button" + currentInput());
+            closeAll();
+        });
 
         JPanel btnRow = new JPanel(new BorderLayout(8, 0));
         btnRow.setOpaque(false);
@@ -380,7 +445,10 @@ public class JoinMeetingDialog extends JDialog {
 
         // Escape also closes
         getRootPane().registerKeyboardAction(
-                e -> closeAll(),
+                e -> {
+                    recordCloseReason("Escape key");
+                    closeAll();
+                },
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
         getRootPane().setDefaultButton(cancelBtn);
@@ -403,6 +471,7 @@ public class JoinMeetingDialog extends JDialog {
                 int left = remaining.decrementAndGet();
                 if (left <= 0) {
                     countdown.stop();
+                    recordCloseReason("auto-dismiss timeout (" + autoDismissSeconds + "s)");
                     closeAll();
                 } else {
                     cancelBtn.setText(cancelLabel(left));
@@ -612,10 +681,23 @@ public class JoinMeetingDialog extends JDialog {
             all.add(d);
         }
 
+        // Session identity for log correlation: every close path logs one line naming the
+        // session, the trigger, how long the dialog was up, and the events it displayed.
+        final String sessionId = "J" + SESSION_IDS.incrementAndGet();
+        final long shownAtMs = System.currentTimeMillis();
+        final String eventsDescription = CalendarEvent.describeForLog(events);
+        AtomicReference<String> closeReason = new AtomicReference<>();
+        Consumer<String> reasonRecorder = reason -> closeReason.compareAndSet(null, reason);
+        Consumer<String> logClose = outcome -> com.unhuman.outlookalerter.util.LogManager.getInstance().info(
+                com.unhuman.outlookalerter.util.LogCategory.ALERT_PROCESSING,
+                formatCloseLog(sessionId, outcome, closeReason.get(),
+                        System.currentTimeMillis() - shownAtMs, eventsDescription));
+
         java.util.concurrent.atomic.AtomicBoolean closing =
                 new java.util.concurrent.atomic.AtomicBoolean(false);
         Runnable doDispose = () -> {
             if (closing.compareAndSet(false, true)) {
+                logClose.accept("DISMISSED");
                 MacScreenFlasher.clearTopDialogWindows();
                 all.forEach(JDialog::dispose);
                 if (onDismiss != null) onDismiss.run();
@@ -634,6 +716,7 @@ public class JoinMeetingDialog extends JDialog {
         Runnable doSnooze = () -> {
             if (snoozing.compareAndSet(false, true)) {
                 closing.set(true); // prevent dismiss path from also firing
+                logClose.accept("SNOOZED");
                 MacScreenFlasher.clearTopDialogWindows();
                 all.forEach(JDialog::dispose);
                 if (onSnooze != null) onSnooze.run();
@@ -654,6 +737,7 @@ public class JoinMeetingDialog extends JDialog {
             if (windowClosing.compareAndSet(false, true)) {
                 closing.set(true);  // prevent dismiss from also firing
                 snoozing.set(true); // prevent snooze from also firing
+                logClose.accept("CLOSED (no interaction recorded)");
                 MacScreenFlasher.clearTopDialogWindows();
                 all.forEach(JDialog::dispose);
                 if (onWindowClose != null) onWindowClose.run();
@@ -671,6 +755,7 @@ public class JoinMeetingDialog extends JDialog {
             d.setDismissAll(dismissAll);
             d.setSnoozeAction(snoozeAll);
             d.setWindowCloseAction(windowCloseAll);
+            d.setCloseReasonRecorder(reasonRecorder);
         });
 
         // Show all dialogs and schedule toFront
@@ -678,16 +763,49 @@ public class JoinMeetingDialog extends JDialog {
             d.setVisible(true);
             SwingUtilities.invokeLater(d::toFront);
         });
+        com.unhuman.outlookalerter.util.LogManager.getInstance().info(
+                com.unhuman.outlookalerter.util.LogCategory.ALERT_PROCESSING,
+                "JoinMeetingDialog[" + sessionId + "]: shown on " + all.size() + " screen(s) — events: " + eventsDescription);
 
         // Register with MacScreenFlasher so the elevation timer keeps these dialogs
         // above the banner overlay windows (z-order: flash → banner → dialog).
         MacScreenFlasher.registerTopDialogWindows(all);
+
+        // macOS: raise natively and keep re-asserting for as long as the dialogs are open.
+        // The flash elevation timer only runs for the flash duration, but the dialog can stay
+        // open indefinitely, and the JDK may drop an inactive app's window level back down.
+        if (MacWindowElevator.isAvailable()) {
+            MacWindowElevator.elevateAlertWindows(true);
+            MacWindowElevator.reportAlertWindowVisibility("join dialog " + sessionId, eventsDescription, 750);
+            Timer reassert = new Timer(REASSERT_INTERVAL_MS, null);
+            reassert.addActionListener(tick -> {
+                if (all.stream().noneMatch(Window::isDisplayable)) {
+                    reassert.stop();
+                    return;
+                }
+                MacWindowElevator.elevateAlertWindows(false);
+            });
+            reassert.start();
+            // Second check once the flash and banner are gone, to catch a dialog that was
+            // visible at first but later ended up hidden.
+            Timer lateCheck = new Timer(LATE_VISIBILITY_CHECK_MS, tick -> {
+                if (all.stream().anyMatch(Window::isDisplayable)) {
+                    MacWindowElevator.reportAlertWindowVisibility(
+                            "join dialog " + sessionId + " (+" + LATE_VISIBILITY_CHECK_MS / 1000 + "s)", eventsDescription, 0);
+                }
+            });
+            lateCheck.setRepeats(false);
+            lateCheck.start();
+        }
 
         // Return the silent-close runnable (window-close path) rather than the full dismiss.
         // The caller (OutlookAlerterUI.activeDismissAll) invokes this when a new alert
         // programmatically replaces an existing dialog. Using dismissAll here would call
         // onDismiss and add the old events to interactedEventIds without user intent.
         // windowCloseAll disposes the dialogs and runs cleanup only — no interaction recorded.
-        return windowCloseAll;
+        return () -> {
+            reasonRecorder.accept("replaced by a newer alert");
+            windowCloseAll.run();
+        };
     }
 }

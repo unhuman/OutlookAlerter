@@ -155,6 +155,79 @@ Ensures flash windows remain visible above other applications.
 
 **Rationale:** Toggling `setAlwaysOnTop(false/true)` on every tick keeps the flash window above all normal (non-alwaysOnTop) windows for the entire flash duration, even if another application was activated mid-flash. When banner overlays are registered, calling `toFront()` on the flash would momentarily push it above the banner causing visible flicker; the `setAlwaysOnTop` toggle alone is sufficient to maintain visibility against normal windows, and the overlay's own `toFront()` call preserves the correct z-order (banner above flash).
 
+**Native path (macOS, preferred):** when `MacWindowElevator.isAvailable()`, each tick calls
+`MacWindowElevator.elevateAlertWindows(false)` **instead of** the table above. The Java toggle is
+skipped because `setAlwaysOnTop()` would reset the native window level. The table above is the
+fallback when native elevation is unavailable.
+
+### Native Window Elevation (`MacWindowElevator`, macOS)
+
+**Location:** `com.unhuman.outlookalerter.util.MacWindowElevator`
+
+**Problem it solves:** Java `setAlwaysOnTop(true)` only gives `NSFloatingWindowLevel` on the Space
+where the window was created, and since macOS 14 `activateIgnoringOtherApps:` is only a *request*
+the system may refuse while the user is working in another app. A tray-only (LSUIElement) app
+therefore could create alert windows that Java reported as `visible=true` but that sat behind the
+frontmost app or on another Space. Observed 2026-10-26 (11:00 meetings): flash ran its full 5 s and
+the indefinite join dialog was never closed, yet the user saw nothing.
+
+**Mechanism (no JDK internals, no `--add-opens`):**
+- Alert windows are identified by unique titles: `FLASH_WINDOW_TITLE`, `BANNER_WINDOW_TITLE`,
+  `DIALOG_WINDOW_TITLE` (flash and banner are undecorated, so their titles are never displayed).
+- All AppKit calls run on the main thread via GCD (`dispatch_async_f` / `dispatch_after_f` on
+  `_dispatch_main_q`) through JNA; a static trampoline callback runs queued Java tasks.
+- For every visible alert window in `[NSApp windows]`:
+  - `setLevel:` — flash 25, banner 26, dialog 27 (above floating 3, Dock 20, main menu 24;
+    preserves flash → banner → dialog z-order)
+  - `setCollectionBehavior:` — adds `CanJoinAllSpaces | FullScreenAuxiliary`, clears the mutually
+    exclusive `MoveToActiveSpace | FullScreenPrimary | FullScreenNone`
+  - `orderFrontRegardless` — brings the window forward even though the app is not active
+
+**Call sites:**
+| Caller | When |
+|---|---|
+| `MacScreenFlasher.flashMultiple()` | Right after flash windows are created (logged) |
+| Flash elevation timer | Every tick during the flash (not logged) |
+| `JoinMeetingDialog.showOnAllScreens()` | Right after dialogs are shown (logged), then every `REASSERT_INTERVAL_MS` (2 s) while any dialog is displayable — the dialog can stay open indefinitely and the JDK may lower an inactive app's window level |
+
+### Alert Visibility Diagnostics
+
+`MacWindowElevator.reportAlertWindowVisibility(context, events, delayMs)` logs one
+`[AlertVisibility]` line per check, naming the alerted events:
+
+```
+[AlertVisibility] flash: visible (3/4 window(s) un-occluded on active Space) | appActive=false frontmostApp=Slack | events: 'Standup' @ 11:00 AM | windows: flash(level=25 activeSpace=true unoccluded=true); ...
+```
+
+- A window counts as visible when `isOnActiveSpace` and `occlusionState & NSWindowOcclusionStateVisible`.
+- Logged at **WARN** with `ALERT NOT VISIBLE` (or `NO ALERT WINDOWS ON SCREEN`) when nothing is visible.
+- `appActive` reports whether macOS honoured the activation request; `MacScreenFlasher.activateApp()`
+  now logs "App activation requested" rather than claiming success.
+
+| Check | Delay |
+|---|---|
+| `flash` | 750 ms after flash windows are created |
+| `join dialog J<n>` | 750 ms after dialogs are shown |
+| `join dialog J<n> (+10s)` | `LATE_VISIBILITY_CHECK_MS` (10 s), only if a dialog is still open — catches a dialog that later became hidden |
+
+### Dismissal Logging
+
+Every way an alert component ends is logged with what it was showing
+(`CalendarEvent.describeForLog()` → `'Subject' @ h:mm a, ...`):
+
+| Component | Log line | Meaning |
+|---|---|---|
+| Flash | `FlashWindow: DISMISSED by user keyPressed (Enter) after 0.3s — dismissing flash for: ...` | Key/mouse press while flash showing |
+| Flash | `FlashCleanup: Primary timer fired after 5.0 seconds — flash EXPIRED (not dismissed) for: ...` | Normal expiry |
+| Banner / tray flash | `AlertBanner: DISMISSED by user mousePressed — clearing banner/tray flash for: ...` | Key/mouse press during banner or tray-icon flash |
+| Join dialog | `JoinMeetingDialog[J3]: shown on 2 screen(s) — events: ...` | Session start (ids `J1`, `J2`, ... correlate later lines) |
+| Join dialog | `JoinMeetingDialog[J3]: <OUTCOME> by <trigger> after 12.4s — events: ...` | Session end |
+
+Join dialog outcomes: `DISMISSED` (marks events interacted), `SNOOZED`, `CLOSED (no interaction recorded)`.
+Triggers: `Join clicked for '<subject>'`, `Dismiss button`, `Snooze button` (each suffixed
+` via mouse` or ` via keyboard (<key>)` — e.g. Enter on the default Dismiss button), `Escape key`,
+`auto-dismiss timeout (Ns)`, `window close button (red dot)`, `replaced by a newer alert`.
+
 ### Cooperative Overlay System
 
 Allows banner windows to coexist above flash windows without timer conflicts.
@@ -462,7 +535,38 @@ Using lastFetchedEvents (cached):
 
 ---
 
+## Open Issues
+
+1. **Typing can dismiss an alert almost instantly.** The flash takes keyboard focus, and any key or
+   mouse press dismisses the flash and banner. The join dialog's default button is Dismiss, so Enter
+   closes it and marks the events as interacted (no re-alert). A user typing in another app when the
+   alert fires may only see a brief blip. Considered low priority because the blip is visible;
+   occurrences are now identifiable in the log (`DISMISSED by user keyPressed (...)` /
+   `Dismiss button via keyboard (Enter)`). Possible fix: ignore key presses for the first ~1 s of an
+   alert and remove the default button.
+2. **Banner hide timer can close a newer banner early.** `showAlertBanner()`'s hide timer disposes
+   whatever is in the shared `alertBannerWindows` list when it fires, so a banner from a second alert
+   within the flash duration can be removed early.
+3. **Overlapping alerts share one `onFlashReady` slot.** A second `performFullAlert()` before the first
+   flash fires its callback overwrites it; the first flash then shows the second alert's banner/dialog
+   and the second flash shows none.
+4. **Tray notification likely silent on macOS.** `TrayIcon.displayMessage()` is logged as shown but
+   is not a reliable macOS notification path, so it provides no backup when windows are not visible.
+
+---
+
 ## Test Coverage
+
+**File:** `MacWindowElevatorTest.java` — title classification, level ordering, collection-behavior
+bits, visibility verdicts and report formatting; headless no-op safety.
+
+**File:** `MacWindowElevatorDisplayTest.java` — **headed only** (`mvn package -Dheadless=false`,
+macOS): shows a small titled window, elevates it natively and verifies level 25 plus
+`CanJoinAllSpaces | FullScreenAuxiliary`. Disruptive (briefly shows a window above all apps), so it
+is skipped in the default build.
+
+**File:** `JoinMeetingDialogLoggingTest.java` — headless: keyboard vs mouse trigger detection and the
+session close log format.
 
 **File:** `OutlookAlerterUIAlertTest.java`
 

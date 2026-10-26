@@ -526,4 +526,36 @@ class CalendarEventTest {
             assertFalse(event.isCancelled());
         }
     }
+
+    // ───────── describeForLog ─────────
+
+    @Nested
+    @DisplayName("describeForLog()")
+    class DescribeForLog {
+
+        @Test
+        @DisplayName("names each event with its start time")
+        void namesEventsWithStartTime() {
+            CalendarEvent a = makeEvent(ZonedDateTime.of(2026, 10, 26, 11, 0, 0, 0, UTC),
+                ZonedDateTime.of(2026, 10, 26, 11, 30, 0, 0, UTC));
+            a.setSubject("Oktagon Standup!");
+            CalendarEvent b = makeEvent(ZonedDateTime.of(2026, 10, 26, 11, 0, 0, 0, UTC),
+                ZonedDateTime.of(2026, 10, 26, 12, 0, 0, 0, UTC));
+            b.setSubject("Benchmarking Coordination");
+            assertEquals("'Oktagon Standup!' @ 11:00 AM, 'Benchmarking Coordination' @ 11:00 AM",
+                CalendarEvent.describeForLog(java.util.List.of(a, b)));
+        }
+
+        @Test
+        @DisplayName("handles null/empty lists, null events and missing start times")
+        void handlesMissingData() {
+            assertEquals("(no events)", CalendarEvent.describeForLog(null));
+            assertEquals("(no events)", CalendarEvent.describeForLog(java.util.List.of()));
+            CalendarEvent noStart = makeEvent(null, null);
+            java.util.List<CalendarEvent> list = new java.util.ArrayList<>();
+            list.add(noStart);
+            list.add(null);
+            assertEquals("'Test Meeting' @ unknown time, (null event)", CalendarEvent.describeForLog(list));
+        }
+    }
 }

@@ -19,6 +19,7 @@ import com.unhuman.outlookalerter.util.MacScreenFlasher;
 import com.unhuman.outlookalerter.util.MacSleepWakeMonitor;
 import com.unhuman.outlookalerter.util.MacLockUnlockMonitor;
 import com.unhuman.outlookalerter.util.MacJava2DWakeGuard;
+import com.unhuman.outlookalerter.util.MacWindowElevator;
 import java.time.ZonedDateTime;
 import java.time.ZoneId;
 import java.time.LocalDate;
@@ -196,6 +197,9 @@ public class OutlookAlerterUI extends JFrame {
     // Store last fetched events to avoid frequent API calls (volatile for cross-thread visibility)
     private volatile List<CalendarEvent> lastFetchedEvents = new ArrayList<>();
 
+    // Events of the most recent performFullAlert(), named in banner dismissal logs
+    private volatile List<CalendarEvent> lastAlertedEvents = Collections.emptyList();
+
     // Fired once on startup after the first successful calendar fetch to alert for
     // any meetings already in progress when the application launches.
     private volatile boolean initialAlertCheckDone = false;
@@ -285,6 +289,12 @@ public class OutlookAlerterUI extends JFrame {
             if (alertBannerWindows.isEmpty() && !trayIconFlashing) return;
             int id = event.getID();
             if (id == KeyEvent.KEY_PRESSED || id == MouseEvent.MOUSE_PRESSED) {
+                String input = (id == MouseEvent.MOUSE_PRESSED)
+                    ? "mousePressed"
+                    : "keyPressed (" + KeyEvent.getKeyText(((KeyEvent) event).getKeyCode()) + ")";
+                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+                    "AlertBanner: DISMISSED by user " + input + " — clearing banner/tray flash for: "
+                    + CalendarEvent.describeForLog(lastAlertedEvents));
                 SwingUtilities.invokeLater(this::dismissAlerts);
             }
         }, AWTEvent.KEY_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK);
@@ -2228,6 +2238,7 @@ public class OutlookAlerterUI extends JFrame {
      */
     public void performFullAlert(String bannerText, String notificationTitle, String notificationMessage, List<CalendarEvent> events) {
         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "performFullAlert: banner='" + bannerText + "' events=" + (events != null ? events.size() : 0));
+        lastAlertedEvents = (events != null) ? new ArrayList<>(events) : Collections.emptyList();
 
         // ========== ALERT COMPONENT 1: Audio beep (highest priority, separate thread) ==========
         Thread beepThread = new Thread(() -> {
@@ -2545,6 +2556,8 @@ public class OutlookAlerterUI extends JFrame {
                     final String bannerMessage = message;
 
                     JFrame frameWindow = new JFrame(screen.getDefaultConfiguration());
+                    // Title identifies the NSWindow for MacWindowElevator (undecorated, so never displayed)
+                    frameWindow.setTitle(MacWindowElevator.BANNER_WINDOW_TITLE);
                     frameWindow.setUndecorated(true);
                     frameWindow.setType(JFrame.Type.POPUP);
                     frameWindow.setBackground(new Color(0, 0, 0, 0));  // fully transparent

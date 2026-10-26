@@ -348,4 +348,25 @@ class MacScreenFlasherTest {
             assertEquals(before, monitor.getWakeListenerCount());
         }
     }
+
+    // ───────── Dismissal logging helpers ─────────
+
+    @Nested
+    @DisplayName("formatElapsed()")
+    class FormatElapsedTests {
+
+        @Test
+        @DisplayName("returns ? when the flash never started")
+        void notStarted() {
+            assertEquals("?", MacScreenFlasher.formatElapsed(0L));
+        }
+
+        @Test
+        @DisplayName("formats seconds with one decimal")
+        void formatsSeconds() {
+            String elapsed = MacScreenFlasher.formatElapsed(System.currentTimeMillis() - 2500L);
+            assertTrue(elapsed.matches("\\d+\\.\\ds"), elapsed);
+            assertTrue(elapsed.startsWith("2.") || elapsed.startsWith("3."), elapsed);
+        }
+    }
 }

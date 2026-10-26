@@ -2,9 +2,12 @@ package com.unhuman.outlookalerter.model;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Represents a calendar event from Outlook
@@ -143,6 +146,26 @@ public class CalendarEvent {
         }
         ZonedDateTime now = ZonedDateTime.now(endTime.getZone());
         return now.toInstant().isAfter(endTime.toInstant());
+    }
+
+    private static final DateTimeFormatter LOG_TIME_FORMAT = DateTimeFormatter.ofPattern("h:mm a");
+
+    /**
+     * Compact, single-line description of the alerted events for log correlation,
+     * e.g. {@code 'Team Standup' @ 11:00 AM, 'Design Review' @ 11:30 AM}.
+     * Used by alert dismissal/visibility logs so each entry names what was displayed.
+     */
+    public static String describeForLog(List<CalendarEvent> events) {
+        if (events == null || events.isEmpty()) {
+            return "(no events)";
+        }
+        return events.stream()
+            .map(e -> {
+                if (e == null) return "(null event)";
+                String start = e.getStartTime() != null ? e.getStartTime().format(LOG_TIME_FORMAT) : "unknown time";
+                return "'" + e.getSubject() + "' @ " + start;
+            })
+            .collect(Collectors.joining(", "));
     }
 
     @Override

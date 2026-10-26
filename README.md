@@ -73,7 +73,7 @@ Outlook Alerter uses OAuth2 for authentication. To avoid repeated sign-ins, it r
 
 ## Platform-Specific Alert Behavior
 
-- **macOS**: Alerts appear above full screen apps and on all virtual desktops/displays using robust window level logic. No menu bar icon flashes during alerts.
+- **macOS**: Alerts appear above full screen apps and on all virtual desktops/displays. The flash, banner and join dialog are raised natively (status window level, all Spaces, `orderFrontRegardless`) so they no longer depend on macOS honouring app activation. Each alert logs an `[AlertVisibility]` check (WARN `ALERT NOT VISIBLE` if the user could not have seen it) and every dismissal names its trigger and the events shown. No menu bar icon flashes during alerts.
 - **Windows**: Alerts use always-on-top windows and system tray notifications. Color and opacity settings are fully respected.
 - **Linux/Cross-Platform**: Alerts use always-on-top windows with color/opacity support (subject to window manager limitations).
 
@@ -193,6 +193,8 @@ mvn package
 mvn test
 
 # Run with visual alerts (see screen flash, banners, hear beeps)
+# Also runs display-only tests such as MacWindowElevatorDisplayTest.
+# Disruptive: windows appear above all apps — run when you are not working.
 mvn package -Dheadless=false
 ```
 
@@ -210,6 +212,9 @@ mvn package -Dheadless=false
 | `OutlookAlerterUIAlertTest` | ui | 23 | `performFullAlert`, screen flash, beep thread, `checkForEventAlerts`, dedup, cleanup, `checkAlertsOnWake` |
 | `SingleInstanceManagerTest` | core | 6 | File lock acquire/release/exclusive |
 | `MacSleepWakeMonitorTest` | util | 9 | Singleton, lifecycle, wake listeners |
+| `MacWindowElevatorTest` | util | 15 | Alert window classification, levels, collection behavior, visibility report |
+| `MacWindowElevatorDisplayTest` | util | 1 | Headed only (`-Dheadless=false`): native elevation on a real window |
+| `JoinMeetingDialogLoggingTest` | ui | 5 | Dismissal trigger detection (keyboard vs mouse), session close log format |
 
 ---
 

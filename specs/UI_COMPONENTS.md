@@ -257,6 +257,26 @@ Runnable dismissAll = JoinMeetingDialog.showOnAllScreens(
 
 The `urlResolver` parameter is injected to keep the dialog testable in headless environments.
 
+### Visibility (macOS)
+
+The dialog title is `MacWindowElevator.DIALOG_WINDOW_TITLE`, which lets `MacWindowElevator` find its
+NSWindow. After showing, `showOnAllScreens()` elevates the dialogs natively (status window level,
+all Spaces, over full-screen apps), re-asserts that every `REASSERT_INTERVAL_MS` (2 s) while any
+dialog is open, and logs `[AlertVisibility]` checks at 750 ms and 10 s. See ALERT_SYSTEM.md.
+
+### Session Logging
+
+Each `showOnAllScreens()` call is a session with id `J<n>`. Sibling dialogs share a close-reason
+recorder (first reason wins), and exactly one line is logged when the session ends:
+
+```
+JoinMeetingDialog[J3]: DISMISSED by Dismiss button via keyboard (Enter) after 0.4s — events: 'Standup' @ 11:00 AM
+```
+
+`describeInput(AWTEvent)` uses `EventQueue.getCurrentEvent()` to distinguish mouse from keyboard
+triggers. The `Runnable` returned by `showOnAllScreens()` records `replaced by a newer alert` before
+closing silently.
+
 ---
 
 ## SimpleTokenDialog

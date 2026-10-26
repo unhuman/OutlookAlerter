@@ -120,6 +120,11 @@ public class MacScreenFlasher implements ScreenFlasher {
     // True if the most recent flash was dismissed by user interaction (click/key) rather than timer.
     private final AtomicBoolean userDismissed = new AtomicBoolean(false);
 
+    // What the current flash is showing and when it appeared, so dismissal/expiry logs
+    // name the alerted events (see CalendarEvent.describeForLog).
+    private volatile String activeFlashDescription = "(none)";
+    private volatile long flashShownAtMs = 0L;
+
     // Screen bounds of the monitor where the dismissal interaction occurred.
     // Null when the flash expired by timer or no component source was available.
     private volatile Rectangle interactionScreenBounds = null;
@@ -393,8 +398,10 @@ public class MacScreenFlasher implements ScreenFlasher {
             Pointer nsApp = objcMsgSend.invokePointer(new Object[]{nsAppClass, selSharedApp});
             objcMsgSend.invokeVoid(new Object[]{nsApp, selActivate, (byte) 1});
 
+            // activateIgnoringOtherApps: is only a request on macOS 14+; whether it was honoured
+            // is reported later by MacWindowElevator.reportAlertWindowVisibility (appActive=...).
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                "MacScreenFlasher: App activated for foreground display");
+                "MacScreenFlasher: App activation requested (outcome logged in [AlertVisibility])");
         } catch (Exception e) {
             LogManager.getInstance().warn(LogCategory.ALERT_PROCESSING,
                 "MacScreenFlasher: Could not activate app: " + e.getMessage());
@@ -414,9 +421,12 @@ public class MacScreenFlasher implements ScreenFlasher {
             public void eventDispatched(AWTEvent event) {
                 int id = event.getID();
                 if (id == MouseEvent.MOUSE_PRESSED || id == KeyEvent.KEY_PRESSED) {
+                    String input = (id == MouseEvent.MOUSE_PRESSED)
+                        ? "mousePressed"
+                        : "keyPressed (" + KeyEvent.getKeyText(((KeyEvent) event).getKeyCode()) + ")";
                     LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
-                        "FlashWindow: global " + (id == MouseEvent.MOUSE_PRESSED ? "mousePressed" : "keyPressed")
-                        + " — dismissing flash");
+                        "FlashWindow: DISMISSED by user " + input + " after "
+                        + formatElapsed(flashShownAtMs) + " — dismissing flash for: " + activeFlashDescription);
                     // Remove immediately so no further events re-enter this block.
                     Toolkit.getDefaultToolkit().removeAWTEventListener(this);
                     globalFlashDismissListener = null;
@@ -451,6 +461,12 @@ public class MacScreenFlasher implements ScreenFlasher {
             AWTEvent.MOUSE_EVENT_MASK | AWTEvent.KEY_EVENT_MASK);
         LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
             "FlashWindow: global dismiss listener armed");
+    }
+
+    /** Seconds since {@code startMs}, formatted for logs (e.g. "2.4s"); "?" if not started. */
+    static String formatElapsed(long startMs) {
+        if (startMs <= 0) return "?";
+        return String.format("%.1fs", (System.currentTimeMillis() - startMs) / 1000.0);
     }
 
     @Override
@@ -590,6 +606,13 @@ public class MacScreenFlasher implements ScreenFlasher {
 
         // Add to tracking (CopyOnWriteArrayList is already thread-safe)
         activeFlashFrames.addAll(newFrames);
+        activeFlashDescription = CalendarEvent.describeForLog(events);
+        flashShownAtMs = System.currentTimeMillis();
+
+        // Raise natively (does not depend on activation being honoured), then verify after
+        // a short delay that the user could actually see the flash.
+        MacWindowElevator.elevateAlertWindows(true);
+        MacWindowElevator.reportAlertWindowVisibility("flash", activeFlashDescription, 750);
 
         // Fire the onFlashReady callback so the banner can show itself now
         // that flash windows are visible. Run on EDT to ensure Swing safety.
@@ -648,7 +671,8 @@ public class MacScreenFlasher implements ScreenFlasher {
             public void actionPerformed(ActionEvent e) {
                 LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
                     "FlashCleanup: Primary timer fired after " +
-                    (System.currentTimeMillis() - startTime) / 1000.0 + " seconds");
+                    (System.currentTimeMillis() - startTime) / 1000.0 + " seconds — flash EXPIRED (not dismissed) for: "
+                    + activeFlashDescription);
                 forceCleanup();
 
                 Timer source = (Timer) e.getSource();
@@ -715,7 +739,8 @@ public class MacScreenFlasher implements ScreenFlasher {
     private JFrame createFlashWindowForScreen(GraphicsDevice screen, List<CalendarEvent> events) {
         try {
             // Create frame with proper macOS settings
-            JFrame frame = new JFrame("\u26A0\uFE0F Meeting Alert \u26A0\uFE0F", screen.getDefaultConfiguration());
+            // Title identifies the NSWindow for MacWindowElevator (undecorated, so never displayed)
+            JFrame frame = new JFrame(MacWindowElevator.FLASH_WINDOW_TITLE, screen.getDefaultConfiguration());
 
             // Set critical properties before showing
             frame.setUndecorated(true);
@@ -864,6 +889,19 @@ public class MacScreenFlasher implements ScreenFlasher {
                         // Stop if the frame has already been disposed
                         if (!frame.isDisplayable()) {
                             ((Timer) e.getSource()).stop();
+                            return;
+                        }
+
+                        // Preferred path: native elevation (status window level, all Spaces,
+                        // over full-screen apps, orderFrontRegardless). It keeps the
+                        // flash → banner → dialog z-order via distinct levels and does not
+                        // depend on app activation, which macOS may refuse. The Java toggle
+                        // below is skipped because setAlwaysOnTop() would reset the level.
+                        if (MacWindowElevator.isAvailable()) {
+                            MacWindowElevator.elevateAlertWindows(false);
+                            if (attemptCount[0] >= maxAttempts) {
+                                ((Timer) e.getSource()).stop();
+                            }
                             return;
                         }
 

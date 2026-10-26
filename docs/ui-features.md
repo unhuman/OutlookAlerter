@@ -80,3 +80,7 @@ If you encounter issues with the UI:
 1. **Authentication failures**: Use the Settings dialog to update the sign-in URL
 2. **Missing system tray icon**: Some platforms have limited system tray support
 3. **No notifications**: Ensure your system's notification settings allow OutlookAlerter notifications
+4. **Alert fired but you saw nothing (macOS)**: Open Logs and find the alert time. Look for
+   `[AlertVisibility]` — a WARN `ALERT NOT VISIBLE` means the windows were on another Space or covered
+   (the line names the frontmost app). Look for `DISMISSED by ...` lines to see whether a key press,
+   click, timeout or a newer alert closed the flash or join dialog, and which meetings it was showing.
