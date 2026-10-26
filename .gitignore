@@ -15,3 +15,4 @@ diagnostics-*/
 calendar-events-report.txt
 **/*.app
 **/*.exe
+claude-proxy-captures/
