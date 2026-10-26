@@ -76,6 +76,7 @@ All property keys and default values are defined as `private static final String
 | `flashOpacity` | double | `1.0` | Flash |
 | `flashDurationSeconds` | int | `5` | Flash |
 | `resyncIntervalMinutes` | int | `240` | Scheduler |
+| `testAlertDelaySeconds` | int | `5` | Test Alerts dropdown (clamped ≥ 0) |
 | `defaultIgnoreCertValidation` | boolean | `false` | SSL |
 | `ignoreCertValidation` | boolean | `false` | SSL (runtime) |
 | `ignoreAllDayEvents` | boolean | `false` | Alert |

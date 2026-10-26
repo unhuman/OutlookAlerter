@@ -521,28 +521,31 @@ public class OutlookAlerterUI extends JFrame {
         buttonPanel.add(exitButton);
 
         // Button for testing all alert components (flash, banner, beeps).
-        // Offers an optional delay so the user can arrange their desktop first
-        // (switch apps, enter full screen, change Space) to test real-world visibility.
-        JButton testAlertsButton = new JButton("Test Alerts");
+        // The unlabeled delay dropdown to its right lets the user arrange their desktop
+        // first (switch apps, enter full screen, change Space) to test real-world visibility.
+        // The chosen delay is remembered in the config.
+        testAlertsButton = new JButton(TEST_ALERTS_LABEL);
         testAlertsButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                JPopupMenu menu = new JPopupMenu();
                 if (pendingTestAlertTimer != null) {
-                    JMenuItem cancelItem = new JMenuItem("Cancel pending test alert");
-                    cancelItem.addActionListener(ev -> cancelPendingTestAlert());
-                    menu.add(cancelItem);
+                    cancelPendingTestAlert();
                 } else {
-                    for (int delay : TEST_ALERT_DELAYS_SECONDS) {
-                        JMenuItem item = new JMenuItem(testAlertMenuLabel(delay));
-                        item.addActionListener(ev -> scheduleTestAlert(delay));
-                        menu.add(item);
-                    }
+                    scheduleTestAlert(TEST_ALERT_DELAYS_SECONDS[testAlertDelayCombo.getSelectedIndex()]);
                 }
-                menu.show(testAlertsButton, 0, testAlertsButton.getHeight());
             }
         });
         buttonPanel.add(testAlertsButton);
+
+        String[] delayLabels = new String[TEST_ALERT_DELAYS_SECONDS.length];
+        for (int i = 0; i < delayLabels.length; i++) {
+            delayLabels[i] = testAlertDelayLabel(TEST_ALERT_DELAYS_SECONDS[i]);
+        }
+        testAlertDelayCombo = new JComboBox<>(delayLabels);
+        testAlertDelayCombo.setSelectedIndex(testAlertDelayIndex(configManager.getTestAlertDelaySeconds()));
+        testAlertDelayCombo.addActionListener(e ->
+            configManager.updateTestAlertDelaySeconds(TEST_ALERT_DELAYS_SECONDS[testAlertDelayCombo.getSelectedIndex()]));
+        buttonPanel.add(testAlertDelayCombo);
 
         JPanel statusPanel = new JPanel(new GridLayout(2, 1));
         statusLabel = new JLabel("Status: Ready");
@@ -2222,15 +2225,34 @@ public class OutlookAlerterUI extends JFrame {
         }
     }
 
-    /** Delay choices (seconds) offered by the Test Alerts button; 0 = fire immediately. */
+    /** Delay choices (seconds) in the Test Alerts dropdown; 0 = fire immediately. */
     static final int[] TEST_ALERT_DELAYS_SECONDS = {0, 5, 10, 30};
+
+    /** Dropdown selection used when the saved delay is not one of the choices. */
+    static final int DEFAULT_TEST_ALERT_DELAY_SECONDS = 5;
+
+    private static final String TEST_ALERTS_LABEL = "Test Alerts";
+    private static final String CANCEL_TEST_LABEL = "Cancel Test";
+
+    private JButton testAlertsButton;
+    private JComboBox<String> testAlertDelayCombo;
 
     /** Countdown timer for a delayed test alert; null when none is pending. EDT only. */
     private Timer pendingTestAlertTimer;
 
-    /** Menu label for a test alert delay choice. */
-    static String testAlertMenuLabel(int delaySeconds) {
-        return delaySeconds <= 0 ? "Test now" : "Test in " + delaySeconds + " seconds";
+    /** Dropdown label for a test alert delay choice (self-describing, so no separate label). */
+    static String testAlertDelayLabel(int delaySeconds) {
+        return delaySeconds <= 0 ? "No Delay" : delaySeconds + "s Delay";
+    }
+
+    /** Dropdown index for a saved delay; falls back to the default choice if not offered. */
+    static int testAlertDelayIndex(int savedDelaySeconds) {
+        int fallback = 0;
+        for (int i = 0; i < TEST_ALERT_DELAYS_SECONDS.length; i++) {
+            if (TEST_ALERT_DELAYS_SECONDS[i] == savedDelaySeconds) return i;
+            if (TEST_ALERT_DELAYS_SECONDS[i] == DEFAULT_TEST_ALERT_DELAY_SECONDS) fallback = i;
+        }
+        return fallback;
     }
 
     /** Status line shown while a delayed test alert counts down. */
@@ -2252,12 +2274,14 @@ public class OutlookAlerterUI extends JFrame {
             "Test Alerts: test alert scheduled in " + delaySeconds + "s");
         final int[] remaining = {delaySeconds};
         statusLabel.setText(testAlertCountdownStatus(remaining[0]));
+        testAlertsButton.setText(CANCEL_TEST_LABEL);
         Timer countdown = new Timer(1000, null);
         countdown.addActionListener(tick -> {
             remaining[0]--;
             if (remaining[0] <= 0) {
                 countdown.stop();
                 pendingTestAlertTimer = null;
+                testAlertsButton.setText(TEST_ALERTS_LABEL);
                 statusLabel.setText("Status: Ready");
                 fireTestAlert();
             } else {
@@ -2274,6 +2298,7 @@ public class OutlookAlerterUI extends JFrame {
         if (pending != null) {
             pending.stop();
             pendingTestAlertTimer = null;
+            testAlertsButton.setText(TEST_ALERTS_LABEL);
             statusLabel.setText("Status: Ready");
             LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Test Alerts: pending test alert cancelled");
         }

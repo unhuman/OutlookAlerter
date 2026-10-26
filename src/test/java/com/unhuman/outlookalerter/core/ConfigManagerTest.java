@@ -612,4 +612,38 @@ class ConfigManagerTest {
             assertEquals(ConfigManager.DEFAULT_ALERT_SOUND_PATH, configManager.getAlertSoundPath());
         }
     }
+
+    // ───────── Test alert delay ─────────
+
+    @Nested
+    @DisplayName("Test alert delay")
+    class TestAlertDelay {
+
+        @Test
+        @DisplayName("defaults to 5 seconds")
+        void defaultsToFiveSeconds() {
+            configManager.loadConfiguration();
+            assertEquals(5, configManager.getTestAlertDelaySeconds());
+        }
+
+        @Test
+        @DisplayName("update persists across reload")
+        void persistsAcrossReload() {
+            configManager.loadConfiguration();
+            configManager.updateTestAlertDelaySeconds(30);
+            ConfigManager reloaded = new ConfigManager(configPath);
+            reloaded.loadConfiguration();
+            assertEquals(30, reloaded.getTestAlertDelaySeconds());
+        }
+
+        @Test
+        @DisplayName("0 (no delay) is allowed; negatives clamp to 0")
+        void clampsNegative() {
+            configManager.loadConfiguration();
+            configManager.updateTestAlertDelaySeconds(0);
+            assertEquals(0, configManager.getTestAlertDelaySeconds());
+            configManager.updateTestAlertDelaySeconds(-4);
+            assertEquals(0, configManager.getTestAlertDelaySeconds());
+        }
+    }
 }

@@ -191,6 +191,7 @@ still-unavailable network is non-fatal and falls through to the dialog.
 | `flashDurationSeconds` | int | 5 | How long flash stays visible |
 | `resyncIntervalMinutes` | int | 240 | Calendar refresh interval |
 | `alertBeepCount` | int | 5 | Number of audio beeps per alert |
+| `testAlertDelaySeconds` | int | 5 | Last delay chosen in the Test Alerts dropdown (0/5/10/30) |
 | `signInUrl` | String | Graph Explorer URL | Sign-in page URL |
 | `tokenEndpoint` | String | (empty) | OAuth token refresh endpoint |
 | `defaultIgnoreCertValidation` | boolean | false | Skip SSL cert validation |

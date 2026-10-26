@@ -44,6 +44,7 @@ public class ConfigManager {
     private static final String KEY_ALERT_SOUND_ENABLED = "alertSoundEnabled";
     private static final String KEY_JOIN_DIALOG_TIMEOUT = "joinDialogTimeoutSeconds";
     private static final String KEY_SNOOZE_MINUTES = "snoozeMinutes";
+    private static final String KEY_TEST_ALERT_DELAY = "testAlertDelaySeconds";
     private static final String KEY_ACCESS_TOKEN = "accessToken";
     private static final String KEY_REFRESH_TOKEN = "refreshToken";
     private static final String KEY_USER_EMAIL = "userEmail";
@@ -71,6 +72,7 @@ public class ConfigManager {
     public static final String DEFAULT_ALERT_SOUND_PATH = "/System/Library/Sounds/Glass.aiff";
     private static final String DEFAULT_JOIN_DIALOG_TIMEOUT = "15";
     private static final String DEFAULT_SNOOZE_MINUTES = "1";
+    private static final String DEFAULT_TEST_ALERT_DELAY = "5";
 
     private String configFilePath;
     private Properties properties = new Properties();
@@ -98,6 +100,7 @@ public class ConfigManager {
     private boolean alertSoundEnabled = true;
     private int joinDialogTimeoutSeconds = 15;
     private int snoozeMinutes = 1;
+    private int testAlertDelaySeconds = 5;
     private String signInUrl;
     private String tokenEndpoint;
     private String loginHint;
@@ -239,6 +242,11 @@ public class ConfigManager {
         } catch (NumberFormatException e) {
             LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid snoozeMinutes value, using default: " + e.getMessage());
         }
+        try {
+            testAlertDelaySeconds = Math.max(0, Integer.parseInt(properties.getProperty(KEY_TEST_ALERT_DELAY, DEFAULT_TEST_ALERT_DELAY)));
+        } catch (NumberFormatException e) {
+            LogManager.getInstance().warn(LogCategory.GENERAL, "Invalid testAlertDelaySeconds value, using default: " + e.getMessage());
+        }
         accessToken = properties.getProperty(KEY_ACCESS_TOKEN);
         refreshToken = properties.getProperty(KEY_REFRESH_TOKEN);
         userEmail = properties.getProperty(KEY_USER_EMAIL, "");
@@ -273,6 +281,7 @@ public class ConfigManager {
             properties.setProperty(KEY_ALERT_SOUND_ENABLED, String.valueOf(alertSoundEnabled));
             properties.setProperty(KEY_JOIN_DIALOG_TIMEOUT, String.valueOf(joinDialogTimeoutSeconds));
             properties.setProperty(KEY_SNOOZE_MINUTES, String.valueOf(snoozeMinutes));
+            properties.setProperty(KEY_TEST_ALERT_DELAY, String.valueOf(testAlertDelaySeconds));
             if (accessToken != null && !accessToken.isEmpty()) {
                 properties.setProperty(KEY_ACCESS_TOKEN, accessToken);
             }
@@ -338,6 +347,8 @@ public class ConfigManager {
     public boolean getAlertSoundEnabled() { return alertSoundEnabled; }
     public int getJoinDialogTimeoutSeconds() { return joinDialogTimeoutSeconds; }
     public int getSnoozeMinutes() { return snoozeMinutes; }
+    /** Delay (seconds) before a Test Alert fires; remembered from the main window dropdown. */
+    public int getTestAlertDelaySeconds() { return testAlertDelaySeconds; }
 
     public void updatePreferredTimezone(String timezone) { this.preferredTimezone = timezone; saveConfiguration(); }
     public void updateAlertMinutes(int minutes) { this.alertMinutes = minutes; saveConfiguration(); }
@@ -360,6 +371,7 @@ public class ConfigManager {
     public void updateAlertSoundEnabled(boolean enabled) { this.alertSoundEnabled = enabled; saveConfiguration(); }
     public void updateJoinDialogTimeoutSeconds(int seconds) { this.joinDialogTimeoutSeconds = Math.max(0, seconds); saveConfiguration(); }
     public void updateSnoozeMinutes(int minutes) { this.snoozeMinutes = Math.max(1, minutes); saveConfiguration(); }
+    public void updateTestAlertDelaySeconds(int seconds) { this.testAlertDelaySeconds = Math.max(0, seconds); saveConfiguration(); }
 
     /** Email address stored for Okta SSO federation discovery. May be empty/null. */
     public String getUserEmail() { return userEmail; }

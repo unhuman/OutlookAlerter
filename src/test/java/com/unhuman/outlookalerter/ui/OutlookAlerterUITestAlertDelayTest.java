@@ -12,9 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class OutlookAlerterUITestAlertDelayTest {
 
     @Test
-    @DisplayName("offers an immediate option first, then increasing delays")
+    @DisplayName("offers No Delay, 5s, 10s and 30s")
     void delayChoices() {
         int[] delays = OutlookAlerterUI.TEST_ALERT_DELAYS_SECONDS;
+        assertArrayEquals(new int[]{0, 5, 10, 30}, delays);
         assertEquals(0, delays[0], "first choice must fire immediately");
         for (int i = 1; i < delays.length; i++) {
             assertTrue(delays[i] > delays[i - 1], "delays must increase");
@@ -23,10 +24,29 @@ class OutlookAlerterUITestAlertDelayTest {
     }
 
     @Test
-    @DisplayName("menu labels describe each choice")
-    void menuLabels() {
-        assertEquals("Test now", OutlookAlerterUI.testAlertMenuLabel(0));
-        assertEquals("Test in 10 seconds", OutlookAlerterUI.testAlertMenuLabel(10));
+    @DisplayName("dropdown labels are self-describing")
+    void delayLabels() {
+        assertEquals("No Delay", OutlookAlerterUI.testAlertDelayLabel(0));
+        assertEquals("5s Delay", OutlookAlerterUI.testAlertDelayLabel(5));
+        assertEquals("10s Delay", OutlookAlerterUI.testAlertDelayLabel(10));
+        assertEquals("30s Delay", OutlookAlerterUI.testAlertDelayLabel(30));
+    }
+
+    @Test
+    @DisplayName("saved delay selects its dropdown entry")
+    void savedDelaySelectsEntry() {
+        int[] delays = OutlookAlerterUI.TEST_ALERT_DELAYS_SECONDS;
+        for (int i = 0; i < delays.length; i++) {
+            assertEquals(i, OutlookAlerterUI.testAlertDelayIndex(delays[i]));
+        }
+    }
+
+    @Test
+    @DisplayName("unknown saved delay falls back to 5s")
+    void unknownSavedDelayFallsBack() {
+        int fallback = OutlookAlerterUI.testAlertDelayIndex(7);
+        assertEquals(5, OutlookAlerterUI.TEST_ALERT_DELAYS_SECONDS[fallback]);
+        assertEquals(fallback, OutlookAlerterUI.testAlertDelayIndex(-1));
     }
 
     @Test

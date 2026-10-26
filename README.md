@@ -53,7 +53,7 @@ Outlook Alerter uses OAuth2 for authentication. To avoid repeated sign-ins, it r
 - **Next Meetings**: Displays upcoming meetings within alert window
 - **Later Meetings**: Lists future meetings beyond the current timeframe
 - **Status Bar**: Shows connection state and last update time
-- **Quick Actions**: Refresh, Settings, Logs, Exit, and Test Alerts (now or after a 5/10/30 s delay, so you can arrange your desktop before the alert fires)
+- **Quick Actions**: Refresh, Settings, Logs, Exit, and Test Alerts with a delay dropdown (No Delay / 5s / 10s / 30s, default 5s, remembered between runs) so you can arrange your desktop before the alert fires
 
 ### Settings Dialog
 - **Alert Configuration**: Set alert time (1-30 minutes before meetings)
@@ -137,6 +137,7 @@ loginHint=your.name@company.com                             # Your email (option
 # Application Settings
 preferredTimezone=America/New_York                          # Your preferred timezone
 alertMinutes=1                                              # Minutes before meeting to alert (1-30)
+testAlertDelaySeconds=5                                     # Last Test Alerts delay (0, 5, 10 or 30)
 
 # Visual Settings
 flashColor=#800000                                          # Alert background color (hex)
