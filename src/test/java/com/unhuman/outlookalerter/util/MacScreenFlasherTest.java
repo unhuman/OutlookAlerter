@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.awt.GraphicsEnvironment;
 import java.lang.reflect.Field;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 /**
  * Unit tests for MacScreenFlasher.
@@ -26,14 +28,39 @@ import static org.junit.jupiter.api.Assertions.*;
  * Visual flash rendering requires a real display and cannot be tested in headless mode,
  * but the serialisation infrastructure (Semaphore + completion latch) is fully exercised
  * here because it runs before the display-environment validation guard.
+ *
+ * Headed runs (-Dheadless=false) show real flashes, which the person at the desk may
+ * dismiss early with a key or click. Tests must pass either way: flashes are kept short,
+ * time budgets allow for full-length flashes, and assertions that only hold without user
+ * input are skipped when a real dismissal happened.
  */
 class MacScreenFlasherTest {
+
+    /** Short flash so headed runs stay quick; time budgets below are derived from it. */
+    private static final int TEST_FLASH_DURATION_MS = 1000;
+
+    /** Allowance per flash for window creation and cleanup on top of its duration. */
+    private static final int PER_FLASH_OVERHEAD_MS = 2000;
 
     private MacScreenFlasher flasher;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         flasher = new MacScreenFlasher();
+        Field f = MacScreenFlasher.class.getDeclaredField("flashDurationMs");
+        f.setAccessible(true);
+        f.setInt(flasher, TEST_FLASH_DURATION_MS);
+    }
+
+    /** Budget for {@code flashes} serialised flashes, whether they expire or are dismissed early. */
+    private static long flashBudgetMs(int flashes) {
+        return (long) flashes * (TEST_FLASH_DURATION_MS + PER_FLASH_OVERHEAD_MS);
+    }
+
+    /** Skips the rest of a test whose assertion only holds if nobody dismissed the flash. */
+    private void skipIfUserDismissedHeadedFlash() {
+        assumeFalse(!GraphicsEnvironment.isHeadless() && flasher.wasUserDismissed(),
+            "flash was dismissed by real user input during a headed run");
     }
 
     @AfterEach
@@ -133,10 +160,12 @@ class MacScreenFlasherTest {
             }
 
             startGate.countDown();   // release both threads simultaneously
-            boolean finished = doneLatch.await(5, TimeUnit.SECONDS);
+            // Headed, the calls show real flashes one after another (serialised by the
+            // semaphore); dismissing them early only makes this finish sooner.
+            boolean finished = doneLatch.await(flashBudgetMs(threadCount), TimeUnit.MILLISECONDS);
             exec.shutdownNow();
 
-            assertTrue(finished, "Both concurrent flashMultiple() calls should complete within 5 s — deadlock suspected");
+            assertTrue(finished, "Both concurrent flashMultiple() calls should complete — deadlock suspected");
             assertEquals(threadCount, completions.get(), "Both calls should have run to completion");
             assertEquals(1, getFlashSemaphore().availablePermits(),
                 "Exactly 1 permit must be available after both threads finish");
@@ -167,10 +196,10 @@ class MacScreenFlasherTest {
             }
 
             startGate.countDown();
-            boolean finished = doneLatch.await(10, TimeUnit.SECONDS);
+            boolean finished = doneLatch.await(flashBudgetMs(threadCount), TimeUnit.MILLISECONDS);
             exec.shutdownNow();
 
-            assertTrue(finished, "All " + threadCount + " flashMultiple() calls should complete within 10 s");
+            assertTrue(finished, "All " + threadCount + " flashMultiple() calls should complete — deadlock suspected");
             assertEquals(threadCount, completions.get());
             assertEquals(1, getFlashSemaphore().availablePermits(),
                 "Semaphore must be back at 1 permit after all threads finish");
@@ -267,6 +296,7 @@ class MacScreenFlasherTest {
             // so the flag should remain false — no user actually dismissed anything.
             CalendarEvent event = makeEvent("Timer Dismiss Test", 1);
             flasher.flashMultiple(List.of(event));
+            skipIfUserDismissedHeadedFlash();
             assertFalse(flasher.wasUserDismissed(),
                 "wasUserDismissed() should be false when flash expired via timer (no user action)");
         }
@@ -282,6 +312,7 @@ class MacScreenFlasherTest {
             // The next flashMultiple() should reset it to false before proceeding
             CalendarEvent event = makeEvent("Reset Test", 1);
             flasher.flashMultiple(List.of(event));
+            skipIfUserDismissedHeadedFlash();
 
             assertFalse(flasher.wasUserDismissed(),
                 "wasUserDismissed() should be reset to false at the start of each flashMultiple() call");

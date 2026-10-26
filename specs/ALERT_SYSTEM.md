@@ -619,6 +619,11 @@ Targets `MacScreenFlasher` directly. In headless environments `flashMultiple()` 
 after display-environment validation, but the serialisation infrastructure (Semaphore +
 completion latch) runs before that guard and is fully exercisable without a real display.
 
+Headed runs (`-Dheadless=false`) show real 1 s flashes (`TEST_FLASH_DURATION_MS`) that the person at
+the desk may dismiss early. Tests must pass either way: time budgets allow for every flash running
+to full length, and assertions that only hold without user input are skipped (not failed) when a
+real dismissal happened.
+
 ### Semaphore management tests
 | Test | Verifies |
 |------|----------|
@@ -631,8 +636,8 @@ completion latch) runs before that guard and is fully exercisable without a real
 ### Concurrency tests
 | Test | Verifies |
 |------|----------|
-| concurrentCallsCompleteWithoutDeadlock | 2 simultaneous `flashMultiple()` calls both complete within 5 s |
-| manyConurrentCallsCompleteWithoutDeadlock | 5 simultaneous calls all complete within 10 s; permit back to 1 |
+| concurrentCallsCompleteWithoutDeadlock | 2 simultaneous `flashMultiple()` calls both complete within the flash budget (2 × (1 s + 2 s overhead)) |
+| manyConurrentCallsCompleteWithoutDeadlock | 5 simultaneous calls all complete within the flash budget; permit back to 1 |
 
 ### Completion latch tests
 | Test | Verifies |
