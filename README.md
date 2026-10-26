@@ -53,7 +53,7 @@ Outlook Alerter uses OAuth2 for authentication. To avoid repeated sign-ins, it r
 - **Next Meetings**: Displays upcoming meetings within alert window
 - **Later Meetings**: Lists future meetings beyond the current timeframe
 - **Status Bar**: Shows connection state and last update time
-- **Quick Actions**: Refresh, Settings, and Exit buttons
+- **Quick Actions**: Refresh, Settings, Logs, Exit, and Test Alerts (now or after a 5/10/30 s delay, so you can arrange your desktop before the alert fires)
 
 ### Settings Dialog
 - **Alert Configuration**: Set alert time (1-30 minutes before meetings)

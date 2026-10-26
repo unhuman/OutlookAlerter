@@ -18,7 +18,7 @@ void performFullAlert(String bannerText, String notificationTitle,
 | Caller | Location | Context |
 |---|---|---|
 | `checkForEventAlerts()` | OutlookAlerterUI | Real meeting alerts (from alert scheduler) |
-| Test Alerts button | OutlookAlerterUI | User-triggered test |
+| Test Alerts button | OutlookAlerterUI | User-triggered test, immediately or after a 5/10/30 s countdown (`scheduleTestAlert()`) |
 | `getTokensFromUser()` | OutlookClient | Token failure (first attempt only) |
 
 ### Execution Order

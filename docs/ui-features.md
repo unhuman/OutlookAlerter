@@ -21,6 +21,7 @@ The main window displays:
 ### Controls
 - **Refresh Now**: Manually refresh calendar data
 - **Settings**: Configure timezone and sign-in URL
+- **Test Alerts**: Fire a test alert now, or in 5/10/30 seconds so you can switch to another app, go full screen or change Space first. Click again during the countdown to cancel.
 
 ## System Tray Integration
 

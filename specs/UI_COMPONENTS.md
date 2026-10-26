@@ -37,6 +37,16 @@ The GUI is a Swing-based desktop application that runs as a system tray icon. Th
 └──────────────────────────────────────────────────────┘
 ```
 
+### Test Alerts Button
+
+Clicking **Test** opens a popup menu: *Test now*, *Test in 5 / 10 / 30 seconds*
+(`TEST_ALERT_DELAYS_SECONDS`). A delayed test counts down in the status line
+(`Status: Test alert in Ns — arrange your desktop now`) so the user can switch apps, enter full
+screen or change Space before the alert fires — the way real alerts are missed. While a test is
+pending, the menu offers only *Cancel pending test alert*. The test fires `performFullAlert()` with a
+synthetic "Test Alert - Meeting Alert Demo" event, so the `[AlertVisibility]` and dismissal logs
+cover it too.
+
 - **Size:** 800×600, centered
 - **Close behavior:** Minimizes to tray (if supported), else prompts to exit
 - **Icon:** Programmatically generated via `IconManager`

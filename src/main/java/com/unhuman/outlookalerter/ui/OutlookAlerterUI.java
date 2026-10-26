@@ -520,30 +520,26 @@ public class OutlookAlerterUI extends JFrame {
         });
         buttonPanel.add(exitButton);
 
-        // Button for testing all alert components (flash, banner, beeps)
+        // Button for testing all alert components (flash, banner, beeps).
+        // Offers an optional delay so the user can arrange their desktop first
+        // (switch apps, enter full screen, change Space) to test real-world visibility.
         JButton testAlertsButton = new JButton("Test Alerts");
         testAlertsButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Test Alerts: Starting test alert sequence");
-
-                // Create a test event for the flash
-                CalendarEvent testEvent = new CalendarEvent();
-                testEvent.setSubject("Test Alert - Meeting Alert Demo");
-                testEvent.setLocation("Test Location");
-                testEvent.setStartTime(java.time.ZonedDateTime.now().plusMinutes(1));
-                testEvent.setEndTime(java.time.ZonedDateTime.now().plusMinutes(31));
-                testEvent.setIsOnlineMeeting(false);
-
-                List<CalendarEvent> testEvents = new ArrayList<>();
-                testEvents.add(testEvent);
-
-                performFullAlert(
-                    "Test meeting alert - All alert components",
-                    "Test Alert",
-                    "This is a test of all alert components",
-                    testEvents
-                );
+                JPopupMenu menu = new JPopupMenu();
+                if (pendingTestAlertTimer != null) {
+                    JMenuItem cancelItem = new JMenuItem("Cancel pending test alert");
+                    cancelItem.addActionListener(ev -> cancelPendingTestAlert());
+                    menu.add(cancelItem);
+                } else {
+                    for (int delay : TEST_ALERT_DELAYS_SECONDS) {
+                        JMenuItem item = new JMenuItem(testAlertMenuLabel(delay));
+                        item.addActionListener(ev -> scheduleTestAlert(delay));
+                        menu.add(item);
+                    }
+                }
+                menu.show(testAlertsButton, 0, testAlertsButton.getHeight());
             }
         });
         buttonPanel.add(testAlertsButton);
@@ -2224,6 +2220,86 @@ public class OutlookAlerterUI extends JFrame {
         } finally {
             isTokenDialogActive = false;
         }
+    }
+
+    /** Delay choices (seconds) offered by the Test Alerts button; 0 = fire immediately. */
+    static final int[] TEST_ALERT_DELAYS_SECONDS = {0, 5, 10, 30};
+
+    /** Countdown timer for a delayed test alert; null when none is pending. EDT only. */
+    private Timer pendingTestAlertTimer;
+
+    /** Menu label for a test alert delay choice. */
+    static String testAlertMenuLabel(int delaySeconds) {
+        return delaySeconds <= 0 ? "Test now" : "Test in " + delaySeconds + " seconds";
+    }
+
+    /** Status line shown while a delayed test alert counts down. */
+    static String testAlertCountdownStatus(int secondsRemaining) {
+        return "Status: Test alert in " + secondsRemaining + "s — arrange your desktop now";
+    }
+
+    /**
+     * Fires a test alert now, or after {@code delaySeconds} with a countdown in the status line.
+     * Must be called on the EDT.
+     */
+    void scheduleTestAlert(int delaySeconds) {
+        cancelPendingTestAlert();
+        if (delaySeconds <= 0) {
+            fireTestAlert();
+            return;
+        }
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING,
+            "Test Alerts: test alert scheduled in " + delaySeconds + "s");
+        final int[] remaining = {delaySeconds};
+        statusLabel.setText(testAlertCountdownStatus(remaining[0]));
+        Timer countdown = new Timer(1000, null);
+        countdown.addActionListener(tick -> {
+            remaining[0]--;
+            if (remaining[0] <= 0) {
+                countdown.stop();
+                pendingTestAlertTimer = null;
+                statusLabel.setText("Status: Ready");
+                fireTestAlert();
+            } else {
+                statusLabel.setText(testAlertCountdownStatus(remaining[0]));
+            }
+        });
+        pendingTestAlertTimer = countdown;
+        countdown.start();
+    }
+
+    /** Cancels a pending delayed test alert, if any. Must be called on the EDT. */
+    void cancelPendingTestAlert() {
+        Timer pending = pendingTestAlertTimer;
+        if (pending != null) {
+            pending.stop();
+            pendingTestAlertTimer = null;
+            statusLabel.setText("Status: Ready");
+            LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Test Alerts: pending test alert cancelled");
+        }
+    }
+
+    /** Fires all alert components for a synthetic test meeting. */
+    private void fireTestAlert() {
+        LogManager.getInstance().info(LogCategory.ALERT_PROCESSING, "Test Alerts: Starting test alert sequence");
+
+        // Create a test event for the flash
+        CalendarEvent testEvent = new CalendarEvent();
+        testEvent.setSubject("Test Alert - Meeting Alert Demo");
+        testEvent.setLocation("Test Location");
+        testEvent.setStartTime(java.time.ZonedDateTime.now().plusMinutes(1));
+        testEvent.setEndTime(java.time.ZonedDateTime.now().plusMinutes(31));
+        testEvent.setIsOnlineMeeting(false);
+
+        List<CalendarEvent> testEvents = new ArrayList<>();
+        testEvents.add(testEvent);
+
+        performFullAlert(
+            "Test meeting alert - All alert components",
+            "Test Alert",
+            "This is a test of all alert components",
+            testEvents
+        );
     }
 
     /**
